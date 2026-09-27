@@ -6,20 +6,7 @@ import { criarPool } from './banco.js'
 import { registrarErros } from './erros.js'
 import rotasSaude from './saude/rotas.js'
 import rotasExemplo from './exemplo/rotas.js'
-
-// Campos mascarados no log (ADR 0013, item 8): raiz, um e dois níveis.
-const sensiveis = ['senha', 'token', 'email', 'telefone', 'nome', 'cpf', 'cnpj', 'documento']
-const caminhosMascarados = [
-  ...sensiveis,
-  ...sensiveis.map((campo) => `*.${campo}`),
-  ...sensiveis.map((campo) => `*.*.${campo}`),
-  'req.headers.cookie',
-  'req.headers.authorization',
-  'req.headers["asaas-access-token"]',
-  'res.headers["set-cookie"]',
-  // Campos de erro do `pg` que repetem valores da linha (ex.: violação de unicidade).
-  ...['detail', 'where', 'parameters', 'hint', 'internalQuery', 'query'].map((campo) => `err.${campo}`)
-]
+import { caminhosMascarados, LogCitmail, serializadores } from './log.js'
 
 // ADR 0003: toda rota que recebe corpo declara `schema.body`. Exceções, se
 // houver, entram aqui como 'MÉTODO /caminho' com o motivo ao lado.
@@ -48,8 +35,10 @@ export function construirApp(config, { pool, logStream } = {}) {
     logger: {
       level: config.logLevel ?? 'info',
       redact: { paths: caminhosMascarados, censor: '[mascarado]' },
+      serializers: serializadores,
       ...(logStream ? { stream: logStream } : {})
     },
+    logController: new LogCitmail(),
     genReqId: () => randomUUID(),
     requestIdHeader: false,
     trustProxy: ['127.0.0.1', '::1'],
@@ -78,6 +67,11 @@ export function construirApp(config, { pool, logStream } = {}) {
 
   app.addHook('onSend', async (request, reply) => {
     reply.header('x-request-id', request.id)
+  })
+
+  // Cliente que desiste antes da resposta não passa por `request completed`.
+  app.addHook('onRequestAbort', async (request) => {
+    request.log.info({ req: request }, 'request aborted')
   })
 
   app.register(cors, {
