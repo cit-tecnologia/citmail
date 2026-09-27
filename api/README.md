@@ -13,14 +13,19 @@ api/
   package.json        scripts e dependências da API
   eslint.config.js    configuração do lint (ESLint, regras recomendadas)
   migrations/         migrações SQL do node-pg-migrate (uma por arquivo, com Up/Down)
+  deploy/journald-namespace.conf  retenção dos logs (journald, até 30 dias; instalado na VPS pela #57/#93)
   src/
     config.js         lê e valida as variáveis de ambiente (carregarConfig)
     banco.js           pool do PostgreSQL (pg) e checagem de saúde (verificarBanco)
     app.js             fábrica construirApp(config, { pool, logStream }): Fastify, CORS, log, validação e erros
+    log.js             log técnico: lista de campos mascarados, serializers e LogCitmail (linha única por requisição)
     erros.js           tratamento padronizado de erro (400 por campo, 404, 500) e ErroDeDominio
     servidor.js        ponto de entrada: carrega a config, sobe o Fastify, encerra em SIGTERM/SIGINT
     saude/rotas.js      GET /api/health
-    exemplo/rotas.js    POST /api/exemplos (só fora de produção; fixa o padrão de schema e de erro)
+    exemplo/rotas.js    POST /api/exemplos e POST /api/exemplos/job (só fora de produção; padrão de schema, erro e log de job)
+    jobs/executar.js    executarJob: log correlacionado de job (job iniciado/concluído/falhou)
+    jobs/exemplo.js     job de exemplo
+    asaas/resumo.js     resumoEventoAsaas: o que do webhook do Asaas pode ir para o log
   test/                suíte node:test (uma spec por critério de aceite)
 ```
 
@@ -89,7 +94,21 @@ Nomes usados por `src/config.js` e por `compose.yaml`; nenhum valor secreto vai 
 | `PORT` | Porta em que a API escuta. | `3000` |
 | `CORS_ORIGENS` | Lista de origens permitidas, separadas por vírgula (CORS: Cross-Origin Resource Sharing, compartilhamento de recursos entre origens). Cada item é uma origem exata, `esquema://host[:porta]` (ex.: `https://novo.citmail.com.br`), sem caminho, sem barra final, sem `*` e sem `null`. | obrigatória, sem padrão |
 | `LOG_LEVEL` | Nível do log `pino` (`fatal`, `error`, `warn`, `info`, `debug`, `trace`). | `info` |
-| `NODE_ENV` | Ambiente: só `production`, `development` ou `test` (outro valor impede a subida); em produção, `POST /api/exemplos` não é registrado. O `.env` de desenvolvimento deve definir `development`. | `production` (ausente = produção, falha fechada) |
+| `NODE_ENV` | Ambiente: só `production`, `development` ou `test` (outro valor impede a subida); em produção, `POST /api/exemplos` e `POST /api/exemplos/job` não são registrados. O `.env` de desenvolvimento deve definir `development`. | `production` (ausente = produção, falha fechada) |
+
+## Logs
+
+JSON do `pino` na saída padrão (ADR 0013, item 8; código em `src/log.js`). Linhas:
+
+- `request completed` (nível `info`, uma por requisição, também em 4xx/5xx): `reqId` (igual ao header `x-request-id` da resposta), `req.method`, `req.rota` (template, ex.: `/api/exemplos/:id`), `req.remoteAddress` (IP), `res.statusCode` e `responseTime` (ms). Sem URL concreta (nem query nem valor de parâmetro), sem headers e sem corpo. No 404, `req.rota` é `null` e `req.caminho` traz o path sem query (até 200 caracteres). Não há `incoming request` nem `Route ... not found`.
+- `request aborted`: o cliente desistiu antes da resposta (`reqId`, `req.rota`).
+- `GET /api/health` loga só a partir de `warn` (o monitoramento chama a cada minuto); a falha sai como `banco indisponível no health`, com `reqId`.
+- Jobs: `executarJob({ nome, correlacaoId, log }, fn)` de `src/jobs/executar.js` registra `job iniciado`, `job concluído` (com `duracaoMs`) ou `job falhou` (`error`, e relança o erro), todas com `job` e `reqId` = `correlacaoId` (sem ele, um UUID novo). Passar em `log` o logger raiz (`app.log` ou o do worker), nunca `request.log`, que já tem `reqId` (a chave sairia repetida); dentro do job, logar só pelo `log` recebido em `fn`. Os dados do job não são logados. Exemplo: `POST /api/exemplos/job` (`{ "falhar": true }` simula a falha).
+- Webhook do Asaas: logar só `resumoEventoAsaas(evento)` de `src/asaas/resumo.js` (`event`, `paymentId`, `paymentStatus`, `billingType`); nunca `request.body`, o `payment`/`customer` inteiro nem o header `asaas-access-token`.
+
+**Máscara** (`redact`, censor `[mascarado]`): os 39 nomes de `camposSensiveis` em `src/log.js` (dados pessoais do pedido e do cliente do Asaas, credenciais, `creditCard` e `creditCardToken`) na raiz e em até 3 níveis de aninhamento (`x`, `a.x`, `a.b.x`, `a.b.c.x`), além dos campos `err.*` do `pg`. Limites: o 5º nível não é mascarado; o nome precisa ser exato (`CPF` não casa com `cpf`); homônimos técnicos também são mascarados (`name` pega `err.name`; usar nomes distintos como `numeroPedido` em vez de `numero`); dado pessoal dentro de `err.message` não é mascarado (logar códigos, não mensagens de driver). Ficam em claro, de propósito, `uf`, `estado` e `state`.
+
+**Retenção:** até 30 dias, em journald, com um namespace por ambiente: `citmail` (produção) e `citmail-homolog` (homologação). O arquivo `deploy/journald-namespace.conf` (`MaxRetentionSec=29day` + `MaxFileSec=1day`, porque o journald apaga arquivo inteiro; `SystemMaxUse=1G` por namespace) é instalado como `/etc/systemd/journald@<namespace>.conf`, e a unidade systemd da API usa `LogNamespace=<namespace>`. Consulta: `journalctl --namespace=<namespace>`. Premissa: systemd ≥ 245. A aplicação e a verificação na VPS ficam com a #57/#93.
 
 ## Como rodar os testes
 
@@ -120,7 +139,7 @@ Definition of Done (DoD: lista do que precisa ser verdade antes de considerar um
 2. **O banco só é acessado por consulta parametrizada** (`$1`, `$2`; nunca concatenar valor em SQL). Como cumprir: usar sempre `pool.query(texto, valores)`, como em `src/banco.js`; nunca montar SQL com template string a partir de entrada do usuário.
 3. **Os testes automatizados rodam sem internet** (guarda `sem-rede`, serviços externos mockados). Como cumprir: manter `--import ./test/sem-rede.js` no script `test` e mockar qualquer serviço externo novo em vez de chamá-lo de verdade.
 4. **As ações críticas chamam a auditoria** (E6-H7; lista no [ADR 0013](../docs/adr/0013-seguranca-transversal-e-observabilidade.md), item 7). Como cumprir: ao implementar uma ação da lista (login, falha de login, bloqueio, criação/exclusão de caixa, troca de senha, alteração cadastral, cancelamento etc.), gravar na tabela de auditoria antes de responder — a auditoria em si ainda não existe nesta história (CIT-53), fica para a E6-H7.
-5. **Nenhum segredo, senha ou dado pessoal em log** (`redact` do [ADR 0013](../docs/adr/0013-seguranca-transversal-e-observabilidade.md); segredos só por variável de ambiente). Como cumprir: adicionar todo campo sensível novo à lista `caminhosMascarados` de `src/app.js` (que já mascara `err.detail`, `err.where`, `err.parameters` e similares do `pg`), e nunca logar `config.databaseUrl` nem outra variável de ambiente sensível.
+5. **Nenhum segredo, senha ou dado pessoal em log** (`redact` do [ADR 0013](../docs/adr/0013-seguranca-transversal-e-observabilidade.md); segredos só por variável de ambiente). Como cumprir: adicionar todo campo sensível novo, com o nome exato (o `redact` diferencia maiúsculas), à lista `camposSensiveis` de `src/log.js` (mascarada na raiz e em até 3 níveis de aninhamento; os campos `err.*` do `pg` já estão cobertos); não logar objeto com dado pessoal abaixo do 4º nível; logar o webhook do Asaas só por `resumoEventoAsaas`; e nunca logar `config.databaseUrl` nem outra variável de ambiente sensível.
 
 ## Próximos passos
 
