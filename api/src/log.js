@@ -15,7 +15,7 @@ export const camposSensiveis = [
   'password', 'authorization', 'accessToken', 'access_token', 'refreshToken', 'apiKey',
   // Cliente e pagamento do Asaas (`creditCard` traz o `creditCardToken`, que permite cobrar de novo).
   'name', 'phone', 'mobilePhone', 'company', 'postalCode', 'address', 'addressNumber', 'complement', 'province',
-  'cityName', 'additionalEmails', 'creditCard', 'creditCardToken'
+  'cityName', 'additionalEmails', 'municipalInscription', 'stateInscription', 'creditCard', 'creditCardToken'
 ]
 
 export const caminhosMascarados = [
