@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { construirAppTeste } from './auxiliares.js';
-import { camposSensiveis } from '../src/log.js';
+import { camposSensiveis, LogCitmail } from '../src/log.js';
 
 test('CA1: requisição bem-sucedida gera uma única linha "request completed" com reqId, método, rota, IP, status e duração, sem url', async (t) => {
   const { app, captura, fechar } = await construirAppTeste();
@@ -271,7 +271,7 @@ test('CA5: GET /api/health com banco indisponível continua gerando o warn "banc
   assert.equal(linha.level, 40);
 });
 
-test('CA6: requisição abortada pelo cliente antes da resposta gera a linha "request aborted" com reqId e req.rota', async (t) => {
+test('CA6: requisição abortada pelo cliente antes da resposta gera só a linha "request aborted", com reqId e req.rota', async (t) => {
   const { app, captura, fechar } = await construirAppTeste();
 
   let liberarResposta;
@@ -286,6 +286,12 @@ test('CA6: requisição abortada pelo cliente antes da resposta gera a linha "re
     sinalizarRotaIniciada = resolve;
   });
 
+  // Sinal de que o handler terminou, depois do abort e da liberação da resposta.
+  let sinalizarRotaConcluida;
+  const rotaConcluida = new Promise((resolve) => {
+    sinalizarRotaConcluida = resolve;
+  });
+
   t.after(async () => {
     liberarResposta();
     await fechar();
@@ -293,8 +299,12 @@ test('CA6: requisição abortada pelo cliente antes da resposta gera a linha "re
 
   app.get('/api/teste-lenta', async () => {
     sinalizarRotaIniciada();
-    await respostaLiberada;
-    return { ok: true };
+    try {
+      await respostaLiberada;
+      return { ok: true };
+    } finally {
+      sinalizarRotaConcluida();
+    }
   });
   await app.ready();
 
@@ -326,7 +336,44 @@ test('CA6: requisição abortada pelo cliente antes da resposta gera a linha "re
   assert.ok(linha, 'era esperada a linha "request aborted"');
   assert.equal(linha.req.rota, '/api/teste-lenta');
   assert.equal(typeof linha.reqId, 'string');
+
+  // Linha única: com o handler concluído depois do abort, o Fastify não
+  // deve emitir também "request completed" nem "request errored".
+  liberarResposta();
+  await new Promise((resolve, reject) => {
+    const tempoEsgotado = setTimeout(() => reject(new Error('rota não concluiu a tempo')), 2000);
+    rotaConcluida.then(() => {
+      clearTimeout(tempoEsgotado);
+      resolve();
+    });
+  });
+  // Prazo curto para o Fastify tratar o retorno do handler (envio descartado no abort).
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  const linhasDoReqId = captura.linhas().filter((l) => l.reqId === linha.reqId);
+  assert.ok(
+    !linhasDoReqId.some((l) => l.msg === 'request completed' || l.msg === 'request errored'),
+    `só era esperada a linha "request aborted"; linhas do reqId: ${linhasDoReqId.map((l) => l.msg).join(', ')}`,
+  );
   assert.ok(!captura.texto().includes('abort-query'));
+});
+
+test('Revisão: routeNotFound do LogCitmail não emite nenhuma linha (defesa caso o setNotFoundHandler saia)', async (t) => {
+  const { app, captura, fechar } = await construirAppTeste({ comBanco: false });
+  t.after(fechar);
+
+  // Mesmos argumentos que o `basic404` do Fastify passa: (request, reply).
+  const logDaRequisicao = app.log.child({ reqId: 'req-ficticio-404' });
+  const request = {
+    raw: { method: 'GET', url: '/x?token=rnf-query' },
+    log: logDaRequisicao,
+  };
+  const reply = { log: logDaRequisicao, statusCode: 404 };
+
+  new LogCitmail().routeNotFound(request, reply);
+
+  assert.ok(!captura.linhas().some((l) => l.reqId === 'req-ficticio-404'));
+  assert.ok(!captura.texto().includes('rnf-query'));
 });
 
 test('CA8: campos sensíveis do log saem mascarados como "[mascarado]"', async (t) => {
@@ -369,4 +416,28 @@ test('Revisão: erro do pg (detail/where/parameters) sai mascarado no log de err
   assert.equal(linhaDeErro.err.detail, '[mascarado]');
   assert.equal(linhaDeErro.err.where, '[mascarado]');
   assert.equal(linhaDeErro.err.parameters, '[mascarado]');
+});
+
+test('Revisão: campos do pg copiados para a cause de um erro embrulhado saem mascarados em err.cause', async (t) => {
+  const { app, captura, fechar } = await construirAppTeste({ comBanco: false });
+  t.after(fechar);
+
+  // O serializer `err` do pino copia a `cause` atribuída que não é Error (objeto
+  // simples, ex.: `{ ...erroPg }`); de uma `cause` Error ele só junta message e stack.
+  const causa = {
+    code: '23505',
+    detail: 'Key (email)=(MARC-CAUSE-EMAIL) already exists.',
+    where: 'MARC-CAUSE-WHERE',
+    parameters: ['MARC-CAUSE-PARAM'],
+  };
+  const erro = new Error('falha ao gravar');
+  erro.cause = causa;
+  app.log.error({ err: erro }, 'job falhou');
+
+  const linha = captura.linhas().find((l) => l.msg === 'job falhou');
+  assert.ok(linha?.err?.cause, 'era esperado err.cause no log');
+  assert.equal(linha.err.cause.detail, '[mascarado]');
+  assert.equal(linha.err.cause.where, '[mascarado]');
+  assert.equal(linha.err.cause.parameters, '[mascarado]');
+  assert.ok(!captura.texto().includes('MARC-CAUSE-'));
 });

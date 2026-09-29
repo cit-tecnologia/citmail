@@ -85,3 +85,20 @@ test('CA2: POST /api/exemplos/job não existe fora de desenvolvimento (NODE_ENV=
 
   assert.equal(resposta.statusCode, 404);
 });
+
+test('Revisão: executarJob com um logger que já tem reqId (request.log) lança TypeError', async (t) => {
+  const { app, captura, fechar } = await construirAppTeste({ comBanco: false });
+  t.after(fechar);
+
+  const logDaRequisicao = app.log.child({ reqId: 'req-ficticio-001' });
+  let executou = false;
+
+  await assert.rejects(
+    executarJob({ nome: 'y', log: logDaRequisicao }, async () => {
+      executou = true;
+    }),
+    { name: 'TypeError', message: 'executarJob: use o logger raiz, não request.log' },
+  );
+  assert.equal(executou, false, 'o corpo do job não deveria rodar');
+  assert.ok(!captura.linhas().some((linha) => linha.job === 'y'), 'não deveria haver log do job y');
+});

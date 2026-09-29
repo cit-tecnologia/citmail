@@ -28,8 +28,13 @@ export const caminhosMascarados = [
   'req.headers.authorization',
   'req.headers["asaas-access-token"]',
   'res.headers["set-cookie"]',
-  // Campos de erro do `pg` que repetem valores da linha (ex.: violação de unicidade).
-  ...['detail', 'where', 'parameters', 'hint', 'internalQuery', 'query'].map((campo) => `err.${campo}`)
+  // Campos de erro do `pg` que repetem valores da linha (ex.: violação de unicidade),
+  // no erro e na `cause`. O serializer `err` do pino copia a `cause` atribuída que não
+  // é Error (ex.: `erro.cause = { ...erroPg }`); de uma `cause` Error só junta message e stack.
+  ...['detail', 'where', 'parameters', 'hint', 'internalQuery', 'query'].flatMap((campo) => [
+    `err.${campo}`,
+    `err.cause.${campo}`
+  ])
 ]
 
 const LIMITE_CAMINHO = 200
@@ -65,6 +70,9 @@ export class LogCitmail extends LogController {
     }
   }
 
-  // A linha padrão leva a URL crua com query; o 404 já sai em `request completed`.
+  // Defesa: hoje não roda, porque `registrarErros` (src/erros.js) registra o
+  // `setNotFoundHandler`. Se esse handler sair, o `basic404` do Fastify chama este
+  // método, e a linha padrão (`Route GET:/x?... not found`) levaria a query crua.
+  // O 404 já sai em `request completed`.
   routeNotFound() {}
 }

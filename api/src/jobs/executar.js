@@ -10,11 +10,15 @@ import { randomUUID } from 'node:crypto'
  * @param {string} opcoes.nome Nome do job (campo `job` do log).
  * @param {string} [opcoes.correlacaoId] `reqId` da requisição de origem; ausente → UUID novo.
  * @param {import('fastify').FastifyBaseLogger} opcoes.log Logger RAIZ (`app.log` ou o do
- *   worker), nunca `request.log`: este já tem `reqId` e o `child` repetiria a chave.
+ *   worker), nunca `request.log`: este já tem `reqId` e o `child` repetiria a chave
+ *   (lança `TypeError`).
  * @param {(contexto: { log: import('fastify').FastifyBaseLogger }) => Promise<unknown>} fn
  *   Corpo do job; deve logar só pelo `log` recebido, para manter o `reqId`.
  */
 export async function executarJob({ nome, correlacaoId, log }, fn) {
+  if (log.bindings?.()?.reqId !== undefined) {
+    throw new TypeError('executarJob: use o logger raiz, não request.log')
+  }
   const filho = log.child({ reqId: correlacaoId ?? randomUUID(), job: nome })
   const inicio = performance.now()
   filho.info('job iniciado')
