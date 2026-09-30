@@ -1,5 +1,6 @@
 // @ts-check
 import { readFileSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { test, expect } from './fixtures.js';
 
 // CIT-52: landing e checkout passam a hospedar Montserrat e Poppins em assets/fonts/ (6 woff2),
@@ -55,6 +56,27 @@ const FACES_ESPERADAS = [
   ['Montserrat', '600'], ['Montserrat', '700'], ['Montserrat', '800'],
   ['Poppins', '400'], ['Poppins', '500'], ['Poppins', '600'],
 ];
+
+/**
+ * SHA-256 de cada woff2 (fonte de verdade nº 1: registrado a mão aqui, junto com quem revisou a
+ * história; review de segurança CIT-52). Precisa bater com o comentário de assets/fonts.css (fonte
+ * de verdade nº 2, abaixo) e com o arquivo no disco: trocar a fonte sem atualizar as duas falha.
+ */
+const HASHES_ESPERADOS = {
+  'montserrat-600': 'd857325c360f7128b347ca924c1974967aaa886ba47dad22e4042d6c38b26a83',
+  'montserrat-700': 'f9d9e65b15372cebcafc3acd1e664a564c5c4b23278de4d5760de9a13c530371',
+  'montserrat-800': 'ba826fb84c2e961578adf3a08b5778b87905d4443445d1d56d84f9f157d5ea4b',
+  'poppins-400': '7d93459d86585bfcdbb7e0376056226adb25821ee54b96236fe2123e9560929f',
+  'poppins-500': 'cd36de204aca2d5fa263a731f7c20009b5e3d754ba1f1e03c33e93a48f3e7446',
+  'poppins-600': 'f4e80d9dfd374d02989b87a27b5ed4cb78fbb177c27f1478e9a8b0afb7513149',
+};
+
+/** Lê "nome hash" do comentário no topo de assets/fonts.css (fonte de verdade nº 2). */
+function hashesDoComentario(css) {
+  const comentario = css.match(/\/\*[\s\S]*?\*\//)?.[0] ?? '';
+  const pares = [...comentario.matchAll(/\b((?:montserrat|poppins)-\d{3})\s+([0-9a-f]{64})\b/g)];
+  return Object.fromEntries(pares.map(([, nome, hash]) => [nome, hash]));
+}
 
 test.describe('CA1 — sem Google Fonts', { tag: '@CIT-52' }, () => {
   for (const arquivo of PAGINAS) {
@@ -134,6 +156,11 @@ test.describe('CA2 — fontes locais aplicadas', { tag: '@CIT-52' }, () => {
     }
   });
 
+  // Limite conhecido desta prova: só o textContent da carga inicial (goto + load) das duas páginas.
+  // Atributos (placeholder, aria-label, title, alt) e texto montado depois por script (ex.: mensagens
+  // de validação, valores calculados) ficam de fora. Hoje esse texto adicional só usa caracteres do
+  // subset latin ou "→" (fallback conhecido); se algum dia usar outro caractere fora do subset, esta
+  // prova não pega — reavaliar o escopo então.
   test('CA2 cobertura de glifos: todo caractere do texto da landing e do checkout está no subset latin (exceto o fallback conhecido)', async ({ page, erros }) => {
     const intervalos = analisarUnicodeRange(UNICODE_RANGE_LATIN);
     const foraDoIntervalo = [];
@@ -200,6 +227,26 @@ test.describe('CA3 — arquivos servidos', { tag: '@CIT-52' }, () => {
     const html = lerDoDisco('checkout.html');
     expect(html, 'checkout.html não deveria ter preload de fonte').not.toMatch(/<link[^>]*rel="preload"[^>]*as="font"/i);
   });
+
+  test('CA3 integridade: SHA-256 de cada woff2 confere com o registrado (fonts.css e o teste)', () => {
+    const doComentario = hashesDoComentario(lerDoDisco('assets/fonts.css'));
+
+    // as duas fontes de verdade (comentário de assets/fonts.css x constante do teste) precisam bater
+    expect(Object.keys(doComentario).sort(), 'faces com hash no comentário de assets/fonts.css').toEqual(
+      Object.keys(HASHES_ESPERADOS).sort(),
+    );
+    for (const nome of Object.keys(HASHES_ESPERADOS)) {
+      expect(doComentario[nome], `hash de ${nome} no comentário de assets/fonts.css`).toBe(HASHES_ESPERADOS[nome]);
+    }
+
+    // e o arquivo real no disco precisa bater com o hash registrado (pega troca do binário sem
+    // atualizar o registro, ou arquivo corrompido/adulterado)
+    for (const [nome, hashEsperado] of Object.entries(HASHES_ESPERADOS)) {
+      const conteudo = readFileSync(new URL(`../assets/fonts/${nome}.woff2`, import.meta.url));
+      const hashReal = createHash('sha256').update(conteudo).digest('hex');
+      expect(hashReal, `SHA-256 de assets/fonts/${nome}.woff2`).toBe(hashEsperado);
+    }
+  });
 });
 
 test.describe('CA5 — mobile e estabilidade', { tag: '@CIT-52' }, () => {
@@ -221,12 +268,12 @@ test.describe('CA5 — mobile e estabilidade', { tag: '@CIT-52' }, () => {
     }
   }
 
-  test('CA5 landing a 320px: CLS com fontes atrasadas dentro da referência e altura do hero estável após o swap', async ({ page, erros }) => {
-    // Referência medida no develop (passo 0, 2026-09-30), mesmo método (fontes atrasadas ~1,5s): 0,0013.
-    // Teto absoluto do critério: 0,1.
-    const CLS_REFERENCIA_DEVELOP = 0.0013;
+  test('CA5 landing a 320px: CLS com fontes atrasadas dentro do limite e altura do hero estável após o swap', async ({ page, erros }) => {
+    // Referência do develop (passo 0 do plano, 2026-09-30, mesmo método): CLS 0,0013 — só informativa,
+    // sem folga para travar o CI (Ubuntu, outras fontes de sistema) sem regressão real. Decisão do
+    // responsável: limite 0,01; o teto absoluto do critério (0,1) continua valendo.
+    const CLS_LIMITE = 0.01;
     const CLS_TETO = 0.1;
-    const LIMITE = Math.min(CLS_REFERENCIA_DEVELOP, CLS_TETO);
 
     await page.setViewportSize({ width: 320, height: 640 });
     await page.addInitScript(() => {
@@ -240,24 +287,32 @@ test.describe('CA5 — mobile e estabilidade', { tag: '@CIT-52' }, () => {
       }).observe({ type: 'layout-shift', buffered: true });
     });
 
-    // 1ª carga: fontes atrasadas, força o swap depois do primeiro paint (mesmo cenário do passo 0).
+    // Fontes atrasadas: força o swap depois do primeiro paint (mesmo cenário do passo 0).
+    // "domcontentloaded" (não "load": o preload da fonte atrasa o evento load neste Chromium,
+    // então a leitura "antes" saía igual à "depois") garante medir o hero ainda no fallback;
+    // document.fonts.ready só resolve depois do atraso, já com a Montserrat aplicada.
     await page.route('**/assets/fonts/*.woff2', route => setTimeout(() => route.continue(), 1500));
-    await page.goto('index.html', { waitUntil: 'load' });
+    await page.goto('index.html', { waitUntil: 'domcontentloaded' });
+
+    const hero = page.locator('h1.hero-title');
+    const alturaComFallback = await hero.evaluate(el => el.getBoundingClientRect().height);
+
     await page.evaluate(() => document.fonts.ready);
+    const alturaAposSwap = await hero.evaluate(el => el.getBoundingClientRect().height);
+
+    // sem espera adicional: prova que depois do swap a altura não segue variando (nenhum reflow atrasado)
     await page.waitForTimeout(500);
-
+    const alturaEstavel = await hero.evaluate(el => el.getBoundingClientRect().height);
     const cls = await page.evaluate(() => /** @type {any} */ (window).__cls);
-    const alturaComSwap = await page.locator('h1.hero-title').evaluate(el => el.getBoundingClientRect().height);
 
-    expect(cls, 'CLS acumulado da carga com fontes atrasadas').toBeLessThanOrEqual(LIMITE);
+    // sanidade do próprio teste: o fallback e a Montserrat têm métricas diferentes o bastante para o
+    // swap ser mensurável (senão a asserção de CLS abaixo não provaria nada)
+    expect(Math.abs(alturaComFallback - alturaAposSwap), 'fallback x Montserrat: swap deveria mudar a altura do hero').toBeGreaterThan(1);
+    // depois do swap, a altura final é estável (sem novo deslocamento passado esse ponto)
+    expect(Math.abs(alturaAposSwap - alturaEstavel), 'altura de h1.hero-title depois do swap (±1px, sem novo deslocamento)').toBeLessThanOrEqual(1);
 
-    // 2ª carga, mesma execução, sem atraso: fontes já em cache do navegador -> referência sem swap visível.
-    await page.unroute('**/assets/fonts/*.woff2');
-    await page.reload({ waitUntil: 'load' });
-    await page.evaluate(() => document.fonts.ready);
-    const alturaEmCache = await page.locator('h1.hero-title').evaluate(el => el.getBoundingClientRect().height);
-
-    expect(Math.abs(alturaComSwap - alturaEmCache), 'altura de h1.hero-title antes/depois do swap (±1px)').toBeLessThanOrEqual(1);
+    expect(cls, 'CLS acumulado da carga com fontes atrasadas').toBeLessThanOrEqual(CLS_LIMITE);
+    expect(cls, 'CLS acumulado: teto absoluto do critério').toBeLessThanOrEqual(CLS_TETO);
   });
 });
 
