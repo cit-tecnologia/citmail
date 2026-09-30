@@ -76,7 +76,14 @@ async function percorrerLanding(page) {
   await page.goto('index.html', { waitUntil: 'networkidle' });
 
   await page.locator('#card5 .qty-btn[data-qtd-delta="1"]').click();
+  await page.locator('#card5 .qty-btn[data-qtd-delta="-1"]').click();
+  await page.locator('#qty5').fill('3');
+  await page.locator('#qty5').press('Tab'); // dispara o "change" -> updateQty
+
+  await page.locator('#toggleAnnual').click();
+  await page.locator('#toggleMonthly').click();
   await page.locator('#billingToggle').click();
+  await page.locator('#billingToggle').click(); // volta ao mensal
   await page.locator('.faq-item').first().locator('.faq-question').click();
 
   const navToggle = page.locator('#navToggle');
@@ -104,6 +111,8 @@ async function percorrerCheckout(page) {
 
   // passo 1: contas
   await page.locator('#ckCard5 .mini-qty-btn').last().click();
+  await page.locator('#ckQty5').fill('3');
+  await page.locator('#ckQty5').press('Tab'); // dispara o "change" -> ckUpdateQty
   await page.locator('#step1 .btn-primary').click();
 
   // passo 2: domínio
@@ -119,7 +128,12 @@ async function percorrerCheckout(page) {
   await secaoNuvem.click();
   await page.locator('#step3 .btn-primary').click();
 
-  // passo 4: cadastro + CEP (fictício)
+  // passo 4: cadastro + CEP (fictício); alterna para CNPJ e volta para CPF no caminho
+  await page.locator('[data-doc-tipo="cnpj"]').click();
+  await expect(page.locator('#cnpjRow')).toBeVisible();
+  await page.locator('[data-doc-tipo="cpf"]').click();
+  await expect(page.locator('#cpfRow')).toBeVisible();
+
   await page.locator('#fNome').fill('Maria Fictícia');
   await page.locator('#fEmail').fill('maria@fixture.teste');
   await page.locator('#fTelefone').fill('11999998888');
@@ -131,11 +145,14 @@ async function percorrerCheckout(page) {
   await page.locator('#termsCheck').check();
   await page.locator('#btnSubmitCadastro').click();
 
-  // passo 5: formas de pagamento
+  // passo 5 -> 6: formas de pagamento (Pix selecionado ao final) e confirmação
   await page.locator('#payBoleto .payment-name').click();
   await page.locator('#payCard .payment-name').click();
   await page.locator('#fCardNum').fill('4111111111111111');
   await page.locator('#payPix .payment-name').click();
+  await expect(page.locator('#payPix')).toHaveClass(/selected/);
+  await page.locator('#btnPagar').click();
+  await expect(page.locator('#step6')).toHaveClass(/active/, { timeout: 10000 });
 }
 
 test.describe('CSP — landing e checkout', { tag: '@CIT-49' }, () => {
@@ -273,21 +290,28 @@ test.describe('CSP — landing e checkout', { tag: '@CIT-49' }, () => {
       await page.evaluate(() => goStep(5));
     });
 
-    test('CA5 (a) com o cartão selecionado, copiar o Pix seleciona #payPix por bubbling', async ({ page, context }) => {
+    test('CA5 (a) com o cartão selecionado, copiar o Pix aciona o handler interno (clipboard) e seleciona #payPix por bubbling', async ({ page, context, erros }) => {
       await context.grantPermissions(['clipboard-read', 'clipboard-write']);
       await page.locator('#payCard .payment-name').click();
       await expect(page.locator('#payCard')).toHaveClass(/selected/);
 
+      const codigoPix = await page.locator('#pixCode').textContent();
+
       // #btnCopyPix fica oculto com o cartão selecionado (.pix-panel só é exibido com
       // #payPix.selected); dispatchEvent ignora a checagem de visibilidade do Playwright, como o
-      // executor precisou fazer. Objetivo: provar o bubbling do clique até o listener externo de
-      // #payPix — não o texto "Copiado" do botão (bug preexistente de copyPix() usar
-      // document.querySelector('.pix-copy') sem escopo, fora do escopo desta história).
+      // executor precisou fazer.
       await page.locator('#btnCopyPix').dispatchEvent('click');
+
+      // interno: copyPix() copia o código Pix de pagamento (#pixCode) para a área de
+      // transferência — prova que o handler do próprio #btnCopyPix rodou (não só o bubbling).
+      // Não confere o texto "Copiado" do botão: bug preexistente de copyPix() usar
+      // document.querySelector('.pix-copy') sem escopo, fora do escopo desta história.
+      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(codigoPix);
+      // externo: bubbling até o listener de #payPix
       await expect(page.locator('#payPix')).toHaveClass(/selected/);
     });
 
-    test('CA5 (b) com o cartão selecionado, baixar o boleto seleciona #payBoleto por bubbling', async ({ page }) => {
+    test('CA5 (b) com o cartão selecionado, baixar o boleto seleciona #payBoleto por bubbling', async ({ page, erros }) => {
       await page.locator('#payCard .payment-name').click();
       await expect(page.locator('#payCard')).toHaveClass(/selected/);
 
@@ -300,7 +324,7 @@ test.describe('CSP — landing e checkout', { tag: '@CIT-49' }, () => {
       await popup.close();
     });
 
-    test('CA5 (c) com o Pix selecionado, digitar no número do cartão seleciona #payCard', async ({ page }) => {
+    test('CA5 (c) com o Pix selecionado, digitar no número do cartão seleciona #payCard', async ({ page, erros }) => {
       await page.locator('#payPix .payment-name').click();
       await expect(page.locator('#payPix')).toHaveClass(/selected/);
 
@@ -312,6 +336,45 @@ test.describe('CSP — landing e checkout', { tag: '@CIT-49' }, () => {
       await page.locator('#fCardNum').pressSequentially('4111111111111111');
       await expect(page.locator('#fCardNum')).toHaveValue('4111 1111 1111 1111');
     });
+  });
+
+  test('CA5 (e) vínculos restantes: cópia do Pix do domínio/extra e do boleto, validade do cartão', async ({ page, context, erros }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await mockarViaCep(page);
+    await page.goto('checkout.html', { waitUntil: 'networkidle' });
+
+    // passo 2: domínio novo — #btnCopyDomPix (escopado a #domPixBox .pix-copy, sem o bug do #btnCopyPix)
+    await page.evaluate(() => goStep(2));
+    await page.locator('#doptBr').click();
+    await page.locator('#fDomNew').fill('minhaempresateste');
+    const codigoDomPix = await page.locator('#domPixCode').textContent();
+    await page.locator('#btnCopyDomPix').click();
+    await expect(page.locator('#btnCopyDomPix')).toContainText('Copiado');
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(codigoDomPix);
+
+    // passo 3: domínio extra — #btnCopyExtraDomPix
+    await page.evaluate(() => goStep(3));
+    const secaoDominio = page.locator('#step3 .addon-sec-btn')
+      .filter({ has: page.locator('.addon-sec-nome', { hasText: /^Domínio secundário$/ }) });
+    await secaoDominio.click();
+    await page.locator('button[data-addon="extraDom"][data-addon-delta="1"]').click();
+    await expect(page.locator('#extraDomPixPanel')).toBeVisible();
+    const codigoExtraPix = await page.locator('#extraDomPixCode').textContent();
+    await page.locator('#btnCopyExtraDomPix').click();
+    await expect(page.locator('#btnCopyExtraDomPix')).toContainText('Copiado');
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(codigoExtraPix);
+
+    // passo 5: validade do cartão (#fCardExp) e cópia do código do boleto (#btnCopyBoleto, usa alert)
+    await page.evaluate(() => goStep(5));
+    await page.locator('#payCard .payment-name').click();
+    await page.locator('#fCardExp').fill('1225');
+    await expect(page.locator('#fCardExp')).toHaveValue('12/25');
+
+    await page.locator('#payBoleto .payment-name').click();
+    const codigoBoleto = (await page.locator('#boletoCode').textContent())?.trim();
+    page.once('dialog', d => d.accept());
+    await page.locator('#btnCopyBoleto').click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(codigoBoleto);
   });
 
   test('CA5 (d) clicar em #scrollTop rola a página ao topo (landing)', async ({ page, erros }) => {
