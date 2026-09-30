@@ -60,6 +60,7 @@ Ambiente de desenvolvimento e processo: história CIT-12 no Taiga.
 - Checkout: o código Pix do domínio extra (passo 3) não muda mais ao alterar outros add-ons; só é gerado de novo quando o valor do domínio extra muda (CIT-30).
 
 ### Segurança
+- Landing e checkout sem handlers nem scripts inline (código em `assets/landing.js` e `assets/checkout.js`) e com Content Security Policy por `<meta>`: scripts só da própria origem, sem `unsafe-inline` nem `unsafe-eval`, e conexões externas só para o ViaCEP no checkout. `style-src` ainda mantém `'unsafe-inline'` (issue #152). O smoke da homologação confere a CSP e os novos arquivos (CIT-49).
 - Arquivos de ambiente locais (`.env`, `.env.*` e `.envrc`, exceto `.env.example`) ignorados pelo Git e com leitura negada a agentes (`.claude/settings.json`); regra de segredos documentada: só nos environments do GitHub ou em arquivo de ambiente com permissão 600 no servidor, nunca no repositório (CIT-46).
 
 ## [1.0.0] - 2026-09-13
