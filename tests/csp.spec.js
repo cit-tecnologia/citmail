@@ -14,8 +14,9 @@ const REGEX_HANDLER_EMBUTIDO = /<[^>]*\son[a-z]+\s*=\s*(["'`\\$]|[a-z])/i;
 // Mesmo regex de caminho absoluto de tests/caminhos.spec.js, aplicado aqui a assets/*.js.
 const REGEX_CAMINHO_ABSOLUTO = /\b(?:href|src|action)\s*=\s*["'](\/(?!\/)[^"']*)["']/g;
 
-const CSP_INDEX = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'";
-const CSP_CHECKOUT = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; connect-src 'self' https://viacep.com.br; object-src 'none'; base-uri 'none'; form-action 'self'";
+// CIT-52: fontes hospedadas localmente, sem Google Fonts; font-src 'self'.
+const CSP_INDEX = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'";
+const CSP_CHECKOUT = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; connect-src 'self' https://viacep.com.br; object-src 'none'; base-uri 'none'; form-action 'self'";
 
 function lerFonte(nome) {
   return readFileSync(new URL(nome, RAIZ), 'utf8');
@@ -192,7 +193,7 @@ test.describe('CSP — landing e checkout', { tag: '@CIT-49' }, () => {
   });
 
   for (const [arquivo, cspEsperada] of [['index.html', CSP_INDEX], ['checkout.html', CSP_CHECKOUT]]) {
-    test(`CA2 meta CSP única, na posição certa do head e com o content exato — ${arquivo}`, async ({ page, erros }) => {
+    test(`CA2 meta CSP única, na posição certa do head e com o content exato — ${arquivo}`, { tag: '@CIT-52' }, async ({ page, erros }) => {
       const [tag1, tag2] = primeirasTagsDoHead(lerFonte(arquivo));
       expect(tag1, 'primeira tag do head').toMatch(/^<meta\s+charset=/i);
       expect(tag2, 'segunda tag do head').toMatch(/http-equiv="Content-Security-Policy"/i);
