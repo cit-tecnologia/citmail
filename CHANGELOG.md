@@ -28,6 +28,7 @@ Ambiente de desenvolvimento e processo: história CIT-12 no Taiga.
 
 ### Alterado
 - Landing: o título do hero carrega mais cedo, com a fonte pré-carregada e sem o CSS do Google Fonts bloqueando a renderização; no Lighthouse local (mobile, mediana de 5) o LCP caiu de ~3,1 s para ~2,2 s (CIT-52).
+- Landing e checkout: logo do cabeçalho em WebP (12 KB em vez de 25 KB), sem mudança visual (CIT-52).
 - Landing: novos textos do hero (título, subtítulo e indicadores), da faixa de confiança e da seção Recursos (CIT-15).
 - Landing: busca de domínio com um único "@" como prefixo e sem a extensão .com (CIT-15).
 - Toggle do plano anual fica verde quando ativo, na landing e no checkout (CIT-15).
