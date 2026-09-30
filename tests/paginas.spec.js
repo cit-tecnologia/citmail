@@ -8,9 +8,28 @@ const paginas = [
   { arquivo: 'painel.html', titulo: 'Painel do Cliente — CITMail' },
 ];
 
+// CIT-49: páginas com CSP por meta e script externo (smoke também roda contra CITMAIL_BASE_URL).
+const comCsp = ['index.html', 'checkout.html'];
+const scriptDaPagina = { 'index.html': 'landing.js', 'checkout.html': 'checkout.js' };
+
 for (const { arquivo, titulo } of paginas) {
+  const tags = ['@CIT-12', '@CIT-13'];
+  if (comCsp.includes(arquivo)) tags.push('@CIT-49');
+
   // também é o smoke da homologação (CITMAIL_BASE_URL), por isso não fixa o subcaminho /citmail/
-  test(`${arquivo} carrega sem erros e com todos os ícones do sprite`, { tag: ['@CIT-12', '@CIT-13'] }, async ({ page, baseURL, erros }) => {
+  test(`${arquivo} carrega sem erros e com todos os ícones do sprite`, { tag: tags }, async ({ page, baseURL, erros }) => {
+    if (comCsp.includes(arquivo)) {
+      // CA7: zero violação de CSP na carga (registrado antes do goto).
+      await page.addInitScript(() => {
+        // @ts-ignore
+        window.__csp = [];
+        document.addEventListener('securitypolicyviolation', e => {
+          // @ts-ignore
+          window.__csp.push({ violatedDirective: e.violatedDirective, blockedURI: e.blockedURI });
+        });
+      });
+    }
+
     await page.goto(arquivo, { waitUntil: 'networkidle' });
 
     // garante que é a página pedida (e não um fallback ou redirecionamento)
@@ -30,5 +49,16 @@ for (const { arquivo, titulo } of paginas) {
       return [...new Set(usos.map(href => href.split('#')[1]))].filter(id => !ids.has(id));
     });
     expect(ausentes, 'ícones referenciados que não existem no sprite').toEqual([]);
+
+    if (comCsp.includes(arquivo)) {
+      // CA7: meta CSP presente, zero violação na carga, e o script novo respondendo 200.
+      await expect(page.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveCount(1);
+      const violacoes = await page.evaluate(() => /** @type {any} */ (window).__csp || []);
+      expect(violacoes, 'violações de CSP na carga').toEqual([]);
+
+      const arquivoJs = scriptDaPagina[arquivo];
+      const status = await page.evaluate(async js => (await fetch(new URL(`assets/${js}`, location.href))).status, arquivoJs);
+      expect(status, `assets/${arquivoJs} não respondeu 200`).toBe(200);
+    }
   });
 }
