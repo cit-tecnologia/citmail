@@ -2,17 +2,15 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="CITMail — E-mail corporativo com domínio próprio. Planos a partir de R$ 19,90/mês." />
   <title>CITMail — E-mail corporativo com domínio próprio</title>
   <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/favicon-32.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/apple-touch-icon.png" />
 
-  <!-- Google Fonts: Montserrat + Poppins (Brandbook CIT) -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="preload" href="assets/fonts/montserrat-700.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="assets/fonts.css" />
   <link rel="stylesheet" href="assets/tokens.css" />
 
   <style>
@@ -1076,7 +1074,7 @@
     <div class="container">
       <nav class="nav" id="nav">
         <a href="#" class="nav-logo" aria-label="CITMail">
-          <img src="assets/brand/citmail-horizontal-escuro.png" alt="CITMail" width="160" height="36">
+          <img src="assets/brand/citmail-horizontal-escuro.webp" alt="CITMail" width="160" height="36">
         </a>
 
         <ul class="nav-links">
@@ -1825,7 +1823,7 @@
       <div class="footer-grid">
         <div class="footer-brand">
           <a href="#" class="nav-logo">
-            <img src="assets/brand/citmail-horizontal-escuro.png" alt="CITMail" width="160" height="36">
+            <img src="assets/brand/citmail-horizontal-escuro.webp" alt="CITMail" width="160" height="36">
           </a>
           <p>Infraestrutura de TI que faz sua empresa crescer com segurança.</p>
         </div>
