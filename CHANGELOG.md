@@ -27,7 +27,7 @@ Ambiente de desenvolvimento e processo: história CIT-12 no Taiga.
 - API: log de requisição em uma linha JSON (`request completed`) com `reqId` igual ao `x-request-id`, método, rota, IP, status e duração, sem query string nem valores da URL; linha `request aborted` quando o cliente desiste; jobs registram início, fim ou falha com o mesmo `reqId` da requisição que os disparou (`executarJob`, com job de exemplo fora de produção); máscara ampliada para 41 campos sensíveis (dados pessoais do pedido e do cliente do Asaas, como CPF/CNPJ, nascimento, CEP e endereço, e o token de cartão do webhook) em até 4 níveis, mais os campos de erro do `pg` (inclusive em `err.cause`); `resumoEventoAsaas` define o que do webhook do Asaas pode ir para o log; retenção de até 30 dias dos logs técnicos em journald, com um namespace por ambiente (`api/deploy/journald-namespace.conf`), registrada no ADR 0013 (CIT-55).
 
 ### Alterado
-- Landing: o título do hero carrega mais cedo, com a fonte pré-carregada e sem o CSS do Google Fonts bloqueando a renderização; no Lighthouse local (mobile, mediana de 5) o LCP caiu de ~3,1 s para ~2,2 s (CIT-52).
+- Landing: o título do hero carrega mais cedo, com a fonte pré-carregada e sem o CSS do Google Fonts bloqueando a renderização; no Lighthouse local (mobile, mediana de 5, servidor local: medida relativa, não de produção) o LCP caiu de ~3,1 s para ~2,2 s (CIT-52).
 - Landing e checkout: logo do cabeçalho em WebP (12 KB em vez de 25 KB), sem mudança visual (CIT-52).
 - Landing: novos textos do hero (título, subtítulo e indicadores), da faixa de confiança e da seção Recursos (CIT-15).
 - Landing: busca de domínio com um único "@" como prefixo e sem a extensão .com (CIT-15).

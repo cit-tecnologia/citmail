@@ -1,6 +1,17 @@
 /* Fontes hospedadas localmente (CIT-52): @fontsource/montserrat@5.3.0 e @fontsource/poppins@5.3.0,
    subset latin, licença SIL Open Font License 1.1 (licenças completas em assets/fonts/OFL-montserrat.txt
-   e assets/fonts/OFL-poppins.txt; o subset latin é modificação permitida pela OFL, sem Reserved Font Name). */
+   e assets/fonts/OFL-poppins.txt; o subset latin é modificação permitida pela OFL, sem Reserved Font Name).
+   Integridade dos pacotes no npm:
+     @fontsource/montserrat@5.3.0 sha512-iQPDtZOnmM5ih4JBGaMSXisRap0ixb9bAUw2hDtY7EjVfaqiiNlKtVuJl9XclxUwtwMMHNcWXfQR6zI9x05+Tg==
+     @fontsource/poppins@5.3.0    sha512-cms1nM7U6SN8epIV1WMVOV8VsA645aSm3wHfzIQnkk188U341ThbJGSl2Sv54V29gnDbT2arMPfLzvVIIVCceQ==
+   SHA-256 de cada woff2 (idêntico ao files/*-latin-<peso>-normal.woff2 do pacote; conferido em tests/fontes.spec.js):
+     montserrat-600 d857325c360f7128b347ca924c1974967aaa886ba47dad22e4042d6c38b26a83
+     montserrat-700 f9d9e65b15372cebcafc3acd1e664a564c5c4b23278de4d5760de9a13c530371
+     montserrat-800 ba826fb84c2e961578adf3a08b5778b87905d4443445d1d56d84f9f157d5ea4b
+     poppins-400    7d93459d86585bfcdbb7e0376056226adb25821ee54b96236fe2123e9560929f
+     poppins-500    cd36de204aca2d5fa263a731f7c20009b5e3d754ba1f1e03c33e93a48f3e7446
+     poppins-600    f4e80d9dfd374d02989b87a27b5ed4cb78fbb177c27f1478e9a8b0afb7513149
+   Trocar uma fonte: novo nome de arquivo (sem ?v=), novo hash aqui e no teste. */
 @font-face {
   font-family: "Montserrat";
   font-style: normal;

@@ -55,7 +55,7 @@ jobs:
           cp ./*.html dist/
           cp -r assets dist/
           find dist -name '.*' -exec rm -rf {} +
-          test -f dist/index.html && test -f dist/checkout.html && test -f dist/assets/icons.svg && test -f dist/assets/precos.js && test -f dist/assets/landing.js && test -f dist/assets/checkout.js && test -f dist/assets/fonts.css && test -f dist/assets/fonts/montserrat-700.woff2
+          test -f dist/index.html && test -f dist/checkout.html && test -f dist/assets/icons.svg && test -f dist/assets/precos.js && test -f dist/assets/landing.js && test -f dist/assets/checkout.js && test -f dist/assets/fonts.css && test -f dist/assets/fonts/montserrat-600.woff2 && test -f dist/assets/fonts/montserrat-700.woff2 && test -f dist/assets/fonts/montserrat-800.woff2 && test -f dist/assets/fonts/poppins-400.woff2 && test -f dist/assets/fonts/poppins-500.woff2 && test -f dist/assets/fonts/poppins-600.woff2
           find dist -type f | sort
 
       - name: Instala sshpass
@@ -108,7 +108,7 @@ jobs:
 
       - name: Conteúdo publicado igual ao commit
         run: |
-          for arquivo in index.html checkout.html assets/icons.svg assets/precos.js assets/landing.js assets/checkout.js assets/fonts.css assets/fonts/montserrat-700.woff2; do
+          for arquivo in index.html checkout.html assets/icons.svg assets/precos.js assets/landing.js assets/checkout.js assets/fonts.css assets/fonts/montserrat-600.woff2 assets/fonts/montserrat-700.woff2 assets/fonts/montserrat-800.woff2 assets/fonts/poppins-400.woff2 assets/fonts/poppins-500.woff2 assets/fonts/poppins-600.woff2; do
             esperado=$(sha256sum "$arquivo" | cut -d' ' -f1)
             publicado=$(curl -fsS --retry 3 --retry-all-errors -H 'Cache-Control: no-cache' "${HOMOLOGACAO_URL}${arquivo}" | sha256sum | cut -d' ' -f1)
             echo "$arquivo: commit $esperado, publicado $publicado"
