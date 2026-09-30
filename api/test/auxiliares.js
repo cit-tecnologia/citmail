@@ -98,7 +98,9 @@ export async function aplicarMigracoes(url, direcao = 'up', quantidade = Infinit
 /**
  * Stream de destino para o logger `pino` do app de teste. Acumula as linhas
  * (NDJSON) e expõe `linhas()` já convertidas em objetos, para asserções sobre
- * `reqId`, nível e máscara de campos sensíveis (CA8).
+ * `reqId`, nível e máscara de campos sensíveis (CA8), e `texto()` com o
+ * NDJSON bruto, para asserções de ausência de valores sensíveis e para
+ * conferir duplicidade de chave numa linha específica (CIT-55, CA1/CA2/CA3).
  */
 export function criarCapturaDeLog() {
   const pedacosBrutos = [];
@@ -119,6 +121,9 @@ export function criarCapturaDeLog() {
         .map((linha) => linha.trim())
         .filter(Boolean)
         .map((linha) => JSON.parse(linha));
+    },
+    texto() {
+      return pedacosBrutos.join('');
     },
   };
 }

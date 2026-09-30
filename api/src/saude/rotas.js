@@ -12,7 +12,9 @@ const corpoSaude = {
 
 // Rota técnica: acessa o pool direto (`app.banco`), sem serviço/repositório (ADR 0002).
 export default async function rotasSaude(app) {
+  // `warn`: o monitoramento externo (ADR 0011) chama a cada minuto; a falha continua no log.
   app.get('/health', {
+    logLevel: 'warn',
     schema: { response: { 200: corpoSaude, 503: corpoSaude } }
   }, async (request, reply) => {
     reply.header('cache-control', 'no-store')
