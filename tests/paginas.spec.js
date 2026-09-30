@@ -11,10 +11,20 @@ const paginas = [
 // CIT-49: páginas com CSP por meta e script externo (smoke também roda contra CITMAIL_BASE_URL).
 const comCsp = ['index.html', 'checkout.html'];
 const scriptDaPagina = { 'index.html': 'landing.js', 'checkout.html': 'checkout.js' };
+// CIT-52: fontes locais — lista fixa (smoke não lê assets/fonts.css do disco; roda também na homologação).
+const arquivosDeFonte = [
+  'assets/fonts.css',
+  'assets/fonts/montserrat-600.woff2',
+  'assets/fonts/montserrat-700.woff2',
+  'assets/fonts/montserrat-800.woff2',
+  'assets/fonts/poppins-400.woff2',
+  'assets/fonts/poppins-500.woff2',
+  'assets/fonts/poppins-600.woff2',
+];
 
 for (const { arquivo, titulo } of paginas) {
   const tags = ['@CIT-12', '@CIT-13'];
-  if (comCsp.includes(arquivo)) tags.push('@CIT-49');
+  if (comCsp.includes(arquivo)) tags.push('@CIT-49', '@CIT-52');
 
   // também é o smoke da homologação (CITMAIL_BASE_URL), por isso não fixa o subcaminho /citmail/
   test(`${arquivo} carrega sem erros e com todos os ícones do sprite`, { tag: tags }, async ({ page, baseURL, erros }) => {
@@ -59,6 +69,15 @@ for (const { arquivo, titulo } of paginas) {
       const arquivoJs = scriptDaPagina[arquivo];
       const status = await page.evaluate(async js => (await fetch(new URL(`assets/${js}`, location.href))).status, arquivoJs);
       expect(status, `assets/${arquivoJs} não respondeu 200`).toBe(200);
+
+      // CA3 (CIT-52): fontes locais (CSS + 6 woff2) servidas, inclusive na homologação.
+      const statusFontes = await page.evaluate(async lista => {
+        const respostas = await Promise.all(lista.map(caminho => fetch(new URL(caminho, location.href))));
+        return respostas.map(r => r.status);
+      }, arquivosDeFonte);
+      for (const [i, codigo] of statusFontes.entries()) {
+        expect(codigo, `${arquivosDeFonte[i]} não respondeu 200`).toBe(200);
+      }
     }
   });
 }

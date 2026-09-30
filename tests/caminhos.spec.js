@@ -16,3 +16,18 @@ test.describe('caminhos relativos', { tag: '@CIT-12' }, () => {
     });
   }
 });
+
+// CIT-52: assets/fonts.css usa url("fonts/...") relativo à própria folha; um caminho absoluto
+// quebraria no GitHub Pages (subcaminho /citmail/).
+test.describe('caminhos relativos em CSS', { tag: '@CIT-52' }, () => {
+  const pastaAssets = new URL('../assets/', import.meta.url);
+  const arquivosCss = readdirSync(pastaAssets).filter(nome => nome.endsWith('.css'));
+
+  for (const arquivo of arquivosCss) {
+    test(`assets/${arquivo} não usa url() absoluto`, () => {
+      const css = readFileSync(new URL(arquivo, pastaAssets), 'utf8');
+      const absolutos = [...css.matchAll(/url\(\s*["']?(\/(?!\/)[^"')]*)["']?\s*\)/g)].map(m => m[1]);
+      expect(absolutos).toEqual([]);
+    });
+  }
+});
