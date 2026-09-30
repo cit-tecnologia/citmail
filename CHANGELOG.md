@@ -27,6 +27,7 @@ Ambiente de desenvolvimento e processo: história CIT-12 no Taiga.
 - API: log de requisição em uma linha JSON (`request completed`) com `reqId` igual ao `x-request-id`, método, rota, IP, status e duração, sem query string nem valores da URL; linha `request aborted` quando o cliente desiste; jobs registram início, fim ou falha com o mesmo `reqId` da requisição que os disparou (`executarJob`, com job de exemplo fora de produção); máscara ampliada para 41 campos sensíveis (dados pessoais do pedido e do cliente do Asaas, como CPF/CNPJ, nascimento, CEP e endereço, e o token de cartão do webhook) em até 4 níveis, mais os campos de erro do `pg` (inclusive em `err.cause`); `resumoEventoAsaas` define o que do webhook do Asaas pode ir para o log; retenção de até 30 dias dos logs técnicos em journald, com um namespace por ambiente (`api/deploy/journald-namespace.conf`), registrada no ADR 0013 (CIT-55).
 
 ### Alterado
+- Landing: o título do hero carrega mais cedo, com a fonte pré-carregada e sem o CSS do Google Fonts bloqueando a renderização; no Lighthouse local (mobile, mediana de 5) o LCP caiu de ~3,1 s para ~2,2 s (CIT-52).
 - Landing: novos textos do hero (título, subtítulo e indicadores), da faixa de confiança e da seção Recursos (CIT-15).
 - Landing: busca de domínio com um único "@" como prefixo e sem a extensão .com (CIT-15).
 - Toggle do plano anual fica verde quando ativo, na landing e no checkout (CIT-15).
@@ -60,6 +61,7 @@ Ambiente de desenvolvimento e processo: história CIT-12 no Taiga.
 - Checkout: o código Pix do domínio extra (passo 3) não muda mais ao alterar outros add-ons; só é gerado de novo quando o valor do domínio extra muda (CIT-30).
 
 ### Segurança
+- Landing e checkout sem Google Fonts: Montserrat e Poppins servidas do próprio site (`assets/fonts/`, subset latin, licença OFL), e a CSP deixa de liberar os domínios do Google. O navegador do visitante não envia mais o IP ao Google ao abrir essas páginas (CIT-52).
 - Landing e checkout sem handlers nem scripts inline (código em `assets/landing.js` e `assets/checkout.js`) e com Content Security Policy por `<meta>`: scripts só da própria origem, sem `unsafe-inline` nem `unsafe-eval`, e conexões externas só para o ViaCEP no checkout. `style-src` ainda mantém `'unsafe-inline'` (issue #152); a CSP por cabeçalho, com `frame-ancestors`, fica com a #94, e o `connect-src` e o `img-src` mudam quando as páginas chamarem a API e o Pix do Asaas. O smoke da homologação confere a CSP e os novos arquivos (CIT-49).
 - Arquivos de ambiente locais (`.env`, `.env.*` e `.envrc`, exceto `.env.example`) ignorados pelo Git e com leitura negada a agentes (`.claude/settings.json`); regra de segredos documentada: só nos environments do GitHub ou em arquivo de ambiente com permissão 600 no servidor, nunca no repositório (CIT-46).
 
