@@ -1985,3 +1985,27 @@ testSemErros.describe('checkout — CIT-22: guarda quando assets/precos.js não 
     await expect(page.locator('.summary-total')).toBeHidden();
   });
 });
+
+// CIT-153: o aviso "Copiado" do Pix de pagamento (passo 5) deve aparecer no próprio #btnCopyPix, não em
+// outro botão .pix-copy do checkout (copyPix() usava document.querySelector('.pix-copy') sem escopo).
+test.describe('checkout — Pix de pagamento: feedback de cópia', { tag: '@CIT-153' }, () => {
+  test('CA1 copiar o Pix no passo 5 mostra "Copiado" só em #btnCopyPix, copia #pixCode e o botão volta a "Copiar"', async ({ page, context, erros }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.goto('checkout.html', { waitUntil: 'networkidle' });
+    await page.evaluate(() => goStep(5));
+    await page.locator('#payPix .payment-name').click();
+
+    const codigoPix = await page.locator('#pixCode').textContent();
+    await page.locator('#btnCopyPix').click();
+
+    await expect(page.locator('#btnCopyPix')).toContainText('Copiado');
+    for (const id of ['#btnCopyDomPix', '#btnCopyExtraDomPix']) {
+      await expect(page.locator(id)).toContainText('Copiar');
+      await expect(page.locator(id)).not.toContainText('Copiado');
+    }
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(codigoPix);
+
+    await expect(page.locator('#btnCopyPix')).toContainText('Copiar', { timeout: 5000 });
+    await expect(page.locator('#btnCopyPix')).not.toContainText('Copiado');
+  });
+});
