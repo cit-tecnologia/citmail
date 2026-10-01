@@ -291,7 +291,7 @@ test.describe('CSP — landing e checkout', { tag: '@CIT-49' }, () => {
       await page.evaluate(() => goStep(5));
     });
 
-    test('CA5 (a) com o cartão selecionado, copiar o Pix aciona o handler interno (clipboard) e seleciona #payPix por bubbling', async ({ page, context, erros }) => {
+    test('CA5 (a) com o cartão selecionado, copiar o Pix aciona o handler interno (clipboard) e seleciona #payPix por bubbling', { tag: '@CIT-153' }, async ({ page, context, erros }) => {
       await context.grantPermissions(['clipboard-read', 'clipboard-write']);
       await page.locator('#payCard .payment-name').click();
       await expect(page.locator('#payCard')).toHaveClass(/selected/);
@@ -303,10 +303,12 @@ test.describe('CSP — landing e checkout', { tag: '@CIT-49' }, () => {
       // executor precisou fazer.
       await page.locator('#btnCopyPix').dispatchEvent('click');
 
+      // o aviso "Copiado" aparece no próprio #btnCopyPix e não no botão do Pix do domínio (CIT-153);
+      // conferido antes da área de transferência porque dura só 2 s
+      await expect(page.locator('#btnCopyPix')).toContainText('Copiado');
+      await expect(page.locator('#btnCopyDomPix')).not.toContainText('Copiado');
       // interno: copyPix() copia o código Pix de pagamento (#pixCode) para a área de
       // transferência — prova que o handler do próprio #btnCopyPix rodou (não só o bubbling).
-      // Não confere o texto "Copiado" do botão: bug preexistente de copyPix() usar
-      // document.querySelector('.pix-copy') sem escopo, fora do escopo desta história.
       await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(codigoPix);
       // externo: bubbling até o listener de #payPix
       await expect(page.locator('#payPix')).toHaveClass(/selected/);

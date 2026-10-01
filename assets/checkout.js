@@ -719,7 +719,7 @@ async function processPayment() {
 function copyPix() {
   const code = document.getElementById('pixCode').textContent;
   navigator.clipboard.writeText(code).then(() => {
-    const btn = document.querySelector('.pix-copy');
+    const btn = document.getElementById('btnCopyPix');
     btn.innerHTML = '<svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Copiado';
     setTimeout(() => { btn.innerHTML = '<svg class="icon" aria-hidden="true"><use href="assets/icons.svg#copy"></use></svg> Copiar'; }, 2000);
   });
