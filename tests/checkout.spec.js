@@ -2023,3 +2023,232 @@ test.describe('checkout — Pix de pagamento: feedback de cópia', { tag: '@CIT-
     expect(semRolagem).toBe(true);
   });
 });
+
+// CIT-163: feedback dos botões de cópia do checkout — janela de 2 s a partir do último clique (#161)
+// e falha na área de transferência (#162). Dados fictícios; sem terceiros.
+test.describe('checkout — cópia: feedback e falha', { tag: '@CIT-163' }, () => {
+  /** Preparos que deixam cada botão de cópia visível (mesma navegação do CA5 (e) de tests/csp.spec.js). */
+  const preparos = {
+    /** @param {import('@playwright/test').Page} page */
+    async domPix(page) {
+      await page.evaluate(() => goStep(2));
+      await page.locator('#doptBr').click();
+      await page.locator('#fDomNew').fill('minhaempresateste');
+    },
+    /** @param {import('@playwright/test').Page} page */
+    async extraDomPix(page) {
+      await page.evaluate(() => goStep(3));
+      const secaoDominio = page.locator('#step3 .addon-sec-btn')
+        .filter({ has: page.locator('.addon-sec-nome', { hasText: /^Domínio secundário$/ }) });
+      await secaoDominio.click();
+      await page.locator('button[data-addon="extraDom"][data-addon-delta="1"]').click();
+      await expect(page.locator('#extraDomPixPanel')).toBeVisible();
+    },
+    /** @param {import('@playwright/test').Page} page */
+    async pix(page) {
+      await page.evaluate(() => goStep(5));
+      await page.locator('#payPix .payment-name').click();
+    },
+    /** @param {import('@playwright/test').Page} page */
+    async boleto(page) {
+      await page.evaluate(() => goStep(5));
+      await page.locator('#payBoleto .payment-name').click();
+    },
+  };
+
+  const botoes = [
+    { nome: 'domínio novo', preparo: 'domPix', botao: '#btnCopyDomPix', codigo: '#domPixCode', aviso: '#domPixCopiaAviso', original: 'Copiar' },
+    { nome: 'domínio extra', preparo: 'extraDomPix', botao: '#btnCopyExtraDomPix', codigo: '#extraDomPixCode', aviso: '#extraDomPixCopiaAviso', original: 'Copiar' },
+    { nome: 'Pix', preparo: 'pix', botao: '#btnCopyPix', codigo: '#pixCode', aviso: '#pixCopiaAviso', original: 'Copiar' },
+    { nome: 'boleto', preparo: 'boleto', botao: '#btnCopyBoleto', codigo: '#boletoCode', aviso: '#boletoCopiaAviso', original: 'Copiar código' },
+  ];
+
+  for (const b of botoes.filter(x => x.preparo !== 'boleto')) {
+    test(`CA1 (#161) em ${b.nome}, o segundo clique mantém "Copiado" por 2 s a partir dele (t=2,3 s ainda "Copiado"; t=3,6 s "Copiar")`, async ({ page, context, erros }) => {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+      await page.addInitScript(() => {
+        // @ts-ignore
+        window.__copiasOk = 0;
+        const original = Clipboard.prototype.writeText;
+        Clipboard.prototype.writeText = function (...args) {
+          const promessa = original.apply(this, args);
+          promessa.then(() => { /** @type {any} */ (window).__copiasOk++; }, () => {});
+          return promessa;
+        };
+      });
+      await page.clock.install({ time: new Date('2026-01-01T10:00:00') });
+      await page.goto('checkout.html', { waitUntil: 'networkidle' });
+      await preparos[/** @type {'domPix'|'extraDomPix'|'pix'} */ (b.preparo)](page);
+
+      const agora = await page.evaluate(() => Date.now());
+      await page.clock.pauseAt(agora + 1000);
+      const botao = page.locator(b.botao);
+      const copias = () => page.evaluate(() => /** @type {any} */ (window).__copiasOk);
+
+      await botao.click();
+      await expect.poll(copias).toBe(1);
+      await expect(botao).toContainText('Copiado');
+
+      await page.clock.runFor(1500);
+      await botao.click();
+      await expect.poll(copias).toBe(2);
+
+      await page.clock.runFor(800);
+      await expect(botao).toContainText('Copiado');
+
+      await page.clock.runFor(1300);
+      await expect(botao).toContainText('Copiar');
+      await expect(botao).not.toContainText('Copiado');
+    });
+  }
+
+  /**
+   * @param {string} titulo
+   * @param {'rejeicao'|'ausente'} variante
+   * @param {typeof botoes[number]} b
+   */
+  function testeFalha(titulo, variante, b) {
+    test(titulo, async ({ page, context, erros }) => {
+      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+      if (variante === 'rejeicao') {
+        await page.addInitScript(() => {
+          Clipboard.prototype.writeText = () => Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'));
+        });
+      } else {
+        await page.addInitScript(() => {
+          Object.defineProperty(Navigator.prototype, 'clipboard', { get: () => undefined, configurable: true });
+        });
+      }
+      let dialogs = 0;
+      page.on('dialog', d => { dialogs++; d.dismiss(); });
+      await page.goto('checkout.html', { waitUntil: 'networkidle' });
+      await preparos[/** @type {'domPix'|'extraDomPix'|'pix'|'boleto'} */ (b.preparo)](page);
+
+      const codigo = ((await page.locator(b.codigo).textContent()) ?? '').trim();
+      const botao = page.locator(b.botao);
+      await botao.click();
+
+      await expect(botao).toContainText('Erro ao copiar');
+      await expect(botao).not.toContainText('Copiado');
+      await expect(page.locator(b.aviso)).toBeVisible();
+      await expect(page.locator(b.aviso)).toContainText('Não foi possível copiar');
+      await expect.poll(() => page.evaluate(() => (window.getSelection()?.toString() ?? '').trim())).toBe(codigo);
+      expect(dialogs).toBe(0);
+
+      await expect(botao).toContainText(b.original, { timeout: 5000 });
+      await expect(botao).not.toContainText('Erro ao copiar');
+      await expect(page.locator(b.aviso)).toContainText('Não foi possível copiar');
+    });
+  }
+
+  for (const b of botoes) {
+    testeFalha(`CA2 (#162) com writeText rejeitando, o botão de ${b.nome} mostra "Erro ao copiar", avisa, seleciona o código e volta ao normal`, 'rejeicao', b);
+  }
+  for (const b of botoes.filter(x => x.preparo === 'pix' || x.preparo === 'boleto')) {
+    testeFalha(`CA2 (#162) sem navigator.clipboard, o botão de ${b.nome} mostra "Erro ao copiar", avisa, seleciona o código e volta ao normal`, 'ausente', b);
+  }
+
+  test('CA3 (#163) depois de uma falha, a cópia bem-sucedida no mesmo botão esvazia o aviso', async ({ page, context, erros }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.addInitScript(() => {
+      const original = Clipboard.prototype.writeText;
+      let chamadas = 0;
+      Clipboard.prototype.writeText = function (...args) {
+        chamadas++;
+        if (chamadas === 1) return Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'));
+        return original.apply(this, args);
+      };
+    });
+    await page.goto('checkout.html', { waitUntil: 'networkidle' });
+    await preparos.pix(page);
+
+    await page.locator('#btnCopyPix').click();
+    await expect(page.locator('#pixCopiaAviso')).toContainText('Não foi possível copiar');
+
+    await page.locator('#btnCopyPix').click();
+    await expect(page.locator('#btnCopyPix')).toContainText('Copiado');
+    await expect(page.locator('#pixCopiaAviso')).toBeEmpty();
+  });
+
+  test('CA2 (#162) numa segunda falha no mesmo botão, o aviso é esvaziado e reescrito (reanúncio)', async ({ page, context, erros }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.addInitScript(() => {
+      Clipboard.prototype.writeText = () => Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'));
+      /** @type {{ inseriu: boolean, lote: number }[]} lote = nº da entrega do observer (uma entrega por tarefa) */
+      const historico = [];
+      /** @type {any} */ (window).__avisoHist = historico;
+      let lote = 0;
+      document.addEventListener('DOMContentLoaded', () => {
+        new MutationObserver(registros => {
+          lote++;
+          for (const r of registros) historico.push({ inseriu: r.addedNodes.length > 0, lote });
+        }).observe(/** @type {Node} */ (document.getElementById('pixCopiaAviso')), { childList: true });
+      });
+    });
+    await page.goto('checkout.html', { waitUntil: 'networkidle' });
+    await preparos.pix(page);
+
+    await page.locator('#btnCopyPix').click();
+    await expect(page.locator('#pixCopiaAviso')).toContainText('Não foi possível copiar');
+    await page.locator('#btnCopyPix').click();
+
+    // remoção e reescrita em entregas diferentes do observer = com intervalo (próximo frame), não síncronas
+    await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__avisoHist.slice(-2).map(/** @param {any} h */ h => h.inseriu))).toEqual([false, true]);
+    const [remocao, insercao] = await page.evaluate(() => /** @type {any} */ (window).__avisoHist.slice(-2));
+    expect(insercao.lote).toBeGreaterThan(remocao.lote);
+    await expect(page.locator('#pixCopiaAviso')).toContainText('Não foi possível copiar');
+  });
+
+  test('CA4 a 320px, com a falha de cópia, Pix e domínio novo não geram rolagem horizontal e botão e aviso cabem na tela', async ({ page, context, erros }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile', 'CA4 só se aplica ao perfil mobile');
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.addInitScript(() => {
+      Clipboard.prototype.writeText = () => Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'));
+    });
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.goto('checkout.html', { waitUntil: 'networkidle' });
+
+    for (const b of botoes.filter(x => x.preparo === 'pix' || x.preparo === 'domPix')) {
+      await preparos[/** @type {'domPix'|'pix'} */ (b.preparo)](page);
+      await page.locator(b.botao).click();
+      await expect(page.locator(b.botao)).toContainText('Erro ao copiar');
+      await expect(page.locator(b.aviso)).toContainText('Não foi possível copiar');
+
+      const semRolagem = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+      expect(semRolagem, `${b.nome}: sem rolagem horizontal`).toBe(true);
+      for (const alvo of [b.botao, b.aviso]) {
+        const caixa = await page.locator(alvo).boundingBox();
+        expect(caixa, `${alvo} visível`).not.toBeNull();
+        expect(caixa.x, `${alvo} à esquerda`).toBeGreaterThanOrEqual(0);
+        expect(caixa.x + caixa.width, `${alvo} à direita`).toBeLessThanOrEqual(320);
+      }
+    }
+  });
+
+  test('CA2 (#162) falha seguida de sucesso no mesmo botão antes do próximo frame termina com o aviso vazio', async ({ page, context, erros }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.addInitScript(() => {
+      const original = Clipboard.prototype.writeText;
+      let chamadas = 0;
+      Clipboard.prototype.writeText = function (...args) {
+        chamadas++;
+        if (chamadas === 1) return Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'));
+        return original.apply(this, args);
+      };
+    });
+    await page.goto('checkout.html', { waitUntil: 'networkidle' });
+    await preparos.pix(page);
+
+    // 1º clique falha e a falha é tratada (rAF agendado); o 2º clique chega ainda no mesmo frame e tem sucesso
+    await page.evaluate(async () => {
+      const botao = /** @type {HTMLElement} */ (document.getElementById('btnCopyPix'));
+      botao.click();
+      await new Promise(r => setTimeout(r, 0));
+      botao.click();
+    });
+    await expect(page.locator('#btnCopyPix')).toContainText('Copiado');
+    // espera alguns frames: um rAF esquecido da falha reescreveria o aviso
+    await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r)))));
+    await expect(page.locator('#pixCopiaAviso')).toBeEmpty();
+  });
+});

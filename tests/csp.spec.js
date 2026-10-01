@@ -309,7 +309,7 @@ test.describe('CSP — landing e checkout', { tag: '@CIT-49' }, () => {
       // conferido antes da área de transferência porque dura só 2 s
       await expect(page.locator('#btnCopyPix')).toContainText('Copiado');
       await expect(page.locator('#btnCopyDomPix')).not.toContainText('Copiado');
-      // interno: copyPix() copia o código Pix de pagamento (#pixCode) para a área de
+      // interno: o handler de #btnCopyPix copia o código Pix de pagamento (#pixCode) para a área de
       // transferência — prova que o handler do próprio #btnCopyPix rodou (não só o bubbling).
       await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(codigoPix);
       // externo: bubbling até o listener de #payPix

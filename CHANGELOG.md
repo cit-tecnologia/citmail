@@ -61,6 +61,7 @@ Ambiente de desenvolvimento e processo: história CIT-12 no Taiga.
 ### Corrigido
 - Checkout: o código Pix do domínio extra (passo 3) não muda mais ao alterar outros add-ons; só é gerado de novo quando o valor do domínio extra muda (CIT-30).
 - Checkout: ao copiar o código Pix do pagamento, o próprio botão mostra "Copiado"; antes, o aviso aparecia no botão do Pix do domínio, no passo 2 (CIT-153).
+- Checkout: clicar de novo num botão "Copiar" do Pix mantém o "Copiado" por 2 s a partir do último clique (antes, voltava a "Copiar" antes da hora); quando o navegador não deixa copiar, os botões do Pix e do boleto mostram "Erro ao copiar", deixam o código selecionado e explicam como copiar manualmente (antes, nada acontecia) (CIT-163).
 
 ### Segurança
 - Login e painel sem handlers nem scripts inline (código em `assets/login.js` e `assets/painel.js`) e com a mesma Content Security Policy por `<meta>` da landing: nenhuma página do site aceita mais script inline. Os botões que o painel redesenha (DNS) usam um listener por lista, com o valor conferido antes de agir. O host, o valor, o tipo e a prioridade do DNS, o e-mail do "esqueci a senha" e as mensagens de aviso passam a ser escapados ao entrar no HTML: um registro com HTML deixa de ser executado na página. O `connect-src` muda quando o login e o painel chamarem a API. O smoke da homologação confere a CSP e os novos arquivos (CIT-158).
