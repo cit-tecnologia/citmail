@@ -160,7 +160,7 @@ export function criarConfigTeste(sobrescritas = {}) {
  * (quando criado aqui) e remove o banco temporário (quando criado aqui).
  */
 export async function construirAppTeste(opcoes = {}) {
-  const { comBanco = true, sobrescritasConfig = {}, pool: poolFornecido } = opcoes;
+  const { comBanco = true, sobrescritasConfig = {}, pool: poolFornecido, filas } = opcoes;
 
   let nomeBanco;
   let url;
@@ -178,7 +178,7 @@ export async function construirAppTeste(opcoes = {}) {
     ...sobrescritasConfig,
   });
 
-  const app = construirApp(config, { pool, logStream: captura.stream });
+  const app = construirApp(config, { pool, logStream: captura.stream, filas });
 
   return {
     app,
