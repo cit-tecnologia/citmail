@@ -16,6 +16,11 @@ import { Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 import { runner } from 'node-pg-migrate';
 import { construirApp } from '../src/app.js';
+import { criarLogger } from '../src/log.js';
+import { criarConexaoWorker } from '../src/fila/conexao.js';
+import { criarFilas } from '../src/fila/filas.js';
+import { criarWorkers } from '../src/fila/worker.js';
+import { criarEnvioTelegram } from '../src/alertas/telegram.js';
 
 export const URL_ADMIN_TESTE_PADRAO = 'postgres://postgres@127.0.0.1:55433/postgres';
 
@@ -186,6 +191,109 @@ export async function construirAppTeste(opcoes = {}) {
       }
       if (nomeBanco) {
         await removerBancoTemporario(nomeBanco);
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Fila (CIT-56): Redis de teste no loopback, prefixo único por chamada.
+// ---------------------------------------------------------------------------
+
+export const URL_REDIS_TESTE_PADRAO = 'redis://127.0.0.1:56379';
+
+let contadorFilas = 0;
+
+export function urlRedisTeste() {
+  return process.env.REDIS_URL_TESTE ?? URL_REDIS_TESTE_PADRAO;
+}
+
+/**
+ * Cria as filas `jobs` e `alertas` com prefixo único (`teste-<pid>-<n>`) sobre
+ * uma conexão de worker com o Redis de teste, e um logger `pino` (mesma máscara
+ * do app, `criarLogger`) que escreve numa `criarCapturaDeLog()`.
+ *
+ * Opções (padrões de teste do plano): `tentativas` 3, `backoffMs` 300,
+ * `alertaTentativas` 3, `alertaBackoffMs` 20, `logLevel` 'info'.
+ *
+ * Devolve `{ prefixo, conexao, filas, captura, log, criarWorkers, acompanhar, fechar }`:
+ * - `criarWorkers(opcoes)`: chama `criarWorkers` de `src/fila/worker.js` com
+ *   `conexao`, `filas`, `prefixo` e `log` já preenchidos (sobrescrevíveis);
+ *   `enviarAlerta` padrão = Telegram sem token (só loga `alerta sem telegram`).
+ *   Os workers criados são fechados pelo `fechar()`.
+ * - `acompanhar(objeto)`: registra outro objeto com `close()` (ex.: `Worker`
+ *   criado à mão) para ser fechado antes do `obliterate`.
+ * - `fechar()`: fecha workers → `obliterate({ force: true })` das filas → fecha
+ *   as filas → confere por `SCAN` as chaves `<prefixo>:*` que sobraram → fecha a
+ *   conexão. Chaves com `PTTL > 0` (expiram sozinhas) são aceitas e apagadas;
+ *   chave sem TTL (`PTTL -1`) é apagada e faz o `fechar()` lançar (CA7).
+ *   Conferido no BullMQ 6.3.11: após o `obliterate` não sobra chave no prefixo.
+ *
+ * Filas sobre conexão inacessível (CA8, porta 1) não usam este auxiliar.
+ */
+export function criarFilasTeste(opcoes = {}) {
+  const {
+    tentativas = 3,
+    backoffMs = 300,
+    alertaTentativas = 3,
+    alertaBackoffMs = 20,
+    logLevel = 'info',
+  } = opcoes;
+
+  const prefixo = `teste-${process.pid}-${contadorFilas++}`;
+  const conexao = criarConexaoWorker(urlRedisTeste());
+  const captura = criarCapturaDeLog();
+  const log = criarLogger({ level: logLevel, stream: captura.stream });
+  const filas = criarFilas({ conexao, prefixo, tentativas, backoffMs, alertaTentativas, alertaBackoffMs, log });
+  const acompanhados = [];
+
+  return {
+    prefixo,
+    conexao,
+    filas,
+    captura,
+    log,
+    criarWorkers(opcoesWorkers = {}) {
+      const workers = criarWorkers({
+        conexao,
+        filas,
+        prefixo,
+        log,
+        enviarAlerta: criarEnvioTelegram({ log }),
+        ...opcoesWorkers,
+      });
+      acompanhados.push(workers);
+      return workers;
+    },
+    acompanhar(objeto) {
+      acompanhados.push(objeto);
+      return objeto;
+    },
+    async fechar() {
+      try {
+        for (const objeto of acompanhados.reverse()) {
+          await objeto.close();
+        }
+        await filas.jobs.obliterate({ force: true });
+        await filas.alertas.obliterate({ force: true });
+        await filas.close();
+
+        const permanentes = [];
+        let cursor = '0';
+        do {
+          const [proximo, chaves] = await conexao.scan(cursor, 'MATCH', `${prefixo}:*`, 'COUNT', 1000);
+          cursor = proximo;
+          for (const chave of chaves) {
+            if ((await conexao.pttl(chave)) === -1) permanentes.push(chave);
+            await conexao.del(chave);
+          }
+        } while (cursor !== '0');
+
+        if (permanentes.length > 0) {
+          throw new Error(`chaves sem TTL no prefixo ${prefixo}: ${permanentes.join(', ')}`);
+        }
+      } finally {
+        await conexao.quit().catch(() => conexao.disconnect());
       }
     },
   };
