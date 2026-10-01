@@ -74,6 +74,13 @@ const BUSCA_H2 = 'Consulte o domínio da sua empresa';
 const BUSCA_P = 'Digite o nome da empresa e veja se o domínio parece livre. A disponibilidade é confirmada na contratação.';
 const BUSCA_LIVRE = 'empresaficticia50.com.br parece disponível. A confirmação é feita na contratação.';
 const BUSCA_OCUPADO = 'citmail.com.br parece já estar registrado. Tente outro nome ou extensão.';
+const MARKETPLACE_SUBTITULO = 'E-mail Registrado e Microsoft 365 sob consulta, contratados junto com o e-mail.';
+const FEATURE_DESCRICOES = {
+  0: 'Use o domínio que a empresa já tem ou peça o registro de um novo na contratação. Configuramos DNS, MX, SPF, DKIM e DMARC.',
+  4: 'Gerencie caixas de e-mail, senhas e faturas sem precisar acionar o suporte.',
+};
+const NOTA_DOMINIO_INCLUSO = 'Domínio não incluído: use um domínio que a empresa já tem ou peça o registro de um novo na contratação.';
+const PAINEL_SUBTITULO = 'Crie caixas, troque senhas, baixe faturas e consulte o DNS pelo painel, sem depender do suporte.';
 const NOTA_CANCELAMENTO = 'O serviço segue até o fim do ciclo pago.';
 const PASSOS_COMO_FUNCIONA = [
   null, // passo 1 (igual): fora do escopo do CA2 (só os passos 2 a 4 mudaram)
@@ -90,9 +97,12 @@ const FAQ_LITERAIS = [
   ['Como funciona o suporte técnico?', 'Por ticket no painel e por e-mail, em dias úteis, das 08h00 às 18h00.'],
   ['O serviço é compatível com Outlook, Gmail e Apple Mail?', 'Sim. O serviço usa IMAP, POP3 e SMTP e funciona com Outlook, Apple Mail, Thunderbird, Gmail App e outros clientes. As configurações chegam por e-mail após a ativação.'],
   ['Posso cancelar quando quiser?', 'Sim. Não há fidelidade nem multa. Você pede o cancelamento pelo painel; o serviço segue ativo até o fim do ciclo já pago e não há nova cobrança. Na primeira contratação, você pode desistir em até 7 dias e recebe de volta o valor pago (Código de Defesa do Consumidor, art. 49).'],
+  // #51: a resposta 8 (índice 7) volta a citar a Política de Privacidade; reescrever o literal.
   ['Os dados são protegidos pela LGPD?', 'Sim. Tratamos os dados conforme a Lei Geral de Proteção de Dados (LGPD). As senhas do painel são guardadas com hash Argon2id e todas as conexões usam TLS. Para pedir acesso, correção ou exclusão dos seus dados, escreva para o encarregado: privacidade@cittecnologia.com.br.'],
 ];
+// #51: tira 'Política de Privacidade' e 'Termos de Uso' desta lista (os links voltam ao rodapé).
 const RODAPE_TEXTOS_REMOVIDOS = ['Sobre nós', 'Blog', 'Parceiros', 'Política de Privacidade', 'Termos de Uso'];
+// #51: a coluna passa a ter também os links de Privacidade e Termos (acrescentar aqui, com o href das páginas novas).
 const RODAPE_SUPORTE = [
   { texto: 'FAQ', href: '#faq' },
   { texto: 'Painel do Cliente', href: 'login.html' },
@@ -892,6 +902,29 @@ test.describe('landing — CIT-50: promessas do lançamento', { tag: '@CIT-50' }
     await expect(page.locator('#features .feature-card h3')).toHaveText(FEATURE_TITULOS);
   });
 
+  test('subtítulo do Marketplace é o final', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('#marketplace .section-header p')).toHaveText(MARKETPLACE_SUBTITULO);
+  });
+
+  test('cards Domínio Próprio e Painel de Controle têm a descrição final', async ({ page, erros }) => {
+    await page.goto('index.html');
+    const cards = page.locator('#features .feature-card');
+    for (const [i, texto] of Object.entries(FEATURE_DESCRICOES)) {
+      await expect(cards.nth(Number(i)).locator('p'), `card ${Number(i) + 1} de Recursos`).toHaveText(texto);
+    }
+  });
+
+  test('nota de domínio da caixa "Incluso" é a final', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('.included-box p')).toHaveText(NOTA_DOMINIO_INCLUSO);
+  });
+
+  test('subtítulo do painel do cliente é o final', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('#painel-preview h2 + p')).toHaveText(PAINEL_SUBTITULO);
+  });
+
   test('Marketplace tem os 3 cards, com título e selo', async ({ page, erros }) => {
     await page.goto('index.html');
     const cards = page.locator('#marketplace .marketplace-card');
@@ -1126,7 +1159,10 @@ test.describe('landing — CIT-50: rodapé e links', { tag: '@CIT-50' }, () => {
     const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
     const js = readFileSync(new URL('../assets/landing.js', import.meta.url), 'utf8');
     expect(html).not.toMatch(/href\s*=\s*["']#["']/);
-    expect(js).not.toMatch(/(?:setAttribute\(\s*['"]href['"]\s*,\s*['"]#['"]|\.href\s*=\s*['"]#['"])/);
+    // atribuição a href com '#' em qualquer posição (inclusive ternário): `x.href = c ? '#' : ...`
+    expect(js, "atribuição a href com '#'").not.toMatch(/\bhref\s*=[^;]*['"`]#['"`]/);
+    // setAttribute('href', ... '#' ...), inclusive ternário
+    expect(js, "setAttribute('href') com '#'").not.toMatch(/setAttribute\(\s*['"]href['"]\s*,[^;]*['"`]#['"`]/);
   });
 });
 
