@@ -400,11 +400,17 @@
       grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
       gap: 20px;
     }
-    @media (min-width: 1000px) {
-      /* 5 cards: 3 + 2, sem card órfão */
+    @media (min-width: 600px) and (max-width: 899px) {
+      /* 2 por linha; card ímpar final ocupa a linha inteira */
+      .features-grid { grid-template-columns: repeat(2, 1fr); }
+      .features-grid .feature-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+    }
+    @media (min-width: 900px) {
+      /* 3 por linha; a última linha incompleta divide a largura sem órfão */
       .features-grid { grid-template-columns: repeat(6, 1fr); }
       .features-grid .feature-card { grid-column: span 2; }
-      .features-grid .feature-card:nth-child(n+4) { grid-column: span 3; }
+      .features-grid .feature-card:nth-last-child(2):nth-child(3n+1),
+      .features-grid .feature-card:last-child:nth-child(3n+2) { grid-column: span 3; }
     }
     .feature-card {
       background: var(--white);
@@ -466,12 +472,13 @@
     .domain-result { margin-top: 16px; min-height: 32px; }
     .domain-available,
     .domain-taken {
-      display: inline-flex; align-items: center; gap: 8px;
+      display: block; text-align: left;
       padding: 8px 14px; border: 1px solid; border-radius: var(--cit-radius-sm);
       font-weight: 600; font-size: .8125rem;
     }
     .domain-available { background: var(--cit-green-50); color: var(--cit-green-700); border-color: rgba(30,142,78,.32); }
     .domain-taken     { background: var(--cit-red-50);   color: var(--cit-red-700);   border-color: rgba(192,57,43,.32); }
+    .domain-available .icon, .domain-taken .icon { vertical-align: -.125em; margin-right: var(--cit-space-1); }
     .domain-loading { color: var(--cit-text-inverse-secondary); font-size: .8125rem; }
 
     .tld-list {
@@ -757,6 +764,7 @@
       background: var(--white); border: 1px solid var(--cit-border-color);
       border-radius: var(--cit-radius-lg); padding: 20px 24px;
     }
+    .domain-contratar { color: inherit; font-weight: 600; margin-left: var(--cit-space-2); }
     .included-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
     .included-item { display: flex; align-items: center; gap: 8px; font-size: .8125rem; color: var(--cit-neutral-700); }
     .included-item .icon { font-size: .8rem; }
@@ -932,6 +940,7 @@
     }
     @media (max-width: 900px) {
       .marketplace-grid { grid-template-columns: repeat(2, 1fr); }
+      .marketplace-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
     }
     @media (max-width: 580px) {
       .marketplace-grid { grid-template-columns: 1fr; }
@@ -1386,7 +1395,7 @@
           <!-- Incluso em todas as contas -->
           <div class="included-box">
             <div class="included-label"><svg class="icon" style="color:var(--cit-success)" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg> Incluso em todas as contas</div>
-<div class="included-grid">
+            <div class="included-grid">
               <div class="included-item"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Webmail para computador e celular</div>
               <div class="included-item"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Protocolos IMAP / POP3 / SMTP</div>
               <div class="included-item"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Antispam e antivírus</div>

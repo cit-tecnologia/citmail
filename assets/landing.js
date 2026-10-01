@@ -227,7 +227,13 @@ function checkDomain() {
     span.append(strong, taken
       ? ' parece já estar registrado. Tente outro nome ou extensão.'
       : ' parece disponível. A confirmação é feita na contratação. ');
-    if (!taken) span.insertAdjacentHTML('beforeend', '<a href="#pricing" style="color:inherit;font-weight:600;margin-left:8px">Contratar →</a>');
+    if (!taken) {
+      const contratar = document.createElement('a');
+      contratar.href = '#pricing';
+      contratar.className = 'domain-contratar';
+      contratar.textContent = 'Contratar →';
+      span.append(contratar);
+    }
     result.replaceChildren(span);
   }, 1200);
 }
