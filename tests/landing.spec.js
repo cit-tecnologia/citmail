@@ -3,6 +3,7 @@ import { test, expect } from './fixtures.js';
 // CIT-22: guarda de carga (assets/precos.js não carrega) — espera erro de propósito, por isso usa o
 // `test` puro do Playwright em vez da fixture `erros` (que falharia com qualquer erro registrado).
 import { test as testSemErros } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 
 // CIT-15: ajuste de textos e componentes da landing (index.html).
 // Cada teste roda nos dois perfis configurados em playwright.config.js (desktop e mobile).
@@ -22,6 +23,82 @@ async function corSucesso(page) {
     return cor;
   });
 }
+
+// ---------------------------------------------------------------------------------------------------
+// CIT-50: literais aprovados da landing (plano .omc/plans/CIT-50.md, seção "Textos finais"), num lugar só.
+// Quem altera estas constantes: #48 (recursos da PoC Skymail: backup, IA, agenda, Talk, armazenamento),
+// #109 (depoimentos reais) e #51 (links de Privacidade/Termos no rodapé e frase da Política no FAQ).
+// ---------------------------------------------------------------------------------------------------
+
+// Promessas fora do lançamento: nenhum item pode casar no texto visível, na meta ou em aria-label/alt/title.
+// `\b` nos termos curtos (chat, Talk, SLA) evita falso positivo em palavras maiores.
+const TERMOS_PROIBIDOS = [
+  /2FA/i, /dois fatores/i, /duas etapas/i, /\bchat\b/i, /transferimos/i, /transferência de domínio/i,
+  /IA inclusa/i, /IA para escrita/i, /Agenda de contatos/i, /Calendário/i, /apelidos/i, /aliases/i,
+  /Backup automático/i, /Backup adicional/i, /Armazenamento em nuvem/i, /\bTalk\b/i, /parcelamento/i,
+  /Enterprise/i, /\bSLA\b/i, /prioritário/i, /24\/7/i, /500\+/i, /Clientes ativos/i, /garantida/i,
+  /resposta média/i, /Registramos/i, /criamos o domínio/i, /ajuste o DNS/i, /armazenamento/i,
+  /pelo mesmo painel/i, /Add-ons/i, /proporcional/i, /R\$\s*19,90/i, /está disponível para registro/i,
+];
+
+const META_DESCRIPTION = 'CITMail: e-mail corporativo com o domínio da sua empresa. Contas de 5, 25 e 50 GB, com webmail, antispam e painel de gestão.';
+const TRUST_ITEMS = [
+  'Proteção antivírus e antispam',
+  'SSL/TLS em todas as conexões',
+  'Suporte por ticket e e-mail em dias úteis, das 08h00 às 18h00',
+  'Dados tratados conforme a LGPD',
+];
+const FEATURE_TITULOS = ['Domínio Próprio', 'Webmail', 'Apps de E-mail', 'Antispam & Antivírus', 'Painel de Controle'];
+const MARKETPLACE_CARDS = [
+  { titulo: 'E-mail Corporativo', badge: 'Incluído' },
+  { titulo: 'E-mail Registrado', badge: 'Sob consulta' },
+  { titulo: 'Microsoft 365', badge: 'Sob consulta' },
+];
+const INCLUSO_ITENS = [
+  'Webmail para computador e celular',
+  'Protocolos IMAP / POP3 / SMTP',
+  'Antispam e antivírus',
+  'Certificado SSL/TLS grátis',
+  'Painel de gerenciamento',
+  'Compatível com Outlook, Gmail App e Apple Mail',
+];
+const PAINEL_ITENS = [
+  'Dashboard com visão geral do plano',
+  'Criação e exclusão de caixas de e-mail',
+  'Troca de senhas pelo próprio cliente',
+  'Histórico de faturas com download em PDF',
+  'Registros de DNS e status da verificação do domínio',
+];
+const CARD50_STORAGE = '50 GB por caixa · IMAP/POP3/SMTP · Webmail';
+const BUSCA_H2 = 'Consulte o domínio da sua empresa';
+const BUSCA_P = 'Digite o nome da empresa e veja se o domínio parece livre. A disponibilidade é confirmada na contratação.';
+const BUSCA_LIVRE = 'empresaficticia50.com.br parece disponível. A confirmação é feita na contratação.';
+const BUSCA_OCUPADO = 'citmail.com.br parece já estar registrado. Tente outro nome ou extensão.';
+const NOTA_CANCELAMENTO = 'O serviço segue até o fim do ciclo pago.';
+const PASSOS_COMO_FUNCIONA = [
+  null, // passo 1 (igual): fora do escopo do CA2 (só os passos 2 a 4 mudaram)
+  'Pix, boleto ou cartão de crédito, pela fatura do Asaas. A cobrança se renova automaticamente.',
+  'Com o seu domínio, as caixas ficam prontas em até 5 minutos após a confirmação do pagamento. Domínio novo leva mais tempo, porque o registro é feito pela nossa equipe.',
+  'As credenciais chegam por e-mail. No painel, você gerencia caixas e faturas e consulta os registros de DNS.',
+];
+/** @type {[string, string][]} pares [pergunta, resposta] na ordem da página */
+const FAQ_LITERAIS = [
+  ['Preciso ter um domínio próprio para contratar?', 'Não. Se a empresa já tem um domínio, basta apontar os registros de DNS para nós; o painel mostra quais são. Se ainda não tem, peça o registro de um domínio novo na contratação. O domínio fica em nome da sua empresa.'],
+  ['Quanto tempo leva para o e-mail ser ativado?', 'Com um domínio que a empresa já tem, as caixas ficam prontas em até 5 minutos após a confirmação do pagamento, e as credenciais chegam por e-mail. Para enviar e receber mensagens, os registros de DNS precisam estar apontados; a propagação leva até 48 horas e costuma terminar antes. Com domínio novo, o prazo é maior, porque o registro é feito pela nossa equipe. Avisamos por e-mail quando terminar.'],
+  ['Quais formas de pagamento são aceitas?', 'Pix, boleto bancário ou cartão de crédito, pela fatura do Asaas. O Pix é confirmado na hora; o boleto, em até 3 dias úteis. Planos mensais e anuais se renovam automaticamente.'],
+  ['Posso adicionar mais caixas de e-mail depois?', 'Sim, pelo painel, a qualquer momento.'],
+  ['Como funciona o suporte técnico?', 'Por ticket no painel e por e-mail, em dias úteis, das 08h00 às 18h00.'],
+  ['O serviço é compatível com Outlook, Gmail e Apple Mail?', 'Sim. O serviço usa IMAP, POP3 e SMTP e funciona com Outlook, Apple Mail, Thunderbird, Gmail App e outros clientes. As configurações chegam por e-mail após a ativação.'],
+  ['Posso cancelar quando quiser?', 'Sim. Não há fidelidade nem multa. Você pede o cancelamento pelo painel; o serviço segue ativo até o fim do ciclo já pago e não há nova cobrança. Na primeira contratação, você pode desistir em até 7 dias e recebe de volta o valor pago (Código de Defesa do Consumidor, art. 49).'],
+  ['Os dados são protegidos pela LGPD?', 'Sim. Tratamos os dados conforme a Lei Geral de Proteção de Dados (LGPD). As senhas do painel são guardadas com hash Argon2id e todas as conexões usam TLS. Para pedir acesso, correção ou exclusão dos seus dados, escreva para o encarregado: privacidade@cittecnologia.com.br.'],
+];
+const RODAPE_TEXTOS_REMOVIDOS = ['Sobre nós', 'Blog', 'Parceiros', 'Política de Privacidade', 'Termos de Uso'];
+const RODAPE_SUPORTE = [
+  { texto: 'FAQ', href: '#faq' },
+  { texto: 'Painel do Cliente', href: 'login.html' },
+  { texto: 'Contato', href: 'mailto:comercial@citmail.com.br' },
+];
+const RODAPE_LEGAL = '© 2026 CITMail · CIT TECNOLOGIA DA INFORMACAO LTDA - ME · CNPJ 22.080.376/0001-96';
 
 test.describe('landing — hero', { tag: '@CIT-15' }, () => {
   test('h1 exibe o texto final com destaque em "e-mail profissional"', async ({ page, erros }) => {
@@ -79,14 +156,14 @@ test.describe('landing — hero', { tag: '@CIT-15' }, () => {
     await expect(primeiro.locator('.label')).toHaveText('Suporte técnico humanizado');
   });
 
-  test('2º indicador do hero mostra disponibilidade e o 3º indicador permanece inalterado', async ({ page, erros }) => {
+  test('2º indicador do hero mostra a meta de disponibilidade e o 3º mostra a ativação após o pagamento', async ({ page, erros }) => {
     await page.goto('index.html');
     const stats = page.locator('.hero-stat');
     await expect(stats.nth(1).locator('.number')).toHaveText('99,5%');
-    await expect(stats.nth(1).locator('.label')).toHaveText('Disponibilidade garantida');
-    // guarda de regressão: o 3º indicador não fazia parte do escopo do ajuste
-    await expect(stats.nth(2).locator('.number')).toHaveText('500+');
-    await expect(stats.nth(2).locator('.label')).toHaveText('Clientes ativos');
+    await expect(stats.nth(1).locator('.label')).toHaveText('Meta de disponibilidade');
+    // CIT-50: "500+ Clientes ativos" saiu (dado não comprovado)
+    await expect(stats.nth(2).locator('.number')).toHaveText('5 min');
+    await expect(stats.nth(2).locator('.label')).toHaveText('Ativação após o pagamento');
   });
 
   test('selo flutuante "Ativo em 5 min" foi removido do hero', async ({ page, erros }) => {
@@ -112,7 +189,7 @@ test.describe('landing — recursos e domínio', { tag: '@CIT-15' }, () => {
   test('subtítulo da seção Recursos exibe o texto final', async ({ page, erros }) => {
     await page.goto('index.html');
     await expect(page.locator('#features .section-header p')).toHaveText(
-      'Domínio, Webmail, Apps, Add-ons e Antispam em um único painel de gestão.'
+      'Domínio, webmail, apps e antispam num só contrato, gerenciados pelo painel.'
     );
   });
 
@@ -223,16 +300,14 @@ test.describe('landing — quantidade de contas', { tag: '@CIT-15' }, () => {
 });
 
 test.describe('landing — marketplace', { tag: '@CIT-15' }, () => {
-  test('marketplace exibe os 6 serviços na ordem, com selos e ícones corretos', async ({ page, erros }) => {
+  test('marketplace exibe os 3 serviços na ordem, com selos e ícones corretos', async ({ page, erros }) => {
     await page.goto('index.html');
     const cards = page.locator('#marketplace .marketplace-card');
-    await expect(cards).toHaveCount(6);
+    // CIT-50: Backup adicional, Armazenamento em nuvem e Talk saíram até a PoC da Skymail (#48)
+    await expect(cards).toHaveCount(3);
 
     const esperado = [
       { titulo: 'E-mail Corporativo', badge: 'Incluído', icone: 'mail' },
-      { titulo: 'Backup adicional', badge: 'Disponível', icone: 'history' },
-      { titulo: 'Armazenamento em nuvem', badge: 'Disponível', icone: 'cloud' },
-      { titulo: 'Talk', badge: 'Disponível', icone: 'video' },
       { titulo: 'E-mail Registrado', badge: 'Sob consulta', icone: 'mail-check' },
       { titulo: 'Microsoft 365', badge: 'Sob consulta', icone: 'laptop' },
     ];
@@ -250,11 +325,9 @@ test.describe('landing — marketplace', { tag: '@CIT-15' }, () => {
   test('marketplace exibe as descrições finais dos serviços', async ({ page, erros }) => {
     await page.goto('index.html');
     const cards = page.locator('#marketplace .marketplace-card');
+    // CIT-50: restam 3 serviços; os textos das descrições não mudam
     const descricoes = [
       'Caixas de e-mail com domínio próprio, webmail, IMAP/POP3/SMTP e proteção antispam.',
-      'Backup automático das contas de e-mail por períodos maiores.',
-      'Integrado ao e-mail, com sincronização de arquivos via computador e acesso web.',
-      'Videoconferência ilimitada, com armazenamento das gravações em nuvem.',
       'Para comunicações que exigem formalidade e comprovação, o E-mail Registrado substitui processos burocráticos com eficiência e validade jurídica. Ideal para empresas que valorizam rastreabilidade, proteção e conformidade.',
       'E-mail, OneDrive, aplicativos online e offline. Planos que se encaixam desde pequenas a grandes empresas, que desejam escalar com aplicativos de produtividade da Microsoft.',
     ];
@@ -291,19 +364,29 @@ test.describe('landing — marketplace', { tag: '@CIT-15' }, () => {
 });
 
 test.describe('landing — textos, FAQ e meta', { tag: '@CIT-15' }, () => {
-  test('nenhuma referência a prazo de "5 min" resta no HTML da landing', async ({ page, erros }) => {
+  test('"5 min" só aparece no hero, em Como funciona e na resposta 2 do FAQ, e nunca em meta ou atributos', async ({ page, erros }) => {
     await page.goto('index.html');
-    const html = await page.content();
-    expect(html).not.toMatch(/\b5(?:\s|&nbsp;)*min/i);
+    // CIT-50 (CA1 f): o texto de prazo é permitido nesses três lugares; o resto do HTML segue sem "5 min"
+    const { fora, atributos } = await page.evaluate(([perguntaPrazo]) => {
+      const clone = /** @type {HTMLElement} */ (document.body.cloneNode(true));
+      clone.querySelectorAll('script, style, noscript, .hero-stats, #how-it-works').forEach(el => el.remove());
+      clone.querySelectorAll('.faq-item').forEach(item => {
+        if (item.querySelector('.faq-question span')?.textContent?.trim() === perguntaPrazo) item.remove();
+      });
+      const meta = document.querySelector('meta[name="description"]')?.getAttribute('content') || '';
+      const attrs = [...document.querySelectorAll('[aria-label], [alt], [title]')].flatMap(el =>
+        ['aria-label', 'alt', 'title'].map(a => el.getAttribute(a) || ''));
+      return { fora: clone.textContent || '', atributos: [meta, ...attrs].join('\n') };
+    }, [FAQ_LITERAIS[1][0]]);
+    expect(fora, 'ocorrência de "5 min" fora de .hero-stats, #how-it-works e resposta 2 do FAQ').not.toMatch(/\b5\s*min/i);
+    expect(atributos, '"5 min" em meta/aria-label/alt/title').not.toMatch(/\b5\s*min/i);
   });
 
   test('FAQ de DNS exibe o texto final', async ({ page, erros }) => {
     await page.goto('index.html');
-    const resposta = page.locator('.faq-answer p').filter({ hasText: 'propagação de DNS' });
-    await expect(resposta).toHaveText(
-      'Após a confirmação do pagamento, criamos as contas e enviamos as credenciais de acesso por e-mail. ' +
-      'A propagação de DNS leva até 48h e costuma terminar em menos de 6 horas. A partir desse período as contas estão aptas a enviar e receber e-mails.'
-    );
+    // CIT-50: texto da resposta 2 reescrito (literal em FAQ_LITERAIS, CA2)
+    const resposta = page.locator('.faq-answer p').filter({ hasText: 'até 48 horas' });
+    await expect(resposta).toHaveText(FAQ_LITERAIS[1][1]);
   });
 
   test('<title> da landing permanece inalterado', async ({ page, erros }) => {
@@ -772,4 +855,350 @@ testSemErros.describe('landing — CIT-22: guarda quando assets/precos.js não c
 
     expect(pageerrors, 'não deveria haver pageerror com a guarda de carga').toEqual([]);
   });
+});
+
+// ===================================================================================================
+// CIT-50: textos, contas e FAQ da landing coerentes com o lançamento
+// ===================================================================================================
+
+/** Normaliza espaços (o `<br/>` do h2 vira quebra de linha no innerText). */
+const plano = (/** @type {string} */ t) => t.replace(/\s+/g, ' ').trim();
+
+test.describe('landing — CIT-50: promessas do lançamento', { tag: '@CIT-50' }, () => {
+  test('nenhum termo proibido no texto visível, na meta ou em aria-label/alt/title (acordeão fechado)', async ({ page, erros }) => {
+    await page.goto('index.html');
+    const texto = await page.evaluate(() => {
+      const meta = document.querySelector('meta[name="description"]')?.getAttribute('content') || '';
+      const attrs = [...document.querySelectorAll('[aria-label], [alt], [title]')].flatMap(el =>
+        ['aria-label', 'alt', 'title'].map(a => el.getAttribute(a) || ''));
+      return [document.body.innerText, meta, ...attrs].join('\n');
+    });
+    for (const termo of TERMOS_PROIBIDOS) {
+      expect(texto, `termo proibido na landing: ${termo.source}`).not.toMatch(termo);
+    }
+  });
+
+  test('seção de depoimentos não existe e o fonte não cita os três nomes antigos', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('#testimonials')).toHaveCount(0);
+    const fonte = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    for (const nome of ['Ricardo S.', 'Ana M.', 'Fábio O.']) {
+      expect(fonte, `nome de depoimento no index.html: ${nome}`).not.toContain(nome);
+    }
+  });
+
+  test('Recursos tem os 5 cards na ordem', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('#features .feature-card h3')).toHaveText(FEATURE_TITULOS);
+  });
+
+  test('Marketplace tem os 3 cards, com título e selo', async ({ page, erros }) => {
+    await page.goto('index.html');
+    const cards = page.locator('#marketplace .marketplace-card');
+    await expect(cards).toHaveCount(MARKETPLACE_CARDS.length);
+    await expect(cards.locator('h3')).toHaveText(MARKETPLACE_CARDS.map(c => c.titulo));
+    await expect(cards.locator('.badge')).toHaveText(MARKETPLACE_CARDS.map(c => c.badge));
+  });
+
+  test('"Incluso em todas as contas" tem os 6 itens na ordem', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('.included-box .included-item')).toHaveText(INCLUSO_ITENS);
+  });
+
+  test('lista do painel do cliente tem os 5 itens na ordem', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('#painel-preview .painel-features-list li')).toHaveText(PAINEL_ITENS);
+  });
+
+  test('card de 50 GB não tem selo de IA e mostra a linha de armazenamento final', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('#card50 .atc-ai-badge')).toHaveCount(0);
+    await expect(page.locator('#card50 .atc-storage')).toHaveText(CARD50_STORAGE);
+  });
+
+  test('2º e 3º indicadores do hero têm o texto final', async ({ page, erros }) => {
+    await page.goto('index.html');
+    const stats = page.locator('.hero-stat');
+    await expect(stats.nth(1).locator('.number')).toHaveText('99,5%');
+    await expect(stats.nth(1).locator('.label')).toHaveText('Meta de disponibilidade');
+    await expect(stats.nth(2).locator('.number')).toHaveText('5 min');
+    await expect(stats.nth(2).locator('.label')).toHaveText('Ativação após o pagamento');
+  });
+
+  test('faixa de confiança tem os 4 itens exatos', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('.trust-bar-inner .trust-item')).toHaveText(TRUST_ITEMS);
+  });
+
+  test('meta description é a final, sem preço', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('meta[name="description"]')).toHaveAttribute('content', META_DESCRIPTION);
+  });
+
+  test('título e texto da busca de domínio são os finais', async ({ page, erros }) => {
+    await page.goto('index.html');
+    expect(plano(await page.locator('#domain-search h2').innerText())).toBe(BUSCA_H2);
+    await expect(page.locator('#domain-search .domain-search-inner > p').first()).toHaveText(BUSCA_P);
+  });
+
+  test('busca por domínio fictício mostra "parece disponível" com o link Contratar', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await page.locator('#domainInput').fill('empresaficticia50');
+    await page.locator('#domainCheckBtn').click();
+    const livre = page.locator('#domainResult .domain-available');
+    await expect(livre).toContainText(BUSCA_LIVRE);
+    await expect(livre.locator('a')).toHaveText('Contratar →');
+    await expect(livre.locator('a')).toHaveAttribute('href', '#pricing');
+  });
+
+  test('busca por "citmail" mostra "parece já estar registrado"', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await page.locator('#domainInput').fill('citmail');
+    await page.locator('#domainCheckBtn').click();
+    await expect(page.locator('#domainResult .domain-taken')).toContainText(BUSCA_OCUPADO);
+  });
+});
+
+test.describe('landing — CIT-50: FAQ e prazos', { tag: '@CIT-50' }, () => {
+  test('FAQ tem 8 perguntas', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('#faq .faq-item')).toHaveCount(FAQ_LITERAIS.length);
+  });
+
+  test('perguntas do FAQ são as finais, na ordem', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('#faq .faq-question span')).toHaveText(FAQ_LITERAIS.map(([q]) => q));
+  });
+
+  test('respostas do FAQ são as finais, na ordem', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('#faq .faq-answer p')).toHaveText(FAQ_LITERAIS.map(([, r]) => r));
+  });
+
+  test('nota de cancelamento do resumo é a final', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('.cs-feature-nota')).toHaveText(NOTA_CANCELAMENTO);
+  });
+
+  test('passos 2 a 4 de Como funciona têm o texto final', async ({ page, erros }) => {
+    await page.goto('index.html');
+    const textos = page.locator('#how-it-works .step-card p');
+    for (const i of [1, 2, 3]) {
+      await expect(textos.nth(i), `passo ${i + 1}`).toHaveText(/** @type {string} */ (PASSOS_COMO_FUNCIONA[i]));
+    }
+  });
+});
+
+test.describe('landing — CIT-50: contas 4→5', { tag: '@CIT-50' }, () => {
+  /** @param {number} c centavos */
+  const reais = c => `R$ ${(c / 100).toFixed(2).replace('.', ',')}`;
+  const ID_POR_TIPO = { '5gb': '5', '25gb': '25', '50gb': '50' };
+
+  for (const tipo of /** @type {const} */ (['5gb', '25gb', '50gb'])) {
+    for (const anual of [false, true]) {
+      test(`${tipo} ${anual ? 'anual' : 'mensal'}: subtotal e total com 4 e depois 5 contas batem com PRECOS.contas`, async ({ page, erros }) => {
+        await page.goto('index.html');
+        // preço de lista lido da página; a conta é refeita aqui, sem usar o landing.js
+        const atual = await page.evaluate(t => PRECOS.contas[t], tipo);
+        const n = ID_POR_TIPO[tipo];
+        await page.locator(anual ? '#toggleAnnual' : '#toggleMonthly').click();
+
+        for (const qtd of [4, 5]) {
+          const pct = anual ? 20 : (qtd >= 5 ? 5 : 0);
+          const total = qtd * Math.round(atual * (100 - pct) / 100);
+          const input = page.locator(`#qty${n}`);
+          await input.fill(String(qtd));
+          await input.press('Tab');
+          await expect(page.locator(`#sub${n}`), `${qtd}×${tipo} #sub${n}`).toHaveText(`${reais(total)}/mês`);
+          await expect(page.locator('#csTotal'), `${qtd}×${tipo} #csTotal`).toHaveText(reais(total));
+        }
+      });
+    }
+  }
+});
+
+test.describe('landing — CIT-50: rodapé e links', { tag: '@CIT-50' }, () => {
+  /**
+   * Quantidade de `a[href="#"]` na landing, com o estado no rótulo da falha.
+   * @param {import('@playwright/test').Page} page
+   * @param {string} estado
+   */
+  async function semHrefVazio(page, estado) {
+    const links = await page.evaluate(() => [...document.querySelectorAll('a[href="#"]')].map(a => a.outerHTML.slice(0, 120)));
+    expect(links, `a[href="#"] ${estado}`).toEqual([]);
+  }
+
+  test('rodapé não tem os links Sobre nós, Blog, Parceiros, Privacidade e Termos', async ({ page, erros }) => {
+    await page.goto('index.html');
+    const textos = (await page.locator('footer a').allInnerTexts()).map(t => t.trim());
+    for (const removido of RODAPE_TEXTOS_REMOVIDOS) {
+      expect(textos, `link do rodapé: ${removido}`).not.toContain(removido);
+    }
+  });
+
+  test('rodapé não tem redes sociais', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('.footer-social')).toHaveCount(0);
+  });
+
+  test('linha legal do rodapé tem razão social e CNPJ finais, e o fonte não tem CNPJ provisório', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('.footer-bottom p')).toHaveText(RODAPE_LEGAL);
+    const fonte = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    expect(fonte).not.toContain('XX.XXX.XXX');
+  });
+
+  test('coluna Suporte do rodapé tem os 3 links finais', async ({ page, erros }) => {
+    await page.goto('index.html');
+    const links = page.locator('footer .footer-col').filter({ has: page.locator('h4', { hasText: /^Suporte$/ }) }).locator('a');
+    await expect(links).toHaveText(RODAPE_SUPORTE.map(l => l.texto));
+    for (let i = 0; i < RODAPE_SUPORTE.length; i++) {
+      await expect(links.nth(i)).toHaveAttribute('href', RODAPE_SUPORTE[i].href);
+    }
+  });
+
+  test('os dois logos têm href="#hero" e aria-label="CITMail"', async ({ page, erros }) => {
+    await page.goto('index.html');
+    const logos = page.locator('.nav-logo');
+    await expect(logos).toHaveCount(2);
+    for (let i = 0; i < 2; i++) {
+      await expect(logos.nth(i)).toHaveAttribute('href', '#hero');
+      await expect(logos.nth(i)).toHaveAttribute('aria-label', 'CITMail');
+    }
+  });
+
+  test('nenhum a[href="#"] na carga, com carrinho vazio, com 1×25GB e depois da busca de domínio', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await semHrefVazio(page, 'na carga');
+
+    const cta = page.locator('#calcCtaBtn');
+    const qty25 = page.locator('#qty25');
+    await qty25.fill('1');
+    await qty25.press('Tab');
+    await expect(cta).toHaveAttribute('href', /checkout\.html\?/);
+    await semHrefVazio(page, 'com 1×25GB');
+
+    await qty25.fill('0');
+    await qty25.press('Tab');
+    await expect(cta).toHaveAttribute('role', 'link');
+    await semHrefVazio(page, 'com o carrinho vazio de novo');
+
+    await page.locator('#domainInput').fill('empresaficticia50');
+    await page.locator('#domainCheckBtn').click();
+    await expect(page.locator('#domainResult .domain-available')).toBeVisible();
+    await semHrefVazio(page, 'depois da busca de domínio');
+  });
+
+  test('CTA com carrinho vazio não tem href e se anuncia como link indisponível', async ({ page, erros }) => {
+    await page.goto('index.html');
+    const cta = page.locator('#calcCtaBtn');
+    await expect(cta).not.toHaveAttribute('href', /.*/);
+    await expect(cta).toHaveAttribute('role', 'link');
+    await expect(cta).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  test('CTA com 1×25GB tem href do checkout e perde role e aria-disabled', async ({ page, erros }) => {
+    await page.goto('index.html');
+    const qty25 = page.locator('#qty25');
+    await qty25.fill('1');
+    await qty25.press('Tab');
+    const cta = page.locator('#calcCtaBtn');
+    await expect(cta).toHaveAttribute('href', /checkout\.html\?/);
+    await expect(cta).not.toHaveAttribute('role', /.*/);
+    await expect(cta).not.toHaveAttribute('aria-disabled', /.*/);
+  });
+
+  test('CTA volta a ficar sem href, com role e aria-disabled, ao zerar as contas', async ({ page, erros }) => {
+    await page.goto('index.html');
+    const qty25 = page.locator('#qty25');
+    await qty25.fill('1');
+    await qty25.press('Tab');
+    await expect(page.locator('#calcCtaBtn')).toHaveAttribute('href', /checkout\.html\?/);
+    await qty25.fill('0');
+    await qty25.press('Tab');
+    const cta = page.locator('#calcCtaBtn');
+    await expect(cta).not.toHaveAttribute('href', /.*/);
+    await expect(cta).toHaveAttribute('role', 'link');
+    await expect(cta).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  test('fontes index.html e assets/landing.js não atribuem "#" a href', async ({ page, erros }) => {
+    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    const js = readFileSync(new URL('../assets/landing.js', import.meta.url), 'utf8');
+    expect(html).not.toMatch(/href\s*=\s*["']#["']/);
+    expect(js).not.toMatch(/(?:setAttribute\(\s*['"]href['"]\s*,\s*['"]#['"]|\.href\s*=\s*['"]#['"])/);
+  });
+});
+
+test.describe('landing — CIT-50: mobile', { tag: '@CIT-50' }, () => {
+  for (const largura of [320, 375]) {
+    test(`${largura}px: documento e contêineres sem rolagem horizontal, na carga e com 5 contas de cada tipo`, async ({ page, erros }, testInfo) => {
+      test.skip(testInfo.project.name !== 'mobile', 'CA5 só no perfil mobile');
+      await page.setViewportSize({ width: largura, height: 800 });
+      await page.goto('index.html');
+
+      const medir = () => page.evaluate(() => {
+        const sels = ['.hero-stats', '.trust-bar-inner', '.included-box', '.footer-bottom'];
+        const doc = document.documentElement;
+        return {
+          documento: doc.scrollWidth - doc.clientWidth,
+          conteineres: sels.map(sel => {
+            const el = /** @type {HTMLElement} */ (document.querySelector(sel));
+            return { sel, excesso: el.scrollWidth - el.clientWidth };
+          }),
+        };
+      });
+      const confere = (/** @type {Awaited<ReturnType<typeof medir>>} */ m, /** @type {string} */ estado) => {
+        expect(m.documento, `documento transborda ${estado}`).toBeLessThanOrEqual(0);
+        for (const c of m.conteineres) expect(c.excesso, `${c.sel} transborda ${estado}`).toBeLessThanOrEqual(0);
+      };
+
+      confere(await medir(), 'na carga');
+      await page.evaluate(() => { updateQty('5gb', '5'); updateQty('25gb', '5'); updateQty('50gb', '5'); });
+      confere(await medir(), 'com 5 contas de cada tipo');
+    });
+
+    test(`${largura}px: cada resposta do FAQ aberta sem corte nem transbordo horizontal`, async ({ page, erros }, testInfo) => {
+      test.skip(testInfo.project.name !== 'mobile', 'CA5 só no perfil mobile');
+      await page.setViewportSize({ width: largura, height: 800 });
+      await page.goto('index.html');
+
+      const itens = page.locator('#faq .faq-item');
+      const total = await itens.count();
+      expect(total).toBe(FAQ_LITERAIS.length);
+
+      for (let i = 0; i < total; i++) {
+        const item = itens.nth(i);
+        await item.locator('.faq-question').click(); // o acordeão fecha as outras
+        await expect(item).toHaveClass(/open/);
+        const resposta = item.locator('.faq-answer');
+        const p = resposta.locator('p');
+
+        // espera o fim da transição: a altura do .faq-answer estabiliza
+        let anterior = -1;
+        await expect.poll(async () => {
+          const h = await resposta.evaluate(el => el.clientHeight);
+          const estavel = h === anterior && h > 0;
+          anterior = h;
+          return estavel;
+        }, { message: `transição do FAQ ${i + 1} não estabilizou`, intervals: [100, 100, 100, 200, 300], timeout: 5000 }).toBe(true);
+
+        const m = await page.evaluate(([idx]) => {
+          const it = document.querySelectorAll('#faq .faq-item')[idx];
+          const ans = /** @type {HTMLElement} */ (it.querySelector('.faq-answer'));
+          const par = /** @type {HTMLElement} */ (ans.querySelector('p'));
+          const doc = document.documentElement;
+          return {
+            larguraP: par.scrollWidth - par.clientWidth,
+            alturaP: par.scrollHeight - ans.clientHeight,
+            documento: doc.scrollWidth - doc.clientWidth,
+          };
+        }, [i]);
+        expect(m.larguraP, `FAQ ${i + 1}: texto estoura a largura`).toBeLessThanOrEqual(0);
+        expect(m.alturaP, `FAQ ${i + 1}: resposta cortada pelo max-height`).toBeLessThanOrEqual(0);
+        expect(m.documento, `FAQ ${i + 1}: documento com rolagem horizontal`).toBeLessThanOrEqual(0);
+        await expect(p).toBeVisible();
+      }
+    });
+  }
 });
