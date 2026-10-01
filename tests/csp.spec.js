@@ -303,12 +303,13 @@ test.describe('CSP — landing e checkout', { tag: '@CIT-49' }, () => {
       // executor precisou fazer.
       await page.locator('#btnCopyPix').dispatchEvent('click');
 
+      // o aviso "Copiado" aparece no próprio #btnCopyPix e não no botão do Pix do domínio (CIT-153);
+      // conferido antes da área de transferência porque dura só 2 s
+      await expect(page.locator('#btnCopyPix')).toContainText('Copiado');
+      await expect(page.locator('#btnCopyDomPix')).not.toContainText('Copiado');
       // interno: copyPix() copia o código Pix de pagamento (#pixCode) para a área de
       // transferência — prova que o handler do próprio #btnCopyPix rodou (não só o bubbling).
       await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(codigoPix);
-      // o aviso "Copiado" aparece no próprio #btnCopyPix e não no botão do Pix do domínio (CIT-153)
-      await expect(page.locator('#btnCopyPix')).toContainText('Copiado');
-      await expect(page.locator('#btnCopyDomPix')).not.toContainText('Copiado');
       // externo: bubbling até o listener de #payPix
       await expect(page.locator('#payPix')).toHaveClass(/selected/);
     });
