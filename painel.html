@@ -2,6 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Painel do Cliente — CITMail</title>
   <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/favicon-32.png" />
@@ -820,7 +821,7 @@
 <body>
 
 <!-- SIDEBAR BACKDROP (mobile) -->
-<div class="sidebar-backdrop" id="sidebarBackdrop" onclick="closeSidebar()"></div>
+<div class="sidebar-backdrop" id="sidebarBackdrop"></div>
 
 <!-- SIDEBAR -->
 <aside class="sidebar" id="sidebar">
@@ -830,32 +831,32 @@
 
   <nav class="sidebar-nav">
     <div class="nav-section-label">Principal</div>
-    <a class="nav-item active" data-section="dashboard" onclick="navigate('dashboard')">
+    <a class="nav-item active" data-section="dashboard">
       <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#layout-dashboard"></use></svg> Dashboard
     </a>
-    <a class="nav-item" data-section="email" onclick="navigate('email')">
+    <a class="nav-item" data-section="email">
       <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#mail"></use></svg> E-mail
     </a>
 
     <div class="nav-section-label">Gestão</div>
-    <a class="nav-item" data-section="financeiro" onclick="navigate('financeiro')">
+    <a class="nav-item" data-section="financeiro">
       <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#file-text"></use></svg> Financeiro
     </a>
-    <a class="nav-item" data-section="produtos" onclick="navigate('produtos')">
+    <a class="nav-item" data-section="produtos">
       <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#package"></use></svg> Meus Produtos
     </a>
-    <a class="nav-item" data-section="marketplace" onclick="navigate('marketplace')">
+    <a class="nav-item" data-section="marketplace">
       <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#store"></use></svg> Marketplace
     </a>
-    <a class="nav-item" data-section="dns" onclick="navigate('dns')">
+    <a class="nav-item" data-section="dns">
       <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#server"></use></svg> DNS
     </a>
 
     <div class="nav-section-label">Conta</div>
-    <a class="nav-item" data-section="configuracoes" onclick="navigate('configuracoes')">
+    <a class="nav-item" data-section="configuracoes">
       <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#sliders-horizontal"></use></svg> Configurações
     </a>
-    <a class="nav-item" data-section="suporte" onclick="navigate('suporte')">
+    <a class="nav-item" data-section="suporte">
       <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#headset"></use></svg> Suporte
       <span class="nav-badge" id="ticketBadge">2</span>
     </a>
@@ -868,7 +869,7 @@
         <div class="sidebar-user-name" id="sidebarName">João da Silva</div>
         <div class="sidebar-user-plan">E-mail 25 GB · Mensal</div>
       </div>
-      <button class="sidebar-logout" aria-label="Sair" data-tip="Sair" onclick="showToast('Sessão encerrada.','info')">
+      <button class="sidebar-logout" aria-label="Sair" data-tip="Sair" data-toast="Sessão encerrada." data-toast-tipo="info">
         <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#log-out"></use></svg>
       </button>
     </div>
@@ -880,7 +881,7 @@
 
   <!-- TOPBAR -->
   <header class="topbar">
-    <button class="sidebar-toggle" aria-label="Abrir menu" onclick="toggleSidebar()">
+    <button class="sidebar-toggle" id="sidebarToggle" aria-label="Abrir menu">
       <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#menu"></use></svg>
     </button>
     <img class="topbar-logo" src="assets/brand/citmail-horizontal-claro.png" alt="CITMail" width="133" height="30">
@@ -890,14 +891,14 @@
       <input type="text" placeholder="Buscar…" />
     </div>
     <div class="topbar-actions">
-      <button class="topbar-btn" aria-label="Notificações" data-tip="Notificações" onclick="navigate('suporte')">
+      <button class="topbar-btn" aria-label="Notificações" data-tip="Notificações" data-ir-para="suporte">
         <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#bell"></use></svg>
         <span class="topbar-notif-dot"></span>
       </button>
       <button class="topbar-btn topbar-help" aria-label="Ajuda" data-tip="Ajuda">
         <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-help"></use></svg>
       </button>
-      <div class="topbar-avatar" id="topbarAvatar" onclick="navigate('configuracoes')">JS</div>
+      <div class="topbar-avatar" id="topbarAvatar" data-ir-para="configuracoes">JS</div>
     </div>
   </header>
 
@@ -953,7 +954,7 @@
         <div class="card">
           <div class="card-header">
             <div class="card-title"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#mail"></use></svg> Contas de E-mail</div>
-            <button class="btn btn-primary btn-sm" onclick="navigate('email')">Gerenciar</button>
+            <button class="btn btn-primary btn-sm" data-ir-para="email">Gerenciar</button>
           </div>
           <div class="account-list">
             <div class="account-row">
@@ -986,7 +987,7 @@
               </div>
               <span class="badge badge-green">Ativo</span>
             </div>
-            <button class="btn btn-outline btn-block" onclick="openModal('modalNovaContaEmail')">
+            <button class="btn btn-outline btn-block" data-abrir-modal="modalNovaContaEmail">
               <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg> Nova conta de e-mail
             </button>
           </div>
@@ -1041,11 +1042,11 @@
       <div class="card mt-20">
         <div class="card-title mb-16"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#zap"></use></svg> Ações Rápidas</div>
         <div class="quick-actions">
-          <button class="btn btn-outline" onclick="openModal('modalNovaContaEmail')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#user-plus"></use></svg> Nova conta e-mail</button>
-          <button class="btn btn-outline" onclick="navigate('financeiro')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#file-text"></use></svg> Ver faturas</button>
-          <button class="btn btn-outline" onclick="navigate('dns')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#globe"></use></svg> Configurar DNS</button>
-          <button class="btn btn-outline" onclick="openModal('modalNovoTicket')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#headset"></use></svg> Abrir ticket</button>
-          <button class="btn btn-outline" onclick="navigate('marketplace')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#store"></use></svg> Contratar serviço</button>
+          <button class="btn btn-outline" data-abrir-modal="modalNovaContaEmail"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#user-plus"></use></svg> Nova conta e-mail</button>
+          <button class="btn btn-outline" data-ir-para="financeiro"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#file-text"></use></svg> Ver faturas</button>
+          <button class="btn btn-outline" data-ir-para="dns"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#globe"></use></svg> Configurar DNS</button>
+          <button class="btn btn-outline" data-abrir-modal="modalNovoTicket"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#headset"></use></svg> Abrir ticket</button>
+          <button class="btn btn-outline" data-ir-para="marketplace"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#store"></use></svg> Contratar serviço</button>
         </div>
       </div>
     </section>
@@ -1057,7 +1058,7 @@
           <h1>Contas de E-mail</h1>
           <p>Gerencie suas caixas postais, aliases e configurações</p>
         </div>
-        <button class="btn btn-primary" onclick="openModal('modalNovaContaEmail')">
+        <button class="btn btn-primary" data-abrir-modal="modalNovaContaEmail">
           <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg> Nova conta
         </button>
       </div>
@@ -1104,8 +1105,8 @@
                 <td><span class="badge badge-green"><span class="badge-dot"></span> Ativo</span></td>
                 <td>
                   <div class="row-actions">
-                    <button class="btn btn-ghost btn-sm" aria-label="Editar conta" data-tip="Editar" onclick="showToast('Abrindo configurações…','info')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#pencil"></use></svg></button>
-                    <button class="btn btn-danger btn-sm" aria-label="Excluir conta" data-tip="Excluir" onclick="showToast('Conta removida.','error')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#trash-2"></use></svg></button>
+                    <button class="btn btn-ghost btn-sm" aria-label="Editar conta" data-tip="Editar" data-toast="Abrindo configurações…" data-toast-tipo="info"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#pencil"></use></svg></button>
+                    <button class="btn btn-danger btn-sm" aria-label="Excluir conta" data-tip="Excluir" data-toast="Conta removida." data-toast-tipo="error"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#trash-2"></use></svg></button>
                   </div>
                 </td>
               </tr>
@@ -1217,8 +1218,8 @@
           </div>
           <div class="divider"></div>
           <div class="btn-row">
-            <button class="btn btn-outline" onclick="navigate('marketplace')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#arrow-up"></use></svg> Upgrade</button>
-            <button class="btn btn-ghost" onclick="showToast('Para cancelar, abra um ticket no Suporte.','info')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg> Cancelar</button>
+            <button class="btn btn-outline" data-ir-para="marketplace"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#arrow-up"></use></svg> Upgrade</button>
+            <button class="btn btn-ghost" data-toast="Para cancelar, abra um ticket no Suporte." data-toast-tipo="info"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg> Cancelar</button>
           </div>
         </div>
 
@@ -1245,10 +1246,10 @@
           </div>
           <div class="divider"></div>
           <div class="btn-row">
-            <button class="btn btn-primary" onclick="showToast('Pix gerado. Escaneie o QR Code para pagar.','success')">
+            <button class="btn btn-primary" data-toast="Pix gerado. Escaneie o QR Code para pagar." data-toast-tipo="success">
               <svg class="icon icon-pix" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg> Pagar agora
             </button>
-            <button class="btn btn-outline" style="flex:0 0 auto" aria-label="Baixar fatura" data-tip="Baixar fatura" onclick="showToast('Fatura baixada.','success')">
+            <button class="btn btn-outline" style="flex:0 0 auto" aria-label="Baixar fatura" data-tip="Baixar fatura" data-toast="Fatura baixada." data-toast-tipo="success">
               <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#download"></use></svg>
             </button>
           </div>
@@ -1281,7 +1282,7 @@
                 <td class="invoice-amount">R$ 133,50</td>
                 <td class="cell-sm"><svg class="icon icon-pix" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg> Pix</td>
                 <td><span class="badge badge-green">Pago</span></td>
-                <td><button class="btn btn-ghost btn-sm" aria-label="Baixar PDF da fatura" data-tip="Baixar PDF" onclick="showToast('Baixando PDF…','info')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#download"></use></svg></button></td>
+                <td><button class="btn btn-ghost btn-sm" aria-label="Baixar PDF da fatura" data-tip="Baixar PDF" data-toast="Baixando PDF…" data-toast-tipo="info"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#download"></use></svg></button></td>
               </tr>
               <tr>
                 <td class="cell-sub">#0011</td>
@@ -1290,7 +1291,7 @@
                 <td class="invoice-amount">R$ 133,50</td>
                 <td class="cell-sm"><svg class="icon icon-pix" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg> Pix</td>
                 <td><span class="badge badge-green">Pago</span></td>
-                <td><button class="btn btn-ghost btn-sm" aria-label="Baixar PDF da fatura" data-tip="Baixar PDF" onclick="showToast('Baixando PDF…','info')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#download"></use></svg></button></td>
+                <td><button class="btn btn-ghost btn-sm" aria-label="Baixar PDF da fatura" data-tip="Baixar PDF" data-toast="Baixando PDF…" data-toast-tipo="info"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#download"></use></svg></button></td>
               </tr>
               <tr>
                 <td class="cell-sub">#0010</td>
@@ -1299,7 +1300,7 @@
                 <td class="invoice-amount">R$ 80,00</td>
                 <td class="cell-sm"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#credit-card"></use></svg> Cartão</td>
                 <td><span class="badge badge-green">Pago</span></td>
-                <td><button class="btn btn-ghost btn-sm" aria-label="Baixar PDF da fatura" data-tip="Baixar PDF" onclick="showToast('Baixando PDF…','info')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#download"></use></svg></button></td>
+                <td><button class="btn btn-ghost btn-sm" aria-label="Baixar PDF da fatura" data-tip="Baixar PDF" data-toast="Baixando PDF…" data-toast-tipo="info"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#download"></use></svg></button></td>
               </tr>
               <tr>
                 <td class="cell-sub">#0009</td>
@@ -1308,7 +1309,7 @@
                 <td class="invoice-amount">R$ 80,00</td>
                 <td class="cell-sm"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#credit-card"></use></svg> Cartão</td>
                 <td><span class="badge badge-green">Pago</span></td>
-                <td><button class="btn btn-ghost btn-sm" aria-label="Baixar PDF da fatura" data-tip="Baixar PDF" onclick="showToast('Baixando PDF…','info')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#download"></use></svg></button></td>
+                <td><button class="btn btn-ghost btn-sm" aria-label="Baixar PDF da fatura" data-tip="Baixar PDF" data-toast="Baixando PDF…" data-toast-tipo="info"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#download"></use></svg></button></td>
               </tr>
             </tbody>
           </table>
@@ -1323,7 +1324,7 @@
           <h1>Meus Produtos</h1>
           <p>Serviços ativos na sua conta CITMail</p>
         </div>
-        <button class="btn btn-primary" onclick="navigate('marketplace')">
+        <button class="btn btn-primary" data-ir-para="marketplace">
           <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg> Contratar mais
         </button>
       </div>
@@ -1346,7 +1347,7 @@
           </div>
           <div class="flex-between">
             <div class="product-card-price">R$ 80,00 <span>/mês</span></div>
-            <button class="btn btn-outline btn-sm" onclick="navigate('email')">Gerenciar</button>
+            <button class="btn btn-outline btn-sm" data-ir-para="email">Gerenciar</button>
           </div>
         </div>
 
@@ -1366,7 +1367,7 @@
           </div>
           <div class="flex-between">
             <div class="product-card-price">R$ 23,50 <span>/mês</span></div>
-            <button class="btn btn-outline btn-sm" onclick="showToast('Abrindo Talk…','info')">Acessar</button>
+            <button class="btn btn-outline btn-sm" data-toast="Abrindo Talk…" data-toast-tipo="info">Acessar</button>
           </div>
         </div>
 
@@ -1386,7 +1387,7 @@
           </div>
           <div class="flex-between">
             <div class="product-card-price">R$ 30,00 <span>/mês</span></div>
-            <button class="btn btn-outline btn-sm" onclick="showToast('Abrindo Backup…','info')">Gerenciar</button>
+            <button class="btn btn-outline btn-sm" data-toast="Abrindo Backup…" data-toast-tipo="info">Gerenciar</button>
           </div>
         </div>
       </div>
@@ -1418,7 +1419,7 @@
             <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> 100 GB · R$ 28,70/conta/mês</div>
             <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> 1 TB · R$ 319,00/conta/mês</div>
           </div>
-          <button class="btn btn-primary btn-push" onclick="showToast('Redirecionando para contratação…','info')">
+          <button class="btn btn-primary btn-push" data-toast="Redirecionando para contratação…" data-toast-tipo="info">
             <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#shopping-cart"></use></svg> Contratar
           </button>
         </div>
@@ -1435,7 +1436,7 @@
             <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Tráfego incluso</div>
             <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Backup automático</div>
           </div>
-          <button class="btn btn-primary btn-push" onclick="openModal('modalContratarServidor')">
+          <button class="btn btn-primary btn-push" data-abrir-modal="modalContratarServidor">
             <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#shopping-cart"></use></svg> Ver planos
           </button>
         </div>
@@ -1452,7 +1453,7 @@
             <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Retenção configurável</div>
             <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Restauração pelo painel</div>
           </div>
-          <button class="btn btn-primary btn-push" onclick="showToast('Redirecionando para contratação…','info')">
+          <button class="btn btn-primary btn-push" data-toast="Redirecionando para contratação…" data-toast-tipo="info">
             <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#shopping-cart"></use></svg> Contratar
           </button>
         </div>
@@ -1469,7 +1470,7 @@
             <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Monitoramento 24/7</div>
             <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> IaC com Terraform</div>
           </div>
-          <button class="btn btn-primary btn-push" onclick="openModal('modalContratarConsultoria')">
+          <button class="btn btn-primary btn-push" data-abrir-modal="modalContratarConsultoria">
             <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#calendar-check"></use></svg> Agendar conversa
           </button>
         </div>
@@ -1485,7 +1486,7 @@
             <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Plano de ação detalhado</div>
             <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Profissionais certificados</div>
           </div>
-          <button class="btn btn-primary btn-push" onclick="openModal('modalContratarConsultoria')">
+          <button class="btn btn-primary btn-push" data-abrir-modal="modalContratarConsultoria">
             <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#calendar-check"></use></svg> Agendar conversa
           </button>
         </div>
@@ -1502,7 +1503,7 @@
             <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> DNS gerenciado</div>
             <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> WHOIS protegido</div>
           </div>
-          <button class="btn btn-primary btn-push" onclick="showToast('Redirecionando…','info')">
+          <button class="btn btn-primary btn-push" data-toast="Redirecionando…" data-toast-tipo="info">
             <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#shopping-cart"></use></svg> Registrar domínio
           </button>
         </div>
@@ -1517,7 +1518,7 @@
           <h1>DNS</h1>
           <p>Gerencie os registros DNS dos seus domínios</p>
         </div>
-        <button class="btn btn-primary" onclick="dnsOpenAddRecord()">
+        <button class="btn btn-primary" id="btnDnsAdd">
           <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg> Adicionar registro
         </button>
       </div>
@@ -1533,7 +1534,7 @@
             <div class="dns-prop-title" id="dnsPropTitle"></div>
             <div class="dns-prop-sub" id="dnsPropSub"></div>
           </div>
-          <button class="btn btn-outline btn-sm" onclick="dnsCheckProp()">
+          <button class="btn btn-outline btn-sm" id="btnDnsCheckProp">
             <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#refresh-cw"></use></svg> Verificar propagação
           </button>
         </div>
@@ -1550,7 +1551,7 @@
         <div class="dns-search-row">
           <div class="topbar-search dns-search">
             <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#search"></use></svg>
-            <input type="text" id="dnsSearch" placeholder="Buscar registro…" oninput="dnsRender()" />
+            <input type="text" id="dnsSearch" placeholder="Buscar registro…" />
           </div>
           <div id="dnsTypeFilters" class="dns-filters"></div>
         </div>
@@ -1595,9 +1596,9 @@
       </div>
 
       <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab(this,'tab-perfil')">Perfil</button>
-        <button class="tab-btn" onclick="switchTab(this,'tab-seguranca')">Segurança</button>
-        <button class="tab-btn" onclick="switchTab(this,'tab-notif')">Notificações</button>
+        <button class="tab-btn active" data-aba="tab-perfil">Perfil</button>
+        <button class="tab-btn" data-aba="tab-seguranca">Segurança</button>
+        <button class="tab-btn" data-aba="tab-notif">Notificações</button>
       </div>
 
       <!-- TAB PERFIL -->
@@ -1629,7 +1630,7 @@
               <label>Razão Social</label>
               <input type="text" value="Empresa Exemplo Ltda" />
             </div>
-            <button class="btn btn-primary" onclick="showToast('Dados cadastrais salvos.','success')">
+            <button class="btn btn-primary" data-toast="Dados cadastrais salvos." data-toast-tipo="success">
               <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#save"></use></svg> Salvar alterações
             </button>
           </div>
@@ -1663,7 +1664,7 @@
               <label>Cidade</label>
               <input type="text" value="São Paulo" />
             </div>
-            <button class="btn btn-primary" onclick="showToast('Endereço salvo.','success')">
+            <button class="btn btn-primary" data-toast="Endereço salvo." data-toast-tipo="success">
               <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#save"></use></svg> Salvar
             </button>
           </div>
@@ -1687,7 +1688,7 @@
               <label>Confirmar nova senha</label>
               <input type="password" placeholder="Repita a nova senha" />
             </div>
-            <button class="btn btn-primary" onclick="showToast('Senha alterada. Use a nova senha no próximo acesso.','success')">
+            <button class="btn btn-primary" data-toast="Senha alterada. Use a nova senha no próximo acesso." data-toast-tipo="success">
               <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg> Alterar senha
             </button>
           </div>
@@ -1708,11 +1709,11 @@
                   <div class="session-name">iPhone — São Paulo, BR</div>
                   <div class="session-meta">Safari · Há 2 horas</div>
                 </div>
-                <button class="btn btn-danger btn-sm" onclick="showToast('Sessão encerrada.','success')">Encerrar</button>
+                <button class="btn btn-danger btn-sm" data-toast="Sessão encerrada." data-toast-tipo="success">Encerrar</button>
               </div>
             </div>
             <div class="divider"></div>
-            <button class="btn btn-danger" onclick="showToast('Todas as outras sessões foram encerradas.','success')">
+            <button class="btn btn-danger" data-toast="Todas as outras sessões foram encerradas." data-toast-tipo="success">
               <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#log-out"></use></svg> Encerrar todas as outras sessões
             </button>
           </div>
@@ -1730,7 +1731,7 @@
                 <div class="pref-desc">Lembretes de vencimento e confirmações</div>
               </div>
               <label class="toggle-switch">
-                <input type="checkbox" checked onchange="showToast('Preferência salva.','success')" />
+                <input type="checkbox" checked data-toast="Preferência salva." data-toast-tipo="success" />
                 <span class="toggle-knob"></span>
               </label>
             </div>
@@ -1740,7 +1741,7 @@
                 <div class="pref-desc">Avisos de manutenção programada</div>
               </div>
               <label class="toggle-switch">
-                <input type="checkbox" checked onchange="showToast('Preferência salva.','success')" />
+                <input type="checkbox" checked data-toast="Preferência salva." data-toast-tipo="success" />
                 <span class="toggle-knob"></span>
               </label>
             </div>
@@ -1750,7 +1751,7 @@
                 <div class="pref-desc">Notificar quando o suporte responder</div>
               </div>
               <label class="toggle-switch">
-                <input type="checkbox" checked onchange="showToast('Preferência salva.','success')" />
+                <input type="checkbox" checked data-toast="Preferência salva." data-toast-tipo="success" />
                 <span class="toggle-knob"></span>
               </label>
             </div>
@@ -1760,7 +1761,7 @@
                 <div class="pref-desc">Lançamentos e ofertas especiais</div>
               </div>
               <label class="toggle-switch">
-                <input type="checkbox" onchange="showToast('Preferência salva.','success')" />
+                <input type="checkbox" data-toast="Preferência salva." data-toast-tipo="success" />
                 <span class="toggle-knob"></span>
               </label>
             </div>
@@ -1776,7 +1777,7 @@
           <h1>Suporte</h1>
           <p>Abra tickets e acompanhe seus chamados</p>
         </div>
-        <button class="btn btn-primary" onclick="openModal('modalNovoTicket')">
+        <button class="btn btn-primary" data-abrir-modal="modalNovoTicket">
           <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg> Novo ticket
         </button>
       </div>
@@ -1827,7 +1828,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr class="ticket-row" onclick="openModal('modalVerTicket')">
+              <tr class="ticket-row" data-ver-ticket="linha">
                 <td class="cell-sub">#1044</td>
                 <td>
                   <div class="ticket-subject">E-mail não chega no iPhone</div>
@@ -1837,7 +1838,7 @@
                 <td class="cell-sub">30/jun, 10:22</td>
                 <td class="cell-sub">30/jun, 14:08</td>
                 <td><span class="badge badge-yellow">Aguardando</span></td>
-                <td><button class="btn btn-ghost btn-sm" aria-label="Ver ticket" data-tip="Ver ticket" onclick="event.stopPropagation();openModal('modalVerTicket')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#eye"></use></svg></button></td>
+                <td><button class="btn btn-ghost btn-sm" aria-label="Ver ticket" data-tip="Ver ticket" data-ver-ticket="olho"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#eye"></use></svg></button></td>
               </tr>
               <tr class="ticket-row">
                 <td class="cell-sub">#1042</td>
@@ -1880,13 +1881,13 @@
   <div class="modal modal--md">
     <div class="modal-header">
       <h3 id="modalDnsTitle"><svg class="icon" style="margin-right:8px" aria-hidden="true"><use href="assets/icons.svg#server"></use></svg>Adicionar Registro</h3>
-      <button class="modal-close" aria-label="Fechar" onclick="closeModal('modalDnsRecord')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
+      <button class="modal-close" aria-label="Fechar" data-fechar-modal="modalDnsRecord"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
     </div>
     <div class="modal-body">
       <div class="form-row">
         <div class="field">
           <label>Tipo</label>
-          <select id="dnsRType" onchange="dnsTogglePriority()">
+          <select id="dnsRType">
             <option>A</option>
             <option>AAAA</option>
             <option>CNAME</option>
@@ -1927,8 +1928,8 @@
       <input type="hidden" id="dnsREditId" value="" />
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modalDnsRecord')">Cancelar</button>
-      <button class="btn btn-primary" onclick="dnsSaveRecord()"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#save"></use></svg> Salvar registro</button>
+      <button class="btn btn-ghost" data-fechar-modal="modalDnsRecord">Cancelar</button>
+      <button class="btn btn-primary" id="btnDnsSave"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#save"></use></svg> Salvar registro</button>
     </div>
   </div>
 </div>
@@ -1937,7 +1938,7 @@
   <div class="modal">
     <div class="modal-header">
       <h3><svg class="icon" style="margin-right:8px" aria-hidden="true"><use href="assets/icons.svg#user-plus"></use></svg>Nova Conta de E-mail</h3>
-      <button class="modal-close" aria-label="Fechar" onclick="closeModal('modalNovaContaEmail')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
+      <button class="modal-close" aria-label="Fechar" data-fechar-modal="modalNovaContaEmail"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
     </div>
     <div class="modal-body">
       <div class="form-row">
@@ -1965,8 +1966,8 @@
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modalNovaContaEmail')">Cancelar</button>
-      <button class="btn btn-primary" onclick="closeModal('modalNovaContaEmail');showToast('Conta de e-mail criada.','success')">
+      <button class="btn btn-ghost" data-fechar-modal="modalNovaContaEmail">Cancelar</button>
+      <button class="btn btn-primary" data-fechar-modal="modalNovaContaEmail" data-toast="Conta de e-mail criada." data-toast-tipo="success">
         <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg> Criar conta
       </button>
     </div>
@@ -1978,7 +1979,7 @@
   <div class="modal modal--md">
     <div class="modal-header">
       <h3><svg class="icon" style="margin-right:8px" aria-hidden="true"><use href="assets/icons.svg#headset"></use></svg>Novo Ticket de Suporte</h3>
-      <button class="modal-close" aria-label="Fechar" onclick="closeModal('modalNovoTicket')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
+      <button class="modal-close" aria-label="Fechar" data-fechar-modal="modalNovoTicket"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
     </div>
     <div class="modal-body">
       <div class="form-row">
@@ -2011,8 +2012,8 @@
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modalNovoTicket')">Cancelar</button>
-      <button class="btn btn-primary" onclick="closeModal('modalNovoTicket');showToast('Ticket #1045 aberto. Tempo médio de resposta: até 2 horas.','success')">
+      <button class="btn btn-ghost" data-fechar-modal="modalNovoTicket">Cancelar</button>
+      <button class="btn btn-primary" data-fechar-modal="modalNovoTicket" data-toast="Ticket #1045 aberto. Tempo médio de resposta: até 2 horas." data-toast-tipo="success">
         <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#send"></use></svg> Abrir ticket
       </button>
     </div>
@@ -2030,7 +2031,7 @@
           <span class="badge badge-blue">Técnico</span>
         </div>
       </div>
-      <button class="modal-close" aria-label="Fechar" onclick="closeModal('modalVerTicket')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
+      <button class="modal-close" aria-label="Fechar" data-fechar-modal="modalVerTicket"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
     </div>
     <div class="modal-body modal-body--scroll">
       <div class="msg-list">
@@ -2054,8 +2055,8 @@
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modalVerTicket')">Fechar</button>
-      <button class="btn btn-primary" onclick="closeModal('modalVerTicket');showToast('Resposta enviada ao suporte.','success')">
+      <button class="btn btn-ghost" data-fechar-modal="modalVerTicket">Fechar</button>
+      <button class="btn btn-primary" data-fechar-modal="modalVerTicket" data-toast="Resposta enviada ao suporte." data-toast-tipo="success">
         <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#send"></use></svg> Responder
       </button>
     </div>
@@ -2067,7 +2068,7 @@
   <div class="modal">
     <div class="modal-header">
       <h3><svg class="icon" style="margin-right:8px" aria-hidden="true"><use href="assets/icons.svg#calendar-check"></use></svg>Agendar Conversa</h3>
-      <button class="modal-close" aria-label="Fechar" onclick="closeModal('modalContratarConsultoria')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
+      <button class="modal-close" aria-label="Fechar" data-fechar-modal="modalContratarConsultoria"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
     </div>
     <div class="modal-body">
       <p>Um especialista CITMail retorna em até 1 dia útil com uma proposta para a sua necessidade.</p>
@@ -2088,8 +2089,8 @@
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modalContratarConsultoria')">Cancelar</button>
-      <button class="btn btn-primary" onclick="closeModal('modalContratarConsultoria');showToast('Solicitação enviada. Um especialista retorna em até 1 dia útil.','success')">
+      <button class="btn btn-ghost" data-fechar-modal="modalContratarConsultoria">Cancelar</button>
+      <button class="btn btn-primary" data-fechar-modal="modalContratarConsultoria" data-toast="Solicitação enviada. Um especialista retorna em até 1 dia útil." data-toast-tipo="success">
         <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#send"></use></svg> Enviar solicitação
       </button>
     </div>
@@ -2101,11 +2102,11 @@
   <div class="modal modal--md">
     <div class="modal-header">
       <h3><svg class="icon" style="margin-right:8px" aria-hidden="true"><use href="assets/icons.svg#server"></use></svg>Planos de Servidor Cloud</h3>
-      <button class="modal-close" aria-label="Fechar" onclick="closeModal('modalContratarServidor')"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
+      <button class="modal-close" aria-label="Fechar" data-fechar-modal="modalContratarServidor"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
     </div>
     <div class="modal-body">
       <div class="plan-opts">
-        <label class="plan-opt" onclick="selectPlanOpt(this)">
+        <label class="plan-opt" data-plano-opcao>
           <input type="radio" name="server" />
           <div class="plan-opt-info">
             <div class="plan-opt-name">VPS Starter</div>
@@ -2113,7 +2114,7 @@
           </div>
           <div class="plan-opt-price">R$ 89/mês</div>
         </label>
-        <label class="plan-opt" onclick="selectPlanOpt(this)">
+        <label class="plan-opt" data-plano-opcao>
           <input type="radio" name="server" />
           <div class="plan-opt-info">
             <div class="plan-opt-name">VPS Pro</div>
@@ -2121,7 +2122,7 @@
           </div>
           <div class="plan-opt-price">R$ 169/mês</div>
         </label>
-        <label class="plan-opt" onclick="selectPlanOpt(this)">
+        <label class="plan-opt" data-plano-opcao>
           <input type="radio" name="server" />
           <div class="plan-opt-info">
             <div class="plan-opt-name">Dedicado</div>
@@ -2132,8 +2133,8 @@
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-ghost" onclick="closeModal('modalContratarServidor')">Cancelar</button>
-      <button class="btn btn-primary" onclick="closeModal('modalContratarServidor');showToast('Servidor contratado. Ativação em até 5 minutos.','success')">
+      <button class="btn btn-ghost" data-fechar-modal="modalContratarServidor">Cancelar</button>
+      <button class="btn btn-primary" data-fechar-modal="modalContratarServidor" data-toast="Servidor contratado. Ativação em até 5 minutos." data-toast-tipo="success">
         <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Contratar plano
       </button>
     </div>
@@ -2144,312 +2145,6 @@
 <div class="toast-wrap" id="toastWrap"></div>
 
 
-<script>
-  /* ── NAVIGATION ── */
-  const SECTION_TITLES = {
-    dashboard: 'Dashboard',
-    email: 'E-mail',
-    financeiro: 'Financeiro',
-    produtos: 'Meus Produtos',
-    marketplace: 'Marketplace',
-    dns: 'DNS',
-    configuracoes: 'Configurações',
-    suporte: 'Suporte',
-  };
-
-  function navigate(id) {
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    document.getElementById('sec-' + id).classList.add('active');
-    const navItem = document.querySelector(`.nav-item[data-section="${id}"]`);
-    if (navItem) navItem.classList.add('active');
-    document.getElementById('topbarTitle').textContent = SECTION_TITLES[id] || id;
-    closeSidebar();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-
-  /* ── SIDEBAR (mobile) ── */
-  function toggleSidebar() {
-    document.getElementById('sidebar').classList.toggle('open');
-    document.getElementById('sidebarBackdrop').classList.toggle('open');
-  }
-  function closeSidebar() {
-    document.getElementById('sidebar').classList.remove('open');
-    document.getElementById('sidebarBackdrop').classList.remove('open');
-  }
-
-  /* ── TABS ── */
-  function switchTab(btn, panelId) {
-    const section = btn.closest('.section');
-    section.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    section.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById(panelId).classList.add('active');
-  }
-
-  /* ── MODALS ── */
-  function openModal(id) {
-    document.getElementById(id).classList.add('open');
-    document.body.style.overflow = 'hidden';
-  }
-  function closeModal(id) {
-    document.getElementById(id).classList.remove('open');
-    document.body.style.overflow = '';
-  }
-  document.querySelectorAll('.modal-overlay').forEach(overlay => {
-    overlay.addEventListener('click', e => {
-      if (e.target === overlay) closeModal(overlay.id);
-    });
-  });
-  document.addEventListener('keydown', e => {
-    if (e.key !== 'Escape') return;
-    document.querySelectorAll('.modal-overlay.open').forEach(overlay => closeModal(overlay.id));
-    closeSidebar();
-  });
-
-  /* ── SELEÇÃO DE PLANO (modal servidor) ── */
-  function selectPlanOpt(label) {
-    label.parentElement.querySelectorAll('.plan-opt').forEach(o => o.classList.toggle('selected', o === label));
-  }
-
-  /* ── TOAST ── */
-  function showToast(msg, type = 'info') {
-    const icons = { success: 'circle-check', error: 'circle-x', info: 'info' };
-    const wrap = document.getElementById('toastWrap');
-    const toast = document.createElement('div');
-    toast.className = `toast ${type}`;
-    toast.innerHTML = `<svg class="icon" aria-hidden="true"><use href="assets/icons.svg#${icons[type]}"></use></svg><span>${msg}</span>`;
-    wrap.appendChild(toast);
-    setTimeout(() => {
-      toast.style.opacity = '0';
-      toast.style.transition = 'opacity .3s';
-      setTimeout(() => toast.remove(), 300);
-    }, 3800);
-  }
-
-  /* ── DEMO: personalize sidebar with URL name param ── */
-  (function init() {
-    const params = new URLSearchParams(window.location.search);
-    const name = params.get('nome') || 'João da Silva';
-    const initials = name.split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
-    document.getElementById('sidebarName').textContent = name;
-    document.getElementById('sidebarInitials').textContent = initials;
-    document.getElementById('topbarAvatar').textContent = initials;
-  })();
-
-  /* ── DNS MANAGEMENT ── */
-  const dnsData = {
-    'empresa.com.br': {
-      status: 'active',
-      lastCheck: '5 minutos atrás',
-      records: [
-        { id:1,  type:'A',     host:'@',            value:'177.126.48.201',                                          ttl:'300',  priority:null },
-        { id:2,  type:'MX',    host:'@',            value:'mail.citmail.com.br',                                     ttl:'3600', priority:'10' },
-        { id:3,  type:'MX',    host:'@',            value:'mail2.citmail.com.br',                                    ttl:'3600', priority:'20' },
-        { id:4,  type:'TXT',   host:'@',            value:'v=spf1 include:citmail.com.br ~all',                      ttl:'3600', priority:null },
-        { id:5,  type:'TXT',   host:'_dmarc',       value:'v=DMARC1; p=quarantine; rua=mailto:dmarc@citmail.com.br',ttl:'3600', priority:null },
-        { id:6,  type:'TXT',   host:'_domainkey',   value:'v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4G…',        ttl:'3600', priority:null },
-        { id:7,  type:'CNAME', host:'webmail',      value:'webmail.citmail.com.br',                                  ttl:'3600', priority:null },
-        { id:8,  type:'CNAME', host:'autodiscover', value:'autodiscover.citmail.com.br',                             ttl:'3600', priority:null },
-      ]
-    },
-    'empresa.com': {
-      status: 'propagating',
-      lastCheck: '10 minutos atrás',
-      records: [
-        { id:9,  type:'A',     host:'@',   value:'177.126.48.201',                     ttl:'300',  priority:null },
-        { id:10, type:'MX',    host:'@',   value:'mail.citmail.com.br',                ttl:'3600', priority:'10' },
-        { id:11, type:'TXT',   host:'@',   value:'v=spf1 include:citmail.com.br ~all', ttl:'3600', priority:null },
-        { id:12, type:'CNAME', host:'www', value:'empresa.com.br',                     ttl:'3600', priority:null },
-      ]
-    }
-  };
-  let activeDnsDomain = 'empresa.com.br';
-  let dnsActiveTypeFilter = 'Todos';
-  let dnsNextId = 30;
-
-  function dnsInit() {
-    const tabsEl = document.getElementById('dnsDomainTabs');
-    tabsEl.innerHTML = Object.keys(dnsData).map(d => {
-      const s = dnsData[d].status;
-      const dotClass = s === 'active' ? 'active' : s === 'propagating' ? 'propagating' : 'error';
-      const label = s === 'active' ? 'Ativo' : s === 'propagating' ? 'Propagando' : 'Erro';
-      return `<button class="domain-tab ${d === activeDnsDomain ? 'active' : ''}" onclick="dnsSwitchDomain('${d}')">
-        <span class="domain-status-dot ${dotClass}"></span>
-        <span>${d}</span>
-        <span class="domain-tab-status">${label}</span>
-      </button>`;
-    }).join('');
-    dnsRenderTypeFilters();
-    dnsUpdatePropCard();
-    dnsRender();
-  }
-
-  function dnsSwitchDomain(domain) {
-    activeDnsDomain = domain;
-    dnsActiveTypeFilter = 'Todos';
-    dnsInit();
-  }
-
-  function dnsUpdatePropCard() {
-    const d = dnsData[activeDnsDomain];
-    const iconEl  = document.getElementById('dnsPropIcon');
-    const titleEl = document.getElementById('dnsPropTitle');
-    const subEl   = document.getElementById('dnsPropSub');
-    if (d.status === 'active') {
-      iconEl.className = 'stat-icon green';
-      iconEl.innerHTML = '<svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg>';
-      titleEl.textContent = 'DNS Ativo e Propagado';
-      subEl.textContent   = `Todos os registros estão respondendo corretamente. Última verificação: ${d.lastCheck}.`;
-    } else if (d.status === 'propagating') {
-      iconEl.className = 'stat-icon yellow';
-      iconEl.innerHTML = '<svg class="icon" aria-hidden="true"><use href="assets/icons.svg#clock"></use></svg>';
-      titleEl.textContent = 'Propagação em andamento';
-      subEl.textContent   = `Alterações recentes ainda podem estar propagando (até 48h). Última verificação: ${d.lastCheck}.`;
-    } else {
-      iconEl.className = 'stat-icon red';
-      iconEl.innerHTML = '<svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-alert"></use></svg>';
-      titleEl.textContent = 'Problema detectado';
-      subEl.textContent   = `Um ou mais registros não estão respondendo. Última verificação: ${d.lastCheck}.`;
-    }
-  }
-
-  function dnsRenderTypeFilters() {
-    const records = dnsData[activeDnsDomain].records;
-    const types = ['Todos', ...new Set(records.map(r => r.type))];
-    document.getElementById('dnsTypeFilters').innerHTML = types.map(t =>
-      `<button class="dns-filter-chip ${t === dnsActiveTypeFilter ? 'active' : ''}" onclick="dnsSetFilter('${t}')">${t}</button>`
-    ).join('');
-  }
-
-  function dnsSetFilter(type) {
-    dnsActiveTypeFilter = type;
-    dnsRenderTypeFilters();
-    dnsRender();
-  }
-
-  function dnsRender() {
-    const search  = (document.getElementById('dnsSearch')?.value || '').toLowerCase();
-    const records = dnsData[activeDnsDomain].records;
-    document.getElementById('dnsActiveDomainLabel').textContent = activeDnsDomain;
-    const filtered = records.filter(r => {
-      const matchType   = dnsActiveTypeFilter === 'Todos' || r.type === dnsActiveTypeFilter;
-      const matchSearch = !search || r.host.toLowerCase().includes(search) || r.value.toLowerCase().includes(search) || r.type.toLowerCase().includes(search);
-      return matchType && matchSearch;
-    });
-    document.getElementById('dnsRecordCount').textContent = `${filtered.length} de ${records.length} registro${records.length !== 1 ? 's' : ''}`;
-    const body  = document.getElementById('dnsTableBody');
-    const empty = document.getElementById('dnsEmpty');
-    if (!filtered.length) {
-      body.innerHTML = '';
-      empty.style.display = 'block';
-      return;
-    }
-    empty.style.display = 'none';
-    body.innerHTML = filtered.map(r => {
-      const ttlLabel = r.ttl === '300' ? '5min' : r.ttl === '1800' ? '30min' : r.ttl === '3600' ? '1h' : r.ttl === '21600' ? '6h' : r.ttl === '86400' ? '24h' : r.ttl;
-      return `<div class="dns-table-row">
-        <span class="rt rt-${r.type}">${r.type}</span>
-        <span class="dns-host" title="${r.host}">${r.host}</span>
-        <span class="dns-val" title="${r.value}">${r.value}</span>
-        <span class="dns-ttl">${ttlLabel}</span>
-        <span class="dns-prio">${r.priority || '—'}</span>
-        <div class="dns-actions">
-          <button class="dns-btn dns-btn-edit" aria-label="Editar" data-tip="Editar" onclick="dnsOpenEditRecord(${r.id})"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#pencil"></use></svg></button>
-          <button class="dns-btn dns-btn-del" aria-label="Excluir" data-tip="Excluir" onclick="dnsDeleteRecord(${r.id})"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#trash-2"></use></svg></button>
-        </div>
-      </div>`;
-    }).join('');
-  }
-
-  function dnsOpenAddRecord() {
-    document.getElementById('modalDnsTitle').innerHTML = '<svg class="icon" style="margin-right:8px" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg>Adicionar Registro';
-    document.getElementById('dnsRType').value  = 'A';
-    document.getElementById('dnsRHost').value  = '';
-    document.getElementById('dnsRValue').value = '';
-    document.getElementById('dnsRTtl').value   = '3600';
-    document.getElementById('dnsRPrio').value  = '10';
-    document.getElementById('dnsREditId').value = '';
-    dnsTogglePriority();
-    openModal('modalDnsRecord');
-  }
-
-  function dnsOpenEditRecord(id) {
-    const records = dnsData[activeDnsDomain].records;
-    const r = records.find(x => x.id === id);
-    if (!r) return;
-    document.getElementById('modalDnsTitle').innerHTML = '<svg class="icon" style="margin-right:8px" aria-hidden="true"><use href="assets/icons.svg#pencil"></use></svg>Editar Registro';
-    document.getElementById('dnsRType').value  = r.type;
-    document.getElementById('dnsRHost').value  = r.host;
-    document.getElementById('dnsRValue').value = r.value;
-    document.getElementById('dnsRTtl').value   = r.ttl;
-    document.getElementById('dnsRPrio').value  = r.priority || '10';
-    document.getElementById('dnsREditId').value = id;
-    dnsTogglePriority();
-    openModal('modalDnsRecord');
-  }
-
-  function dnsTogglePriority() {
-    const type = document.getElementById('dnsRType').value;
-    const show = type === 'MX' || type === 'SRV';
-    document.getElementById('dnsRPrioField').style.display = show ? 'block' : 'none';
-    const hints = { A:'Ex: 177.126.48.201', AAAA:'Ex: 2001:db8::1', CNAME:'Ex: destino.exemplo.com.br', MX:'Ex: mail.citmail.com.br', TXT:'Ex: v=spf1 include:... ~all', NS:'Ex: ns1.citmail.com.br', SRV:'Ex: 10 20 443 srv.exemplo.com', CAA:'Ex: 0 issue "letsencrypt.org"' };
-    document.getElementById('dnsRValueHint').textContent = hints[type] || '';
-  }
-
-  function dnsSaveRecord() {
-    const type  = document.getElementById('dnsRType').value.trim();
-    const host  = document.getElementById('dnsRHost').value.trim();
-    const value = document.getElementById('dnsRValue').value.trim();
-    const ttl   = document.getElementById('dnsRTtl').value;
-    const prio  = document.getElementById('dnsRPrio').value;
-    const editId = parseInt(document.getElementById('dnsREditId').value) || null;
-    if (!host || !value) { showToast('Preencha Host e Valor.', 'error'); return; }
-    const records = dnsData[activeDnsDomain].records;
-    const priority = (type === 'MX' || type === 'SRV') ? prio : null;
-    if (editId) {
-      const idx = records.findIndex(r => r.id === editId);
-      if (idx > -1) records[idx] = { id: editId, type, host, value, ttl, priority };
-      showToast('Registro DNS atualizado.', 'success');
-    } else {
-      records.push({ id: dnsNextId++, type, host, value, ttl, priority });
-      showToast('Registro DNS adicionado. A propagação leva até 48h.', 'success');
-    }
-    closeModal('modalDnsRecord');
-    dnsRenderTypeFilters();
-    dnsRender();
-  }
-
-  function dnsDeleteRecord(id) {
-    const records = dnsData[activeDnsDomain].records;
-    const idx = records.findIndex(r => r.id === id);
-    if (idx === -1) return;
-    const r = records[idx];
-    if (!confirm(`Excluir registro ${r.type} "${r.host}" → ${r.value}?`)) return;
-    records.splice(idx, 1);
-    dnsRenderTypeFilters();
-    dnsRender();
-    showToast('Registro excluído.', 'success');
-  }
-
-  function dnsCheckProp() {
-    showToast('Verificando propagação DNS…', 'info');
-    const d = dnsData[activeDnsDomain];
-    d.lastCheck = 'agora mesmo';
-    setTimeout(() => {
-      d.status = 'active';
-      dnsUpdatePropCard();
-      dnsInit();
-      showToast('DNS propagado. Todos os registros estão respondendo.', 'success');
-    }, 2200);
-  }
-
-  // Init DNS when section becomes visible
-  const _origNavigate = navigate;
-  navigate = function(id) {
-    _origNavigate(id);
-    if (id === 'dns') dnsInit();
-  };
-</script>
+<script src="assets/painel.js?v=1"></script>
 </body>
 </html>
