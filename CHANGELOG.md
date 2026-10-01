@@ -62,6 +62,7 @@ Ambiente de desenvolvimento e processo: história CIT-12 no Taiga.
 - Checkout: o código Pix do domínio extra (passo 3) não muda mais ao alterar outros add-ons; só é gerado de novo quando o valor do domínio extra muda (CIT-30).
 
 ### Segurança
+- Login e painel também passam a usar as fontes do próprio site (`assets/fonts.css`), sem Google Fonts: nenhuma página envia mais o IP do visitante ao Google para carregar fontes (CIT-156).
 - Landing e checkout sem Google Fonts: Montserrat e Poppins servidas do próprio site (`assets/fonts/`, subset latin, licença OFL), e a CSP deixa de liberar os domínios do Google. O navegador do visitante não envia mais o IP ao Google ao abrir essas páginas (CIT-52).
 - Landing e checkout sem handlers nem scripts inline (código em `assets/landing.js` e `assets/checkout.js`) e com Content Security Policy por `<meta>`: scripts só da própria origem, sem `unsafe-inline` nem `unsafe-eval`, e conexões externas só para o ViaCEP no checkout. `style-src` ainda mantém `'unsafe-inline'` (issue #152); a CSP por cabeçalho, com `frame-ancestors`, fica com a #94, e o `connect-src` e o `img-src` mudam quando as páginas chamarem a API e o Pix do Asaas. O smoke da homologação confere a CSP e os novos arquivos (CIT-49).
 - Arquivos de ambiente locais (`.env`, `.env.*` e `.envrc`, exceto `.env.example`) ignorados pelo Git e com leitura negada a agentes (`.claude/settings.json`); regra de segredos documentada: só nos environments do GitHub ou em arquivo de ambiente com permissão 600 no servidor, nunca no repositório (CIT-46).
