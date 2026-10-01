@@ -182,7 +182,15 @@ function recalcSummary() {
   }
 
   const params = new URLSearchParams({ qty5:quantities['5gb'], qty25:quantities['25gb'], qty50:quantities['50gb'], cycle:billing });
-  ctaBtn.href = isEmpty ? '#' : `checkout.html?${params}`;
+  if (isEmpty) {
+    ctaBtn.removeAttribute('href');
+    ctaBtn.setAttribute('role', 'link');
+    ctaBtn.setAttribute('aria-disabled', 'true');
+  } else {
+    ctaBtn.href = `checkout.html?${params}`;
+    ctaBtn.removeAttribute('role');
+    ctaBtn.removeAttribute('aria-disabled');
+  }
   ctaBtn.style.pointerEvents = isEmpty ? 'none' : 'all';
   ctaBtn.style.opacity = isEmpty ? '0.45' : '1';
 }
@@ -211,11 +219,16 @@ function checkDomain() {
     const full = input + selectedTld;
     // Demo: domains containing "citmail" or "test" are "taken"
     const taken = input.includes('citmail') || input === 'google' || input === 'microsoft';
-    if (taken) {
-      result.innerHTML = `<span class="domain-taken"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg> <strong>${full}</strong> já está registrado. Tente outro nome ou extensão.</span>`;
-    } else {
-      result.innerHTML = `<span class="domain-available"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> <strong>${full}</strong> está disponível para registro. <a href="#pricing" style="color:inherit;font-weight:600;margin-left:8px">Contratar →</a></span>`;
-    }
+    const strong = document.createElement('strong');
+    strong.textContent = full;
+    const span = document.createElement('span');
+    span.className = taken ? 'domain-taken' : 'domain-available';
+    span.innerHTML = `<svg class="icon" aria-hidden="true"><use href="assets/icons.svg#${taken ? 'x' : 'check'}"></use></svg> `;
+    span.append(strong, taken
+      ? ' parece já estar registrado. Tente outro nome ou extensão.'
+      : ' parece disponível. A confirmação é feita na contratação. ');
+    if (!taken) span.insertAdjacentHTML('beforeend', '<a href="#pricing" style="color:inherit;font-weight:600;margin-left:8px">Contratar →</a>');
+    result.replaceChildren(span);
   }, 1200);
 }
 
