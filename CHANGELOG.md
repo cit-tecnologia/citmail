@@ -60,6 +60,7 @@ Ambiente de desenvolvimento e processo: história CIT-12 no Taiga.
 
 ### Corrigido
 - Checkout: o código Pix do domínio extra (passo 3) não muda mais ao alterar outros add-ons; só é gerado de novo quando o valor do domínio extra muda (CIT-30).
+- Checkout: ao copiar o código Pix do pagamento, o próprio botão mostra "Copiado"; antes, o aviso aparecia no botão do Pix do domínio, no passo 2 (CIT-153).
 
 ### Segurança
 - Login e painel também passam a usar as fontes do próprio site (`assets/fonts.css`), sem Google Fonts: nenhuma página envia mais o IP do visitante ao Google para carregar fontes (CIT-156).
