@@ -52,9 +52,12 @@ Ambiente de desenvolvimento e processo: história CIT-12 no Taiga.
 - Checkout: valores calculados em centavos inteiros; Pix e boleto de demonstração sem erro de ponto flutuante (CIT-22).
 - Checkout: o preço do registro do domínio principal (passo 2) e do domínio extra vem da mesma constante `PRECOS.dominio` em `assets/precos.js`, sem valor escrito à mão; os valores exibidos e cobrados não mudam (CIT-31).
 - Actions do workflow de testes fixadas por SHA, como na homologação (CIT-54).
+- Landing: textos revisados para prometer só o que o lançamento entrega: indicadores do hero ("Meta de disponibilidade" e "5 min · Ativação após o pagamento"), faixa de confiança com o horário do suporte (dias úteis, 08h00 às 18h00), recursos, busca de domínio ("parece disponível", com confirmação na contratação), como funciona, painel e marketplace; FAQ reescrito com ativação, DNS em até 48 horas, Pix/boleto (até 3 dias úteis)/cartão pela fatura do Asaas, suporte, cancelamento no fim do ciclo pago, direito de arrependimento de 7 dias e contato do encarregado de dados; `meta description` sem preço; rodapé com razão social e CNPJ e só links com destino (CIT-50).
+- Landing: FAQ sem corte de texto a 320 px; botão "Contratar Agora" sem link enquanto não há contas no carrinho, anunciado como indisponível (CIT-50).
 
 ### Removido
 - `serve.py`, substituído pelo Vite.
+- Landing: seção de depoimentos (volta com depoimentos reais e autorizados); recursos ainda não confirmados com a Skymail (backup automático, IA na conta de 50 GB, agenda, calendário, apelidos e os add-ons de backup, armazenamento em nuvem e Talk); chat de suporte e "500+ clientes"; links sem destino do rodapé (Sobre nós, Blog, Parceiros, redes sociais, e Política de Privacidade e Termos de Uso até as páginas existirem) (CIT-50).
 - Prazo de ativação de 5 minutos dos textos da landing e do checkout (CIT-15).
 - Opção de registro de domínio .com no checkout (CIT-15).
 
