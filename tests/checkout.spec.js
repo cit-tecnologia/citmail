@@ -2174,12 +2174,14 @@ test.describe('checkout — cópia: feedback e falha', { tag: '@CIT-163' }, () =
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await page.addInitScript(() => {
       Clipboard.prototype.writeText = () => Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'));
-      /** @type {boolean[]} true = texto inserido, false = texto removido */
+      /** @type {{ inseriu: boolean, lote: number }[]} lote = nº da entrega do observer (uma entrega por tarefa) */
       const historico = [];
       /** @type {any} */ (window).__avisoHist = historico;
+      let lote = 0;
       document.addEventListener('DOMContentLoaded', () => {
         new MutationObserver(registros => {
-          for (const r of registros) historico.push(r.addedNodes.length > 0);
+          lote++;
+          for (const r of registros) historico.push({ inseriu: r.addedNodes.length > 0, lote });
         }).observe(/** @type {Node} */ (document.getElementById('pixCopiaAviso')), { childList: true });
       });
     });
@@ -2190,7 +2192,10 @@ test.describe('checkout — cópia: feedback e falha', { tag: '@CIT-163' }, () =
     await expect(page.locator('#pixCopiaAviso')).toContainText('Não foi possível copiar');
     await page.locator('#btnCopyPix').click();
 
-    await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__avisoHist.slice(-2))).toEqual([false, true]);
+    // remoção e reescrita em entregas diferentes do observer = com intervalo (próximo frame), não síncronas
+    await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__avisoHist.slice(-2).map(/** @param {any} h */ h => h.inseriu))).toEqual([false, true]);
+    const [remocao, insercao] = await page.evaluate(() => /** @type {any} */ (window).__avisoHist.slice(-2));
+    expect(insercao.lote).toBeGreaterThan(remocao.lote);
     await expect(page.locator('#pixCopiaAviso')).toContainText('Não foi possível copiar');
   });
 
@@ -2218,5 +2223,32 @@ test.describe('checkout — cópia: feedback e falha', { tag: '@CIT-163' }, () =
         expect(caixa.x + caixa.width, `${alvo} à direita`).toBeLessThanOrEqual(320);
       }
     }
+  });
+
+  test('CA2 (#162) falha seguida de sucesso no mesmo botão antes do próximo frame termina com o aviso vazio', async ({ page, context, erros }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.addInitScript(() => {
+      const original = Clipboard.prototype.writeText;
+      let chamadas = 0;
+      Clipboard.prototype.writeText = function (...args) {
+        chamadas++;
+        if (chamadas === 1) return Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'));
+        return original.apply(this, args);
+      };
+    });
+    await page.goto('checkout.html', { waitUntil: 'networkidle' });
+    await preparos.pix(page);
+
+    // 1º clique falha e a falha é tratada (rAF agendado); o 2º clique chega ainda no mesmo frame e tem sucesso
+    await page.evaluate(async () => {
+      const botao = /** @type {HTMLElement} */ (document.getElementById('btnCopyPix'));
+      botao.click();
+      await new Promise(r => setTimeout(r, 0));
+      botao.click();
+    });
+    await expect(page.locator('#btnCopyPix')).toContainText('Copiado');
+    // espera alguns frames: um rAF esquecido da falha reescreveria o aviso
+    await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r)))));
+    await expect(page.locator('#pixCopiaAviso')).toBeEmpty();
   });
 });
