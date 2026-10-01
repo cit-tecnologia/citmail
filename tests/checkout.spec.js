@@ -2147,4 +2147,76 @@ test.describe('checkout — cópia: feedback e falha', { tag: '@CIT-163' }, () =
   for (const b of botoes.filter(x => x.preparo === 'pix' || x.preparo === 'boleto')) {
     testeFalha(`CA2 (#162) sem navigator.clipboard, o botão de ${b.nome} mostra "Erro ao copiar", avisa, seleciona o código e volta ao normal`, 'ausente', b);
   }
+
+  test('CA3 (#163) depois de uma falha, a cópia bem-sucedida no mesmo botão esvazia o aviso', async ({ page, context, erros }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.addInitScript(() => {
+      const original = Clipboard.prototype.writeText;
+      let chamadas = 0;
+      Clipboard.prototype.writeText = function (...args) {
+        chamadas++;
+        if (chamadas === 1) return Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'));
+        return original.apply(this, args);
+      };
+    });
+    await page.goto('checkout.html', { waitUntil: 'networkidle' });
+    await preparos.pix(page);
+
+    await page.locator('#btnCopyPix').click();
+    await expect(page.locator('#pixCopiaAviso')).toContainText('Não foi possível copiar');
+
+    await page.locator('#btnCopyPix').click();
+    await expect(page.locator('#btnCopyPix')).toContainText('Copiado');
+    await expect(page.locator('#pixCopiaAviso')).toBeEmpty();
+  });
+
+  test('CA2 (#162) numa segunda falha no mesmo botão, o aviso é esvaziado e reescrito (reanúncio)', async ({ page, context, erros }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.addInitScript(() => {
+      Clipboard.prototype.writeText = () => Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'));
+      /** @type {boolean[]} true = texto inserido, false = texto removido */
+      const historico = [];
+      /** @type {any} */ (window).__avisoHist = historico;
+      document.addEventListener('DOMContentLoaded', () => {
+        new MutationObserver(registros => {
+          for (const r of registros) historico.push(r.addedNodes.length > 0);
+        }).observe(/** @type {Node} */ (document.getElementById('pixCopiaAviso')), { childList: true });
+      });
+    });
+    await page.goto('checkout.html', { waitUntil: 'networkidle' });
+    await preparos.pix(page);
+
+    await page.locator('#btnCopyPix').click();
+    await expect(page.locator('#pixCopiaAviso')).toContainText('Não foi possível copiar');
+    await page.locator('#btnCopyPix').click();
+
+    await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__avisoHist.slice(-2))).toEqual([false, true]);
+    await expect(page.locator('#pixCopiaAviso')).toContainText('Não foi possível copiar');
+  });
+
+  test('CA4 a 320px, com a falha de cópia, Pix e domínio novo não geram rolagem horizontal e botão e aviso cabem na tela', async ({ page, context, erros }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile', 'CA4 só se aplica ao perfil mobile');
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.addInitScript(() => {
+      Clipboard.prototype.writeText = () => Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'));
+    });
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.goto('checkout.html', { waitUntil: 'networkidle' });
+
+    for (const b of botoes.filter(x => x.preparo === 'pix' || x.preparo === 'domPix')) {
+      await preparos[/** @type {'domPix'|'pix'} */ (b.preparo)](page);
+      await page.locator(b.botao).click();
+      await expect(page.locator(b.botao)).toContainText('Erro ao copiar');
+      await expect(page.locator(b.aviso)).toContainText('Não foi possível copiar');
+
+      const semRolagem = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+      expect(semRolagem, `${b.nome}: sem rolagem horizontal`).toBe(true);
+      for (const alvo of [b.botao, b.aviso]) {
+        const caixa = await page.locator(alvo).boundingBox();
+        expect(caixa, `${alvo} visível`).not.toBeNull();
+        expect(caixa.x, `${alvo} à esquerda`).toBeGreaterThanOrEqual(0);
+        expect(caixa.x + caixa.width, `${alvo} à direita`).toBeLessThanOrEqual(320);
+      }
+    }
+  });
 });
