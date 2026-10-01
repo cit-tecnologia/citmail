@@ -26,7 +26,7 @@ Processos Node.js gerenciados pelo PM2, atrás de Nginx com certificado emitido 
 
 **Proposto:**
 
-1. **Processos:** serviços `systemd` (API e worker da fila), com usuário de serviço próprio, sem login e sem shell (`<usuario-de-servico>`), diferente do usuário de deploy. O usuário de deploy só publica os arquivos e reinicia o serviço.
+1. **Processos:** serviços `systemd` (API e worker da fila; o worker sobe com `npm run worker`, CIT-56), com usuário de serviço próprio, sem login e sem shell (`<usuario-de-servico>`), diferente do usuário de deploy. O usuário de deploy só publica os arquivos e reinicia o serviço.
 2. **Endurecimento da unidade:** `NoNewPrivileges=true`, `ProtectSystem=strict`, `PrivateTmp=true`, `WorkingDirectory` fixo e caminho absoluto no `ExecStart`.
 3. **Proxy:** Caddy com HTTPS automático. A API escuta só no loopback, atrás do Caddy (o `trustProxy` do ADR 0003 confia só nele).
 4. **PostgreSQL e Redis** só na interface de loopback, sem porta aberta no firewall.
@@ -81,3 +81,4 @@ WantedBy=multi-user.target
 - 2026-09-25: criação (CIT-47).
 - 2026-09-25: ajustes da revisão (CIT-47).
 - 2026-09-26: aceito pelo responsável (CIT-47). Itens em "Decisões em aberto" do README e revisões previstas pela #48 continuam valendo.
+- 2026-10-01: worker da fila como processo próprio, com `npm run worker` (`node src/worker.js`) como comando da futura unidade `systemd` da #57; o worker não lê banco nem CORS e encerra no SIGTERM esperando o job ativo (CIT-56).

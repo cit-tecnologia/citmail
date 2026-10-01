@@ -65,9 +65,22 @@ COMMIT;
 - Cada webhook gera uma chamada de volta à API do Asaas, sujeita ao limite de requisições dele.
 - Add-ons e provisionamento: os eventos ligados a add-ons dependem de quais a API da Skymail realmente suporta.
 
+### Implementação da fila (CIT-56)
+
+- **Valores fixados:** 8 tentativas por job, backoff exponencial a partir de 60 s (cerca de 2 h até esgotar), configuráveis por `FILA_TENTATIVAS` e `FILA_BACKOFF_MS`; prefixo das chaves por `FILA_PREFIXO` (um por ambiente, ADR 0006). BullMQ 6, com o `ioredis` como dependência direta (o BullMQ 6 não o traz e, em ESM, recebe a conexão pronta).
+- **Retenção obrigatória** (Redis em `noeviction`: cheio, recusa escrita e derruba também a sessão do ADR 0008): concluídos por até 24 h (no máximo 1000), falhados por até 30 dias (no máximo 10000 jobs e 1000 alertas).
+- **Fila `alertas` separada** da fila `jobs`: o limitador do BullMQ vale por fila, e o limite de alertas por minuto (ADR 0011) não pode frear jobs de negócio. Job que chega a "falhou" (tentativas esgotadas, erro irrecuperável ou limite de travamentos) gera um alerta, decidido pelo estado do job; o `jobId` do alerta (`alerta-<jobId>-<finishedOn>`) evita alerta repetido do mesmo esgotamento. Alerta que esgota não gera outro alerta. Job de nome sem handler vai a "falhou" na hora (`UnrecoverableError`).
+- **Reprocessamento por CLI** (`npm run reprocessar -- <jobId>`): devolve o job de "falhou" para a fila com o mesmo id e as tentativas zeradas. Sem painel de jobs nesta fase.
+- **Processo e conexão por papel:** worker em processo próprio (`npm run worker`), com conexão que espera o Redis voltar; API e CLI com conexão de produtor, que falha em vez de guardar o comando em memória. Cada processo exige só a configuração que usa; o token do Telegram só existe no worker.
+- **API sem Redis em produção até a #64:** a única rota que enfileira nesta história é a de exemplo, que não existe em produção; a #64 (primeiro produtor real) torna `REDIS_URL` obrigatória na API em produção.
+- **`job.data` só com ids** (`requestId`, `pedidoId` e afins), nunca dado pessoal: os falhados ficam até 30 dias no Redis (LGPD).
+- **Perda de alerta (risco aceito no MVP):** o alerta é enfileirado por um listener em memória no worker; se o worker cair entre marcar o job como "falhou" e enfileirar o alerta, o alerta se perde. O job continua em "falhou" e pode ser reprocessado. Se acontecer, revisar com `QueueEvents` ou varredura periódica de "falhou".
+- **Job fantasma após 503 (risco aceito):** a rota que enfileira espera o Redis por até 2 s e responde 503; com o Redis fora, o BullMQ 6.3 espera a conexão indefinidamente e o comando pode ser entregue depois do 503, quando o Redis volta. O job existe mesmo com a resposta de erro. Por isso o produtor real (#64) usa `jobId` determinístico, para que o reenvio do cliente não duplique o job.
+
 ## Revisões
 
 - 2026-09-25: criação (CIT-47).
 - 2026-09-25: ajustes da revisão (CIT-47).
 - Revisão prevista pela #48 (PoC Skymail): eventos e payloads ligados a add-ons e provisionamento.
 - 2026-09-26: aceito pelo responsável (CIT-47). Itens em "Decisões em aberto" do README e revisões previstas pela #48 continuam valendo.
+- 2026-10-01: implementação da fila (CIT-56): valores de tentativas, backoff e retenção, fila `alertas` separada, CLI de reprocessamento, conexões de worker e de produtor, API sem Redis em produção até a #64, `job.data` só com ids, riscos de perda de alerta e de job fantasma. Os eventos de domínio (outbox) ficam para história própria. **pg-boss descartado:** uma fila no PostgreSQL daria transação única com o dado e dispensaria o Redis, mas este ADR já estava aceito com Redis + BullMQ e o Redis também serve a sessão do ADR 0008.
