@@ -9,6 +9,8 @@ import { test, expect } from './fixtures.js';
 
 const RAIZ = new URL('../', import.meta.url);
 const PAGINAS = ['index.html', 'checkout.html'];
+// CIT-156: login e painel trocam o Google Fonts por assets/fonts.css. Ver .omc/plans/CIT-156.md.
+const PAGINAS_CIT156 = ['login.html', 'painel.html'];
 
 /** Lê um arquivo do disco (não do Vite: um fetch de .css sem Accept: text/css volta como módulo JS). */
 function lerDoDisco(nome) {
@@ -22,8 +24,17 @@ const UNICODE_RANGE_LATIN =
   'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, ' +
   'U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD';
 
-/** Caracteres com fallback conhecido, já registrados no plano (fora do subset latin). */
-const FALLBACK_CONHECIDO = ['→'];
+/**
+ * Caracteres com fallback conhecido, por página (fora do subset latin), já registrados nos planos
+ * CIT-52 e CIT-156. Mapa por página (não uma lista global) para que "≤" de login/painel não afrouxe
+ * a prova de landing/checkout, e vice-versa.
+ */
+const FALLBACK_CONHECIDO_POR_PAGINA = {
+  'index.html': ['→'],
+  'checkout.html': ['→'],
+  'login.html': ['≤'],
+  'painel.html': ['≤'],
+};
 
 /** "U+0000-00FF, U+0131, ..." -> [[0, 255], [0x131, 0x131], ...] */
 function analisarUnicodeRange(valor) {
@@ -56,6 +67,36 @@ const FACES_ESPERADAS = [
   ['Montserrat', '600'], ['Montserrat', '700'], ['Montserrat', '800'],
   ['Poppins', '400'], ['Poppins', '500'], ['Poppins', '600'],
 ];
+
+/**
+ * Prova, pela FontFaceSet (document.fonts), que o conjunto família+peso registrado é exatamente
+ * FACES_ESPERADAS e que cada FontFace carrega. document.fonts.check() não distingue origem (local x
+ * Google), e document.fonts.load('<peso> ...') pode "casar" com o peso mais próximo registrado em vez
+ * de falhar quando o peso exato não existe (algoritmo de correspondência de fontes do navegador). Por
+ * isso a prova lê o conjunto real de FontFace registradas por @font-face (document.fonts) e exige
+ * igualdade exata de família+peso com o esperado — um peso errado, ausente ou extra (ex.: Google
+ * Fonts ainda presente) aparece como diferença no conjunto. Chamar depois de document.fonts.ready.
+ */
+async function provarFacesExatas(page, arquivo) {
+  const registradas = await page.evaluate(() =>
+    [...document.fonts].map(f => `${f.family.replace(/^"|"$/g, '')} ${f.weight}`).sort());
+  const esperadas = FACES_ESPERADAS.map(([familia, peso]) => `${familia} ${peso}`).sort();
+  expect(registradas, `${arquivo}: FontFace registradas (família + peso) via @font-face`).toEqual(esperadas);
+
+  const status = await page.evaluate(async () => {
+    const carregadas = await Promise.all([...document.fonts].map(f => f.load()));
+    return carregadas.map(f => f.status);
+  });
+  for (const s of status) expect(s, `${arquivo}: FontFace não carregou (status loaded)`).toBe('loaded');
+}
+
+/** font-family e font-weight computados de um elemento (locator do Playwright). */
+function estiloComputado(locator) {
+  return locator.evaluate(el => {
+    const cs = getComputedStyle(el);
+    return { fontFamily: cs.fontFamily, fontWeight: cs.fontWeight };
+  });
+}
 
 /**
  * SHA-256 de cada woff2 (fonte de verdade nº 1: registrado a mão aqui, junto com quem revisou a
@@ -91,6 +132,35 @@ test.describe('CA1 — sem Google Fonts', { tag: '@CIT-52' }, () => {
 
       expect(requisicoesGoogle, `${arquivo}: requisição a host do Google Fonts`).toEqual([]);
       expect(lerDoDisco(arquivo), `${arquivo}: host do Google Fonts no HTML fonte`).not.toMatch(REGEX_HOST_GOOGLE_FONTS);
+    });
+  }
+});
+
+test.describe('CA1 — sem Google Fonts (login e painel)', { tag: '@CIT-156' }, () => {
+  for (const arquivo of PAGINAS_CIT156) {
+    test(`CA1 ${arquivo}: nenhuma requisição nem referência a host do Google Fonts; assets/fonts.css antes de assets/tokens.css`, async ({ page, erros }) => {
+      const requisicoesGoogle = [];
+      page.on('request', req => {
+        if (REGEX_HOST_GOOGLE_FONTS.test(new URL(req.url()).host)) requisicoesGoogle.push(req.url());
+      });
+
+      await page.goto(arquivo, { waitUntil: 'load' });
+      await page.evaluate(() => document.fonts.ready);
+
+      expect(requisicoesGoogle, `${arquivo}: requisição a host do Google Fonts`).toEqual([]);
+
+      const html = lerDoDisco(arquivo);
+      expect(html, `${arquivo}: host do Google Fonts no HTML fonte`).not.toMatch(REGEX_HOST_GOOGLE_FONTS);
+      expect(html, `${arquivo}: <link> de assets/fonts.css ausente`).toMatch(/<link[^>]*href="assets\/fonts\.css"[^>]*>/);
+
+      // asserção de consistência (não prova funcional): fonts.css precisa aparecer antes de tokens.css
+      // entre os <link> do <head>, sem exigir adjacência.
+      const links = [...html.matchAll(/<link[^>]*href="([^"]+)"[^>]*>/g)].map(m => m[1]);
+      const indiceFontes = links.indexOf('assets/fonts.css');
+      const indiceTokens = links.indexOf('assets/tokens.css');
+      expect(indiceFontes, `${arquivo}: assets/fonts.css não está entre os <link> do HTML`).toBeGreaterThanOrEqual(0);
+      expect(indiceTokens, `${arquivo}: assets/tokens.css não está entre os <link> do HTML`).toBeGreaterThanOrEqual(0);
+      expect(indiceFontes, `${arquivo}: índice de assets/fonts.css deveria ser menor que o de assets/tokens.css`).toBeLessThan(indiceTokens);
     });
   }
 });
@@ -131,21 +201,7 @@ test.describe('CA2 — fontes locais aplicadas', { tag: '@CIT-52' }, () => {
     await page.goto('index.html', { waitUntil: 'load' });
     await page.evaluate(() => document.fonts.ready);
 
-    // document.fonts.check() não distingue origem (local x Google), e document.fonts.load('<peso> ...')
-    // pode "casar" com o peso mais próximo registrado em vez de falhar quando o peso exato não existe
-    // (algoritmo de correspondência de fontes do navegador). Por isso a prova lê o conjunto real de
-    // FontFace registradas por @font-face (document.fonts, a FontFaceSet) e exige igualdade exata de
-    // família+peso com o esperado — um peso errado ou ausente aparece como diferença no conjunto.
-    const registradas = await page.evaluate(() =>
-      [...document.fonts].map(f => `${f.family.replace(/^"|"$/g, '')} ${f.weight}`).sort());
-    const esperadas = FACES_ESPERADAS.map(([familia, peso]) => `${familia} ${peso}`).sort();
-    expect(registradas, 'FontFace registradas (família + peso) via @font-face').toEqual(esperadas);
-
-    const status = await page.evaluate(async () => {
-      const carregadas = await Promise.all([...document.fonts].map(f => f.load()));
-      return carregadas.map(f => f.status);
-    });
-    for (const s of status) expect(s, 'FontFace não carregou (status loaded)').toBe('loaded');
+    await provarFacesExatas(page, 'index.html');
   });
 
   test('CA2 assets/fonts.css: unicode-range das 6 faces idêntico ao subset latin do Google', () => {
@@ -156,29 +212,90 @@ test.describe('CA2 — fontes locais aplicadas', { tag: '@CIT-52' }, () => {
     }
   });
 
-  // Limite conhecido desta prova: só o textContent da carga inicial (goto + load) das duas páginas.
-  // Atributos (placeholder, aria-label, title, alt) e texto montado depois por script (ex.: mensagens
-  // de validação, valores calculados) ficam de fora. Hoje esse texto adicional só usa caracteres do
-  // subset latin ou "→" (fallback conhecido); se algum dia usar outro caractere fora do subset, esta
-  // prova não pega — reavaliar o escopo então.
-  test('CA2 cobertura de glifos: todo caractere do texto da landing e do checkout está no subset latin (exceto o fallback conhecido)', async ({ page, erros }) => {
-    const intervalos = analisarUnicodeRange(UNICODE_RANGE_LATIN);
-    const foraDoIntervalo = [];
+});
 
-    for (const arquivo of PAGINAS) {
+test.describe('CA2 — fontes locais aplicadas (login e painel)', { tag: '@CIT-156' }, () => {
+  test('CA2 login.html: FontFace exatas via document.fonts, requisição 200 a poppins-400.woff2, body em Poppins 400 e h1 "Acesse seu painel" em Montserrat 600', async ({ page, erros }) => {
+    const statusPoppins400 = [];
+    page.on('response', res => { if (res.url().endsWith('/assets/fonts/poppins-400.woff2')) statusPoppins400.push(res.status()); });
+
+    await page.goto('login.html', { waitUntil: 'load' });
+    await page.evaluate(() => document.fonts.ready);
+
+    // (a) prova de origem: o conjunto de FontFace é exatamente o esperado (com o Google presente
+    // haveria faces extras) — distingue local de Google, ao contrário do getComputedStyle abaixo.
+    await provarFacesExatas(page, 'login.html');
+
+    // (b) requisição real a um woff2 local durante a carga (prova de mutação 1: sem o <link>, cai a zero).
+    expect(statusPoppins400, 'login.html: resposta a assets/fonts/poppins-400.woff2').toContain(200);
+
+    // (c) faces aplicadas (não distingue origem por si só; distinguem (a) e (b) acima).
+    const corpo = await estiloComputado(page.locator('body'));
+    expect(corpo.fontFamily, 'login.html: font-family do body').toMatch(/^"?Poppins/);
+    expect(corpo.fontWeight, 'login.html: font-weight do body').toBe('400');
+
+    const h1 = await estiloComputado(page.locator('h1').filter({ hasText: 'Acesse seu painel' }));
+    expect(h1.fontFamily, 'login.html: font-family do h1 "Acesse seu painel"').toMatch(/^"?Montserrat/);
+    expect(h1.fontWeight, 'login.html: font-weight do h1 "Acesse seu painel"').toBe('600');
+  });
+
+  test('CA2 painel.html: FontFace exatas via document.fonts, requisição 200 a poppins-400.woff2, body em Poppins 400 e primeiro .stat-value de #sec-dashboard em Montserrat 800', async ({ page, erros }) => {
+    const statusPoppins400 = [];
+    page.on('response', res => { if (res.url().endsWith('/assets/fonts/poppins-400.woff2')) statusPoppins400.push(res.status()); });
+
+    await page.goto('painel.html', { waitUntil: 'load' });
+    await page.evaluate(() => document.fonts.ready);
+
+    await provarFacesExatas(page, 'painel.html');
+    expect(statusPoppins400, 'painel.html: resposta a assets/fonts/poppins-400.woff2').toContain(200);
+
+    const corpo = await estiloComputado(page.locator('body'));
+    expect(corpo.fontFamily, 'painel.html: font-family do body').toMatch(/^"?Poppins/);
+    expect(corpo.fontWeight, 'painel.html: font-weight do body').toBe('400');
+
+    // #sec-dashboard é a seção visível na carga (.section.active); o support-stat-value (Montserrat
+    // 700) fica em #sec-suporte, que está display: none até o usuário navegar até lá.
+    const statValue = await estiloComputado(page.locator('#sec-dashboard .stat-value').first());
+    expect(statValue.fontFamily, 'painel.html: font-family do primeiro .stat-value em #sec-dashboard').toMatch(/^"?Montserrat/);
+    expect(statValue.fontWeight, 'painel.html: font-weight do primeiro .stat-value em #sec-dashboard').toBe('800');
+  });
+});
+
+// CIT-156: o teste de glifos passa a ler um clone do body sem <script>, <style> e <template> (o
+// textContent original incluía comentários/código desses nós, como o "→" de login.html dentro de um
+// comentário de <script>, que nunca aparece na tela) e a lista de exceções vira por página — "≤" de
+// login/painel não entra na lista de landing/checkout, e vice-versa (prova pela mutação 3 do plano).
+test.describe('CA3 — glifos (texto visível, sem script/style/template)', { tag: '@CIT-156' }, () => {
+  const intervalos = analisarUnicodeRange(UNICODE_RANGE_LATIN);
+
+  for (const arquivo of [...PAGINAS, ...PAGINAS_CIT156]) {
+    // Limite conhecido desta prova: só o texto da carga inicial (goto + load). Atributos (placeholder,
+    // aria-label, title, alt) ficam de fora, e texto montado depois por script (ex.: mensagens de
+    // validação, valores calculados) também — hoje esse texto adicional só usa caracteres do subset
+    // latin ou o fallback conhecido da página; se algum dia usar outro caractere fora do subset, esta
+    // prova não pega — reavaliar o escopo então.
+    test(`CA3 ${arquivo}: todo caractere do texto visível está no subset latin (exceto o fallback conhecido da página)`, async ({ page, erros }) => {
+      const fallback = FALLBACK_CONHECIDO_POR_PAGINA[arquivo] ?? [];
+
       await page.goto(arquivo, { waitUntil: 'load' });
-      const texto = await page.evaluate(() => document.body.textContent || '');
+      const texto = await page.evaluate(() => {
+        const clone = /** @type {HTMLElement} */ (document.body.cloneNode(true));
+        clone.querySelectorAll('script, style, template').forEach(el => el.remove());
+        return clone.textContent || '';
+      });
+
+      const foraDoIntervalo = [];
       for (const caractere of texto) {
-        if (FALLBACK_CONHECIDO.includes(caractere)) continue;
+        if (fallback.includes(caractere)) continue;
         const codePoint = caractere.codePointAt(0);
         if (codePoint !== undefined && !estaNoIntervalo(codePoint, intervalos)) {
-          foraDoIntervalo.push(`${arquivo}: "${caractere}" (U+${codePoint.toString(16).toUpperCase()})`);
+          foraDoIntervalo.push(`"${caractere}" (U+${codePoint.toString(16).toUpperCase()})`);
         }
       }
-    }
 
-    expect([...new Set(foraDoIntervalo)], 'caracteres fora do subset latin').toEqual([]);
-  });
+      expect([...new Set(foraDoIntervalo)], `${arquivo}: caracteres fora do subset latin`).toEqual([]);
+    });
+  }
 });
 
 test.describe('CA3 — arquivos servidos', { tag: '@CIT-52' }, () => {
@@ -314,6 +431,28 @@ test.describe('CA5 — mobile e estabilidade', { tag: '@CIT-52' }, () => {
     expect(cls, 'CLS acumulado da carga com fontes atrasadas').toBeLessThanOrEqual(CLS_LIMITE);
     expect(cls, 'CLS acumulado: teto absoluto do critério').toBeLessThanOrEqual(CLS_TETO);
   });
+});
+
+// CIT-156: premissa (sem rolagem horizontal pré-existente a 320/375px) já medida OK no develop pelo
+// orquestrador antes desta spec (plano, passo 1) — login e painel entram no loop sem exclusão.
+test.describe('CA5 — mobile (login e painel)', { tag: '@CIT-156' }, () => {
+  test.beforeEach(({}, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile', 'CA5 só se aplica ao perfil mobile');
+  });
+
+  for (const arquivo of PAGINAS_CIT156) {
+    for (const largura of [320, 375]) {
+      test(`CA5 ${arquivo} a ${largura}px: sem rolagem horizontal`, async ({ page, erros }) => {
+        await page.setViewportSize({ width: largura, height: 800 });
+        await page.goto(arquivo, { waitUntil: 'load' });
+        await page.evaluate(() => document.fonts.ready);
+
+        const semRolagem = await page.evaluate(() =>
+          document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+        expect(semRolagem, `${arquivo} a ${largura}px: scrollWidth > clientWidth`).toBe(true);
+      });
+    }
+  }
 });
 
 test.describe('CA8 (trecho) — imagens com dimensões explícitas', { tag: '@CIT-52' }, () => {
