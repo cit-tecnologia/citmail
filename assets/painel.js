@@ -11,6 +11,7 @@ const SECTION_TITLES = {
 };
 
 function navigate(id) {
+  if (!Object.prototype.hasOwnProperty.call(SECTION_TITLES, id)) return;
   document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('sec-' + id).classList.add('active');
@@ -340,7 +341,11 @@ document.querySelectorAll('[data-ver-ticket]').forEach(el => {
   });
 });
 document.querySelectorAll('[data-aba]').forEach(el => {
-  el.addEventListener('click', e => switchTab(e.currentTarget, e.currentTarget.dataset.aba));
+  el.addEventListener('click', e => {
+    const panelId = e.currentTarget.dataset.aba;
+    if (!panelId.startsWith('tab-') || !document.getElementById(panelId)) return;
+    switchTab(e.currentTarget, panelId);
+  });
 });
 document.querySelectorAll('[data-plano-opcao]').forEach(el => {
   el.addEventListener('click', e => selectPlanOpt(e.currentTarget));
@@ -360,7 +365,7 @@ document.getElementById('dnsDomainTabs').addEventListener('click', e => {
   const alvo = e.target.closest('[data-dns-dominio]');
   if (!alvo || !e.currentTarget.contains(alvo)) return;
   const dominio = alvo.dataset.dnsDominio;
-  if (!Object.hasOwn(dnsData, dominio)) return;
+  if (!Object.prototype.hasOwnProperty.call(dnsData, dominio)) return;
   dnsSwitchDomain(dominio);
 });
 document.getElementById('dnsTypeFilters').addEventListener('click', e => {
