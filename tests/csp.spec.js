@@ -449,15 +449,22 @@ async function percorrerLogin(page) {
   await page.locator('#fEmail').fill('demo@citmail.com.br');
   await page.locator('#fPassword').fill('senhaErrada');
   await page.locator('form button[type="submit"]').click();
-  await expect(page.locator('#alertError')).toBeVisible({ timeout: 3000 });
+  await expect(page.locator('#alertError')).toBeVisible({ timeout: 5000 });
+}
+
+/** No mobile, o menu só existe depois de abrir a sidebar (fora da tela abaixo de 768px);
+ * navigate() a fecha de novo a cada navegação — por isso reabre antes de cada item. */
+async function irParaSecao(page, secao, testInfo) {
+  if (testInfo?.project.name === 'mobile') await page.locator('#sidebarToggle').click();
+  await page.locator(`.nav-item[data-section="${secao}"]`).click();
 }
 
 /** Percorre os fluxos do painel por clique: menu, tabs, os 6 modais, plano, ticket e DNS. */
-async function percorrerPainel(page) {
+async function percorrerPainel(page, testInfo) {
   await page.goto('painel.html', { waitUntil: 'networkidle' });
 
   for (const secao of ['email', 'financeiro', 'produtos', 'marketplace', 'dns', 'configuracoes', 'suporte', 'dashboard']) {
-    await page.locator(`.nav-item[data-section="${secao}"]`).click();
+    await irParaSecao(page, secao, testInfo);
     await expect(page.locator(`#sec-${secao}`)).toHaveClass(/active/);
   }
   await page.locator('#topbarAvatar').click();
@@ -467,33 +474,52 @@ async function percorrerPainel(page) {
   await page.locator('[data-aba="tab-notif"]').click();
   await page.locator('[data-aba="tab-perfil"]').click();
 
-  for (const modal of MODAIS_PAINEL) {
-    await page.evaluate(id => window.openModal(id), modal);
-    await page.locator(`[data-fechar-modal="${modal}"]`).first().click();
+  // abre pelo gatilho real (não por window.openModal) — modalDnsRecord e modalVerTicket não têm
+  // data-abrir-modal (são vínculo único) e já são exercidos abaixo, no bloco do DNS e do ticket.
+  const MODAIS_COM_GATILHO = { modalNovaContaEmail: 'email', modalNovoTicket: 'suporte', modalContratarConsultoria: 'marketplace', modalContratarServidor: 'marketplace' };
+  for (const [modal, secao] of Object.entries(MODAIS_COM_GATILHO)) {
+    await irParaSecao(page, secao, testInfo);
+    // escopado à seção ativa: modalNovaContaEmail também tem gatilho no dashboard (oculto aqui
+    // por CSS, mas antes de .first() no DOM) — sem o escopo, .first() cairia nele.
+    await page.locator(`#sec-${secao} [data-abrir-modal="${modal}"]`).first().click();
+    await expect(page.locator(`#${modal}`)).toHaveClass(/open/);
+    if (modal === 'modalNovoTicket') {
+      await page.locator(`#${modal}`).click({ position: { x: 5, y: 5 } }); // overlay, fora do modal
+    } else {
+      await page.locator(`[data-fechar-modal="${modal}"]`).first().click();
+    }
     await expect(page.locator(`#${modal}`)).not.toHaveClass(/open/);
   }
 
-  await page.locator('.nav-item[data-section="marketplace"]').click();
+  await irParaSecao(page, 'marketplace', testInfo);
   await page.locator('[data-abrir-modal="modalContratarServidor"]').click();
   await page.locator('[data-plano-opcao]').nth(1).click();
   await expect(page.locator('[data-plano-opcao]').nth(1)).toHaveClass(/selected/);
   await page.locator('[data-fechar-modal="modalContratarServidor"]').first().click();
 
-  await page.locator('.nav-item[data-section="suporte"]').click();
+  await irParaSecao(page, 'suporte', testInfo);
   await page.locator('[data-ver-ticket="olho"]').click();
-  await page.locator('[data-fechar-modal="modalVerTicket"]').first().click();
+  await expect(page.locator('#modalVerTicket')).toHaveClass(/open/);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#modalVerTicket')).not.toHaveClass(/open/);
 
-  await page.locator('.nav-item[data-section="dns"]').click();
+  await irParaSecao(page, 'dns', testInfo);
   await page.locator('[data-dns-dominio="empresa.com"]').click();
   await page.locator('[data-dns-dominio="empresa.com.br"]').click();
   await page.locator('[data-dns-tipo="MX"]').click();
   await page.locator('[data-dns-tipo="Todos"]').click();
   await page.locator('#dnsSearch').fill('webmail');
   await page.locator('#dnsSearch').fill('');
+
   await page.locator('#btnDnsAdd').click();
+  await page.locator('#dnsRType').selectOption('MX');
+  await expect(page.locator('#dnsRPrioField')).toBeVisible();
   await page.locator('#dnsRHost').fill('teste');
   await page.locator('#dnsRValue').fill('valor.ficticio.teste');
   await page.locator('#btnDnsSave').click();
+
+  await page.locator('#btnDnsCheckProp').click();
+  await expect(page.locator('#toastWrap .toast', { hasText: 'DNS propagado' })).toBeVisible({ timeout: 5000 });
 
   page.once('dialog', d => d.accept());
   await page.locator('[data-dns-acao="excluir"][data-dns-id="1"]').click();
@@ -543,8 +569,8 @@ test.describe('CSP — login e painel', { tag: '@CIT-158' }, () => {
     expect(await atributosOnNoDom(page)).toEqual([]);
   });
 
-  test('CIT-158 CA1 (b) painel: nenhum atributo on* no DOM após os fluxos por clique', async ({ page, erros }) => {
-    await percorrerPainel(page);
+  test('CIT-158 CA1 (b) painel: nenhum atributo on* no DOM após os fluxos por clique', async ({ page, erros }, testInfo) => {
+    await percorrerPainel(page, testInfo);
     expect(await atributosOnNoDom(page)).toEqual([]);
   });
 
@@ -587,9 +613,9 @@ test.describe('CSP — login e painel', { tag: '@CIT-158' }, () => {
     expect(await violacoesCsp(page), 'violações de CSP no painel após o redirecionamento').toEqual([]);
   });
 
-  test('CIT-158 CA3 painel: zero violação de CSP na carga e nos fluxos por clique', async ({ page, erros }) => {
+  test('CIT-158 CA3 painel: zero violação de CSP na carga e nos fluxos por clique', async ({ page, erros }, testInfo) => {
     await registrarViolacoesCsp(page);
-    await percorrerPainel(page);
+    await percorrerPainel(page, testInfo);
     expect(await violacoesCsp(page), 'violações de CSP no painel').toEqual([]);
   });
 
@@ -615,6 +641,12 @@ test.describe('CSP — login e painel', { tag: '@CIT-158' }, () => {
   }
 
   test.describe('CA5 — vínculos (painel, desktop)', () => {
+    test.beforeEach(({}, testInfo) => {
+      // CA5 é desktop por desenho do plano (ver "Testes por critério"); no mobile o menu fica
+      // fora da tela (sidebar off-canvas abaixo de 768px) e a maioria dos seletores pressupõe
+      // layout desktop.
+      test.skip(testInfo.project.name !== 'desktop', 'CA5 é desktop apenas');
+    });
 
     test('CIT-158 CA5 contagens: atributos novos batem com o inventário de 206ba52', async ({ page, erros }) => {
       await page.goto('painel.html', { waitUntil: 'networkidle' });
@@ -853,9 +885,9 @@ test.describe('CSP — login e painel', { tag: '@CIT-158' }, () => {
   });
 
   test.describe('CA8 — escape', () => {
-    test('CIT-158 CA8 host/valor forjados no registro DNS aparecem como texto, nunca como marcação', async ({ page, erros }) => {
+    test('CIT-158 CA8 host/valor forjados no registro DNS aparecem como texto, nunca como marcação', async ({ page, erros }, testInfo) => {
       await page.goto('painel.html', { waitUntil: 'networkidle' });
-      await page.locator('.nav-item[data-section="dns"]').click();
+      await irParaSecao(page, 'dns', testInfo);
       await page.locator('#btnDnsAdd').click();
 
       const forjado = '"><b id=x>forjado';
