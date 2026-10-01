@@ -8,9 +8,16 @@ const paginas = [
   { arquivo: 'painel.html', titulo: 'Painel do Cliente — CITMail' },
 ];
 
-// CIT-49: páginas com CSP por meta e script externo (smoke também roda contra CITMAIL_BASE_URL).
-const comCsp = ['index.html', 'checkout.html'];
-const scriptDaPagina = { 'index.html': 'landing.js', 'checkout.html': 'checkout.js' };
+// CIT-49/CIT-158: páginas com CSP por meta e script externo (smoke também roda contra CITMAIL_BASE_URL).
+const comCsp = ['index.html', 'checkout.html', 'login.html', 'painel.html'];
+const scriptDaPagina = { 'index.html': 'landing.js', 'checkout.html': 'checkout.js', 'login.html': 'login.js', 'painel.html': 'painel.js' };
+// login.html/painel.html entraram na CIT-158, não na CIT-49/CIT-52 (ver CA7 do plano).
+const tagsCspPorPagina = {
+  'index.html': ['@CIT-49', '@CIT-52'],
+  'checkout.html': ['@CIT-49', '@CIT-52'],
+  'login.html': ['@CIT-158'],
+  'painel.html': ['@CIT-158'],
+};
 // CIT-52: fontes locais — lista fixa (smoke não lê assets/fonts.css do disco; roda também na homologação).
 const arquivosDeFonte = [
   'assets/fonts.css',
@@ -24,7 +31,7 @@ const arquivosDeFonte = [
 
 for (const { arquivo, titulo } of paginas) {
   const tags = ['@CIT-12', '@CIT-13'];
-  if (comCsp.includes(arquivo)) tags.push('@CIT-49', '@CIT-52');
+  if (comCsp.includes(arquivo)) tags.push(...tagsCspPorPagina[arquivo]);
 
   // também é o smoke da homologação (CITMAIL_BASE_URL), por isso não fixa o subcaminho /citmail/
   test(`${arquivo} carrega sem erros e com todos os ícones do sprite`, { tag: tags }, async ({ page, baseURL, erros }) => {
