@@ -58,13 +58,6 @@ function startDomPixTimer() {
   }, 1000);
 }
 
-function copyDomPix() {
-  navigator.clipboard.writeText(document.getElementById('domPixCode').textContent).then(() => {
-    const btn = document.querySelector('#domPixBox .pix-copy');
-    if (btn) { btn.innerHTML = '<svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Copiado'; setTimeout(() => btn.innerHTML = '<svg class="icon" aria-hidden="true"><use href="assets/icons.svg#copy"></use></svg> Copiar', 2000); }
-  });
-}
-
 function goStep2Next() {
   const errEl = document.getElementById('step2Error');
   if (!Object.keys(DOMAIN_OPTS).includes(domainChoice)) { errEl.style.display = 'flex'; return; }
@@ -261,13 +254,6 @@ function refreshAddons() {
   updateSummary();
   updateInstallments();
   atualizarIndicadoresSecoes();
-}
-
-function copyExtraDomPix() {
-  navigator.clipboard.writeText(document.getElementById('extraDomPixCode').textContent).then(() => {
-    const btn = document.querySelector('#extraDomPixPanel .pix-copy');
-    if (btn) { btn.innerHTML = '<svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Copiado'; setTimeout(() => btn.innerHTML = '<svg class="icon" aria-hidden="true"><use href="assets/icons.svg#copy"></use></svg> Copiar', 2000); }
-  });
 }
 
 /* ================================================================
@@ -716,13 +702,44 @@ async function processPayment() {
 /* ================================================================
    COPY HELPERS
 ================================================================ */
-function copyPix() {
-  const code = document.getElementById('pixCode').textContent;
-  navigator.clipboard.writeText(code).then(() => {
-    const btn = document.getElementById('btnCopyPix');
-    btn.innerHTML = '<svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Copiado';
-    setTimeout(() => { btn.innerHTML = '<svg class="icon" aria-hidden="true"><use href="assets/icons.svg#copy"></use></svg> Copiar'; }, 2000);
-  });
+// Conteúdo original de cada botão de cópia e timer da restauração (um por botão).
+const conteudoOriginalCopia = new WeakMap();
+const temporizadorCopia = new WeakMap();
+// Copia `texto` e dá feedback no botão. opcoes: codigo (elemento selecionado na falha),
+// aviso (região role="status" da falha), aoCopiar (substitui o feedback de sucesso do botão).
+function copiarComFeedback(botao, texto, opcoes = {}) {
+  if (!conteudoOriginalCopia.has(botao)) conteudoOriginalCopia.set(botao, botao.innerHTML);
+  function mostrarFeedback(icone, rotulo) {
+    clearTimeout(temporizadorCopia.get(botao));
+    botao.innerHTML = '<svg class="icon" aria-hidden="true"><use href="assets/icons.svg#' + icone + '"></use></svg> ' + rotulo;
+    temporizadorCopia.set(botao, setTimeout(() => { botao.innerHTML = conteudoOriginalCopia.get(botao); }, 2000));
+  }
+  function sucesso() {
+    if (opcoes.aviso) opcoes.aviso.textContent = '';
+    if (opcoes.aoCopiar) {
+      clearTimeout(temporizadorCopia.get(botao));
+      botao.innerHTML = conteudoOriginalCopia.get(botao);
+      opcoes.aoCopiar();
+    } else {
+      mostrarFeedback('check', 'Copiado');
+    }
+  }
+  function falha() {
+    mostrarFeedback('triangle-alert', 'Erro ao copiar');
+    if (opcoes.codigo) window.getSelection().selectAllChildren(opcoes.codigo);
+    if (opcoes.aviso) {
+      // Limpa e regrava no próximo frame para o leitor de tela reanunciar a mensagem.
+      const aviso = opcoes.aviso;
+      aviso.textContent = '';
+      requestAnimationFrame(() => {
+        aviso.textContent = 'Não foi possível copiar automaticamente. O código foi selecionado: copie com Ctrl+C ou, no celular, toque e segure.';
+      });
+    }
+  }
+  // Chamada síncrona no clique (preserva o gesto do usuário); sem clipboard ou exceção = falha tratada.
+  let promessa;
+  try { promessa = navigator.clipboard.writeText(texto); } catch (err) { falha(); return; }
+  promessa.then(sucesso, falha);
 }
 // Abre o boleto numa página própria e aciona a impressão, onde o cliente escolhe "Salvar como PDF".
 function downloadBoleto() {
@@ -738,11 +755,6 @@ function downloadBoleto() {
   w.focus();
   w.print();
 }
-function copyBoleto() {
-  const code = document.getElementById('boletoCode').textContent.trim();
-  navigator.clipboard.writeText(code).then(() => alert('Código do boleto copiado.'));
-}
-
 /* ================================================================
    VÍNCULOS — cada controle recebe o seu listener no próprio elemento
    (sem handler inline, por causa da CSP). Os aninhados (.pix-copy em
@@ -761,7 +773,9 @@ document.querySelectorAll('[data-dominio-opcao]').forEach(el => {
   el.addEventListener('click', e => selectDomainOpt(e.currentTarget.dataset.dominioOpcao));
 });
 document.getElementById('fDomNew').addEventListener('input', () => onDomNewInput());
-document.getElementById('btnCopyDomPix').addEventListener('click', () => copyDomPix());
+document.getElementById('btnCopyDomPix').addEventListener('click', e =>
+  copiarComFeedback(e.currentTarget, document.getElementById('domPixCode').textContent,
+    { codigo: document.getElementById('domPixCode'), aviso: document.getElementById('domPixCopiaAviso') }));
 document.getElementById('btnStep2Next').addEventListener('click', () => goStep2Next());
 document.querySelectorAll('[data-ir-passo]').forEach(el => {
   el.addEventListener('click', e => goStep(Number(e.currentTarget.dataset.irPasso)));
@@ -778,7 +792,9 @@ document.querySelectorAll('button[data-addon]').forEach(el => {
 document.querySelectorAll('input[data-addon]').forEach(el => {
   el.addEventListener('change', e => addonInput(e.currentTarget.dataset.addon, e.currentTarget.value));
 });
-document.getElementById('btnCopyExtraDomPix').addEventListener('click', () => copyExtraDomPix());
+document.getElementById('btnCopyExtraDomPix').addEventListener('click', e =>
+  copiarComFeedback(e.currentTarget, document.getElementById('extraDomPixCode').textContent,
+    { codigo: document.getElementById('extraDomPixCode'), aviso: document.getElementById('extraDomPixCopiaAviso') }));
 document.querySelectorAll('[data-doc-tipo]').forEach(el => {
   el.addEventListener('click', e => setDocType(e.currentTarget.dataset.docTipo));
 });
@@ -786,8 +802,12 @@ document.getElementById('btnSubmitCadastro').addEventListener('click', () => sub
 document.querySelectorAll('[data-pagamento]').forEach(el => {
   el.addEventListener('click', e => selectPayment(e.currentTarget.dataset.pagamento));
 });
-document.getElementById('btnCopyPix').addEventListener('click', () => copyPix());
-document.getElementById('btnCopyBoleto').addEventListener('click', () => copyBoleto());
+document.getElementById('btnCopyPix').addEventListener('click', e =>
+  copiarComFeedback(e.currentTarget, document.getElementById('pixCode').textContent,
+    { codigo: document.getElementById('pixCode'), aviso: document.getElementById('pixCopiaAviso') }));
+document.getElementById('btnCopyBoleto').addEventListener('click', e =>
+  copiarComFeedback(e.currentTarget, document.getElementById('boletoCode').textContent.trim(),
+    { codigo: document.getElementById('boletoCode'), aviso: document.getElementById('boletoCopiaAviso'), aoCopiar: () => alert('Código do boleto copiado.') }));
 document.getElementById('downloadBoleto').addEventListener('click', () => downloadBoleto());
 document.getElementById('fCardNum').addEventListener('input', e => formatCard(e.currentTarget));
 document.getElementById('fCardExp').addEventListener('input', e => formatExpiry(e.currentTarget));

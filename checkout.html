@@ -398,6 +398,8 @@
     }
     .boleto-actions { display: flex; gap: 10px; margin-bottom: 12px; }
     .boleto-actions .btn { flex: 1; }
+    p.copia-aviso { margin: 8px 0 0; font-size: var(--cit-text-small); color: var(--cit-error-strong); overflow-wrap: anywhere; }
+    p.copia-aviso:empty { margin: 0; }
 
     /* ---- ALERTAS — padrão .alert do brandbook ---- */
     .alert-box {
@@ -1007,6 +1009,7 @@
               <div class="pix-code" id="domPixCode">aguardando geração…</div>
               <button class="pix-copy" id="btnCopyDomPix"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#copy"></use></svg> Copiar</button>
             </div>
+            <p class="copia-aviso" id="domPixCopiaAviso" role="status"></p>
             <div class="pix-timer">
               <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#clock"></use></svg>
               <span id="domPixCountdown">Pix válido por 30:00</span>
@@ -1254,6 +1257,7 @@
                     <div class="pix-code" id="extraDomPixCode">aguardando geração…</div>
                     <button class="pix-copy" id="btnCopyExtraDomPix"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#copy"></use></svg> Copiar</button>
                   </div>
+                  <p class="copia-aviso" id="extraDomPixCopiaAviso" role="status"></p>
                   <p class="pix-note">Continue para a próxima etapa enquanto o Pix é processado.</p>
                 </div>
               </div>
@@ -1473,6 +1477,7 @@
                     <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#copy"></use></svg> Copiar
                   </button>
                 </div>
+                <p class="copia-aviso" id="pixCopiaAviso" role="status"></p>
                 <div class="pix-timer" id="pixTimer">
                   <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#clock"></use></svg> <span id="pixCountdown">QR Code válido por 30:00</span>
                 </div>
@@ -1507,6 +1512,7 @@
                     <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#file-down"></use></svg> Baixar PDF
                   </button>
                 </div>
+                <p class="copia-aviso" id="boletoCopiaAviso" role="status"></p>
                 <div class="alert-box alert-warn">
                   <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#triangle-alert"></use></svg>
                   <span>O serviço será ativado <strong>após a compensação do boleto</strong> (1–3 dias úteis).</span>
