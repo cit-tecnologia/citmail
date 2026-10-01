@@ -705,17 +705,25 @@ async function processPayment() {
 // Conteúdo original de cada botão de cópia e timer da restauração (um por botão).
 const conteudoOriginalCopia = new WeakMap();
 const temporizadorCopia = new WeakMap();
+// Geração do último clique por botão (ignora promessas antigas) e frame pendente da falha por aviso.
+const geracaoCopia = new WeakMap();
+const quadroAviso = new WeakMap();
 // Copia `texto` e dá feedback no botão. opcoes: codigo (elemento selecionado na falha),
 // aviso (região role="status" da falha), aoCopiar (substitui o feedback de sucesso do botão).
 function copiarComFeedback(botao, texto, opcoes = {}) {
   if (!conteudoOriginalCopia.has(botao)) conteudoOriginalCopia.set(botao, botao.innerHTML);
+  const geracao = (geracaoCopia.get(botao) || 0) + 1;
+  geracaoCopia.set(botao, geracao);
   function mostrarFeedback(icone, rotulo) {
     clearTimeout(temporizadorCopia.get(botao));
     botao.innerHTML = '<svg class="icon" aria-hidden="true"><use href="assets/icons.svg#' + icone + '"></use></svg> ' + rotulo;
     temporizadorCopia.set(botao, setTimeout(() => { botao.innerHTML = conteudoOriginalCopia.get(botao); }, 2000));
   }
   function sucesso() {
-    if (opcoes.aviso) opcoes.aviso.textContent = '';
+    if (opcoes.aviso) {
+      cancelAnimationFrame(quadroAviso.get(opcoes.aviso));
+      opcoes.aviso.textContent = '';
+    }
     if (opcoes.aoCopiar) {
       clearTimeout(temporizadorCopia.get(botao));
       botao.innerHTML = conteudoOriginalCopia.get(botao);
@@ -731,15 +739,17 @@ function copiarComFeedback(botao, texto, opcoes = {}) {
       // Limpa e regrava no próximo frame para o leitor de tela reanunciar a mensagem.
       const aviso = opcoes.aviso;
       aviso.textContent = '';
-      requestAnimationFrame(() => {
-        aviso.textContent = 'Não foi possível copiar automaticamente. O código foi selecionado: copie com Ctrl+C ou, no celular, toque e segure.';
-      });
+      cancelAnimationFrame(quadroAviso.get(aviso));
+      quadroAviso.set(aviso, requestAnimationFrame(() => {
+        aviso.textContent = 'Não foi possível copiar automaticamente. O código foi selecionado: copie com Ctrl+C (Cmd+C no Mac) ou, no celular, toque e segure.';
+      }));
     }
   }
   // Chamada síncrona no clique (preserva o gesto do usuário); sem clipboard ou exceção = falha tratada.
   let promessa;
   try { promessa = navigator.clipboard.writeText(texto); } catch (err) { falha(); return; }
-  promessa.then(sucesso, falha);
+  const atual = () => geracaoCopia.get(botao) === geracao;
+  promessa.then(() => { if (atual()) sucesso(); }, () => { if (atual()) falha(); });
 }
 // Abre o boleto numa página própria e aciona a impressão, onde o cliente escolhe "Salvar como PDF".
 function downloadBoleto() {
