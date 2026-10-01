@@ -1,4 +1,5 @@
 import { LogController } from 'fastify'
+import pino from 'pino'
 
 // Log técnico da API (ADR 0013, item 8; CIT-55): uma linha por requisição,
 // sem URL concreta, headers nem corpo, e máscara por nome de campo.
@@ -75,4 +76,15 @@ export class LogCitmail extends LogController {
   // método, e a linha padrão (`Route GET:/x?... not found`) levaria a query crua.
   // O 404 já sai em `request completed`.
   routeNotFound() {}
+}
+
+// Logger dos processos fora do Fastify (worker da fila, CIT-56): mesma máscara e
+// mesmos serializadores do app. `stream` só nos testes (captura das linhas).
+export function criarLogger({ level = 'info', stream } = {}) {
+  const opcoes = {
+    level,
+    redact: { paths: caminhosMascarados, censor: '[mascarado]' },
+    serializers: serializadores
+  }
+  return stream ? pino(opcoes, stream) : pino(opcoes)
 }
