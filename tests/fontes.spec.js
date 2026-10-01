@@ -19,6 +19,27 @@ function lerDoDisco(nome) {
 
 const REGEX_HOST_GOOGLE_FONTS = /fonts\.(googleapis|gstatic)\.com/;
 
+/** Remove comentários HTML (<!-- ... -->) antes de checar presença/ordem de <link>, para que um
+ *  <link> comentado (fonte voltando a existir só "desligada") não seja contado como presente. */
+function semComentariosHtml(html) {
+  return html.replace(/<!--[\s\S]*?-->/g, '');
+}
+
+/**
+ * Confere, no HTML fonte (sem comentários), que assets/fonts.css aparece antes de assets/tokens.css
+ * entre os <link> do <head> — índice menor, sem exigir adjacência. Asserção de consistência (não é
+ * prova funcional de que a fonte carrega); usada pelo CA1 da CIT-52 e da CIT-156.
+ */
+function confirmarFontsAntesDeTokens(html, arquivo) {
+  const limpo = semComentariosHtml(html);
+  const links = [...limpo.matchAll(/<link[^>]*href="([^"]+)"[^>]*>/g)].map(m => m[1]);
+  const indiceFontes = links.indexOf('assets/fonts.css');
+  const indiceTokens = links.indexOf('assets/tokens.css');
+  expect(indiceFontes, `${arquivo}: assets/fonts.css não está entre os <link> do HTML`).toBeGreaterThanOrEqual(0);
+  expect(indiceTokens, `${arquivo}: assets/tokens.css não está entre os <link> do HTML`).toBeGreaterThanOrEqual(0);
+  expect(indiceFontes, `${arquivo}: índice de assets/fonts.css deveria ser menor que o de assets/tokens.css`).toBeLessThan(indiceTokens);
+}
+
 /** unicode-range do subset latin do Google (idêntico ao do fontsource), do "Resultado do passo 0" do plano. */
 const UNICODE_RANGE_LATIN =
   'U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, ' +
@@ -121,23 +142,6 @@ function hashesDoComentario(css) {
 
 test.describe('CA1 — sem Google Fonts', { tag: '@CIT-52' }, () => {
   for (const arquivo of PAGINAS) {
-    test(`CA1 ${arquivo}: nenhuma requisição nem referência a host do Google Fonts`, async ({ page, erros }) => {
-      const requisicoesGoogle = [];
-      page.on('request', req => {
-        if (REGEX_HOST_GOOGLE_FONTS.test(new URL(req.url()).host)) requisicoesGoogle.push(req.url());
-      });
-
-      await page.goto(arquivo, { waitUntil: 'load' });
-      await page.evaluate(() => document.fonts.ready);
-
-      expect(requisicoesGoogle, `${arquivo}: requisição a host do Google Fonts`).toEqual([]);
-      expect(lerDoDisco(arquivo), `${arquivo}: host do Google Fonts no HTML fonte`).not.toMatch(REGEX_HOST_GOOGLE_FONTS);
-    });
-  }
-});
-
-test.describe('CA1 — sem Google Fonts (login e painel)', { tag: '@CIT-156' }, () => {
-  for (const arquivo of PAGINAS_CIT156) {
     test(`CA1 ${arquivo}: nenhuma requisição nem referência a host do Google Fonts; assets/fonts.css antes de assets/tokens.css`, async ({ page, erros }) => {
       const requisicoesGoogle = [];
       page.on('request', req => {
@@ -151,16 +155,27 @@ test.describe('CA1 — sem Google Fonts (login e painel)', { tag: '@CIT-156' }, 
 
       const html = lerDoDisco(arquivo);
       expect(html, `${arquivo}: host do Google Fonts no HTML fonte`).not.toMatch(REGEX_HOST_GOOGLE_FONTS);
-      expect(html, `${arquivo}: <link> de assets/fonts.css ausente`).toMatch(/<link[^>]*href="assets\/fonts\.css"[^>]*>/);
+      confirmarFontsAntesDeTokens(html, arquivo);
+    });
+  }
+});
 
-      // asserção de consistência (não prova funcional): fonts.css precisa aparecer antes de tokens.css
-      // entre os <link> do <head>, sem exigir adjacência.
-      const links = [...html.matchAll(/<link[^>]*href="([^"]+)"[^>]*>/g)].map(m => m[1]);
-      const indiceFontes = links.indexOf('assets/fonts.css');
-      const indiceTokens = links.indexOf('assets/tokens.css');
-      expect(indiceFontes, `${arquivo}: assets/fonts.css não está entre os <link> do HTML`).toBeGreaterThanOrEqual(0);
-      expect(indiceTokens, `${arquivo}: assets/tokens.css não está entre os <link> do HTML`).toBeGreaterThanOrEqual(0);
-      expect(indiceFontes, `${arquivo}: índice de assets/fonts.css deveria ser menor que o de assets/tokens.css`).toBeLessThan(indiceTokens);
+test.describe('CA1 — sem Google Fonts (login e painel)', { tag: '@CIT-156' }, () => {
+  for (const arquivo of PAGINAS_CIT156) {
+    test(`CIT-156 CA1 ${arquivo}: nenhuma requisição nem referência a host do Google Fonts; assets/fonts.css antes de assets/tokens.css`, async ({ page, erros }) => {
+      const requisicoesGoogle = [];
+      page.on('request', req => {
+        if (REGEX_HOST_GOOGLE_FONTS.test(new URL(req.url()).host)) requisicoesGoogle.push(req.url());
+      });
+
+      await page.goto(arquivo, { waitUntil: 'load' });
+      await page.evaluate(() => document.fonts.ready);
+
+      expect(requisicoesGoogle, `${arquivo}: requisição a host do Google Fonts`).toEqual([]);
+
+      const html = lerDoDisco(arquivo);
+      expect(html, `${arquivo}: host do Google Fonts no HTML fonte`).not.toMatch(REGEX_HOST_GOOGLE_FONTS);
+      confirmarFontsAntesDeTokens(html, arquivo);
     });
   }
 });
@@ -215,7 +230,7 @@ test.describe('CA2 — fontes locais aplicadas', { tag: '@CIT-52' }, () => {
 });
 
 test.describe('CA2 — fontes locais aplicadas (login e painel)', { tag: '@CIT-156' }, () => {
-  test('CA2 login.html: FontFace exatas via document.fonts, requisição 200 a poppins-400.woff2, body em Poppins 400 e h1 "Acesse seu painel" em Montserrat 600', async ({ page, erros }) => {
+  test('CIT-156 CA2 login.html: FontFace exatas via document.fonts, requisição 200 a poppins-400.woff2, body em Poppins 400 e h1 "Acesse seu painel" em Montserrat 600', async ({ page, erros }) => {
     const statusPoppins400 = [];
     page.on('response', res => { if (res.url().endsWith('/assets/fonts/poppins-400.woff2')) statusPoppins400.push(res.status()); });
 
@@ -239,7 +254,7 @@ test.describe('CA2 — fontes locais aplicadas (login e painel)', { tag: '@CIT-1
     expect(h1.fontWeight, 'login.html: font-weight do h1 "Acesse seu painel"').toBe('600');
   });
 
-  test('CA2 painel.html: FontFace exatas via document.fonts, requisição 200 a poppins-400.woff2, body em Poppins 400 e primeiro .stat-value de #sec-dashboard em Montserrat 800', async ({ page, erros }) => {
+  test('CIT-156 CA2 painel.html: FontFace exatas via document.fonts, requisição 200 a poppins-400.woff2, body em Poppins 400 e primeiro .stat-value de #sec-dashboard em Montserrat 800', async ({ page, erros }) => {
     const statusPoppins400 = [];
     page.on('response', res => { if (res.url().endsWith('/assets/fonts/poppins-400.woff2')) statusPoppins400.push(res.status()); });
 
@@ -265,7 +280,12 @@ test.describe('CA2 — fontes locais aplicadas (login e painel)', { tag: '@CIT-1
 // textContent original incluía comentários/código desses nós, como o "→" de login.html dentro de um
 // comentário de <script>, que nunca aparece na tela) e a lista de exceções vira por página — "≤" de
 // login/painel não entra na lista de landing/checkout, e vice-versa (prova pela mutação 3 do plano).
-test.describe('CA3 — glifos (texto visível, sem script/style/template)', { tag: '@CIT-156' }, () => {
+test.describe('CA3 — glifos (texto visível, sem script/style/template)', { tag: ['@CIT-52', '@CIT-156'] }, () => {
+  // O texto visível não depende de viewport: roda só no perfil desktop (como o CA5 faz, invertido).
+  test.beforeEach(({}, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop', 'glifos não dependem de viewport: roda só no perfil desktop');
+  });
+
   const intervalos = analisarUnicodeRange(UNICODE_RANGE_LATIN);
 
   for (const arquivo of [...PAGINAS, ...PAGINAS_CIT156]) {
@@ -274,7 +294,7 @@ test.describe('CA3 — glifos (texto visível, sem script/style/template)', { ta
     // validação, valores calculados) também — hoje esse texto adicional só usa caracteres do subset
     // latin ou o fallback conhecido da página; se algum dia usar outro caractere fora do subset, esta
     // prova não pega — reavaliar o escopo então.
-    test(`CA3 ${arquivo}: todo caractere do texto visível está no subset latin (exceto o fallback conhecido da página)`, async ({ page, erros }) => {
+    test(`CIT-156 CA3 ${arquivo}: todo caractere do texto visível está no subset latin (exceto o fallback conhecido da página)`, async ({ page, erros }) => {
       const fallback = FALLBACK_CONHECIDO_POR_PAGINA[arquivo] ?? [];
 
       await page.goto(arquivo, { waitUntil: 'load' });
@@ -442,7 +462,7 @@ test.describe('CA5 — mobile (login e painel)', { tag: '@CIT-156' }, () => {
 
   for (const arquivo of PAGINAS_CIT156) {
     for (const largura of [320, 375]) {
-      test(`CA5 ${arquivo} a ${largura}px: sem rolagem horizontal`, async ({ page, erros }) => {
+      test(`CIT-156 CA5 ${arquivo} a ${largura}px: sem rolagem horizontal`, async ({ page, erros }) => {
         await page.setViewportSize({ width: largura, height: 800 });
         await page.goto(arquivo, { waitUntil: 'load' });
         await page.evaluate(() => document.fonts.ready);
