@@ -2008,4 +2008,18 @@ test.describe('checkout — Pix de pagamento: feedback de cópia', { tag: '@CIT-
     await expect(page.locator('#btnCopyPix')).toContainText('Copiar', { timeout: 5000 });
     await expect(page.locator('#btnCopyPix')).not.toContainText('Copiado');
   });
+
+  test('CA3 a 320px, com #btnCopyPix mostrando "Copiado", a página não tem rolagem horizontal', async ({ page, context, erros }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile', 'CA3 só se aplica ao perfil mobile');
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.goto('checkout.html', { waitUntil: 'networkidle' });
+    await page.evaluate(() => goStep(5));
+    await page.locator('#payPix .payment-name').click();
+    await page.locator('#btnCopyPix').click();
+
+    await expect(page.locator('#btnCopyPix')).toContainText('Copiado');
+    const semRolagem = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+    expect(semRolagem).toBe(true);
+  });
 });
