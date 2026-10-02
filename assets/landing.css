@@ -1024,3 +1024,23 @@ footer p { color: var(--cit-text-inverse-secondary); }
   .painel-body { grid-template-columns: 1fr; }
   .painel-sidebar { display: none; }
 }
+
+/* CIT-152: estilos que estavam em style= */
+.is-hidden { display: none; }
+.mt-14 { margin-top: 14px; }
+.icon.icon--xs { font-size: .65rem; }
+.icon.icon--pix { font-size: .8rem; }
+.icon.icon--success { color: var(--cit-success); }
+.avatar.avatar--blue-500 { background: var(--cit-blue-500); }
+.avatar.avatar--turquoise-800 { background: var(--cit-turquoise-800); }
+.avatar.avatar--blue-700 { background: var(--cit-blue-700); }
+.avatar.avatar--neutral-600 { background: var(--cit-neutral-600); }
+.atc-bottom > .atc-qty-row:last-child { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+.calc-note { margin-top: 12px; font-size: .8125rem; color: var(--cit-text-secondary); }
+.cs-cta { margin-top: 18px; }
+.cs-secure { text-align: center; font-size: .8125rem; color: var(--cit-text-muted); margin-top: 8px; }
+.cta-row { margin-top: 28px; display: flex; gap: 12px; flex-wrap: wrap; }
+#calcCtaBtn { justify-content: center; }
+#calcCtaBtn[aria-disabled="true"] { pointer-events: none; opacity: .45; }
+.cs-line.cs-line--total-tabela { margin-top: 6px; border-top: 1px dashed var(--gray-200); padding-top: 6px; }
+.cs-line .lbl.lbl--forte { font-weight: 700; }

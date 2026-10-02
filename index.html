@@ -96,12 +96,12 @@
               <div class="mockup-dot"></div>
               <div class="mockup-dot"></div>
               <div class="mockup-url">
-                <svg class="icon" style="font-size:.65rem" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg>
+                <svg class="icon icon--xs" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg>
                 webmail.suaempresa.com.br
               </div>
             </div>
             <div class="mockup-email-row unread">
-              <div class="avatar" style="background:var(--cit-blue-500)">CL</div>
+              <div class="avatar avatar--blue-500">CL</div>
               <div class="mockup-email-info">
                 <div class="mockup-sender">Cliente Potencial</div>
                 <div class="mockup-subject">Solicitação de Orçamento</div>
@@ -109,7 +109,7 @@
               <div class="mockup-time">09:42</div>
             </div>
             <div class="mockup-email-row">
-              <div class="avatar" style="background:var(--cit-turquoise-800)">MK</div>
+              <div class="avatar avatar--turquoise-800">MK</div>
               <div class="mockup-email-info">
                 <div class="mockup-sender">Marketing Interno</div>
                 <div class="mockup-subject">Campanha de junho pronta</div>
@@ -117,7 +117,7 @@
               <div class="mockup-time">08:15</div>
             </div>
             <div class="mockup-email-row">
-              <div class="avatar" style="background:var(--cit-blue-700)">FN</div>
+              <div class="avatar avatar--blue-700">FN</div>
               <div class="mockup-email-info">
                 <div class="mockup-sender">Financeiro</div>
                 <div class="mockup-subject">NF-e referente ao contrato</div>
@@ -125,7 +125,7 @@
               <div class="mockup-time">Ontem</div>
             </div>
             <div class="mockup-email-row">
-              <div class="avatar" style="background:var(--cit-neutral-600)">DI</div>
+              <div class="avatar avatar--neutral-600">DI</div>
               <div class="mockup-email-info">
                 <div class="mockup-sender">Diretoria</div>
                 <div class="mockup-subject">Reunião semanal — pauta</div>
@@ -168,7 +168,7 @@
     <div class="container">
       <div class="section-header text-center fade-in">
         <div class="tag"><svg class="icon icon-fill" aria-hidden="true"><use href="assets/icons.svg#star"></use></svg> Recursos</div>
-        <h2 style="margin-top:14px">E-mail, domínio e proteção<br/>em um só contrato</h2>
+        <h2 class="mt-14">E-mail, domínio e proteção<br/>em um só contrato</h2>
         <p>Domínio, webmail, apps e antispam num só contrato, gerenciados pelo painel.</p>
       </div>
       <div class="features-grid">
@@ -210,7 +210,7 @@
         <div class="tag tag--dark">
           <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#search"></use></svg> Buscar Domínio
         </div>
-        <h2 style="margin-top:14px">Consulte o domínio<br/>da sua empresa</h2>
+        <h2 class="mt-14">Consulte o domínio<br/>da sua empresa</h2>
         <p>Digite o nome da empresa e veja se o domínio parece livre. A disponibilidade é confirmada na contratação.</p>
 
         <div class="domain-form">
@@ -242,7 +242,7 @@
     <div class="container">
       <div class="section-header text-center fade-in">
         <div class="tag"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#calculator"></use></svg> Preços</div>
-        <h2 style="margin-top:14px">Pague só pelas contas<br/>que sua equipe usa</h2>
+        <h2 class="mt-14">Pague só pelas contas<br/>que sua equipe usa</h2>
         <p>Escolha quantas contas de cada tipo contratar. Todos os preços já têm 15% de desconto nesta contratação e, no plano mensal, a partir de 5 contas do mesmo tipo entra mais 5%.</p>
       </div>
 
@@ -284,14 +284,14 @@
                 <div class="period">/conta/mês</div>
               </div>
             </div>
-            <div class="price-breakdown" id="breakdown5" style="display:none">
+            <div class="price-breakdown is-hidden" id="breakdown5">
               <span class="sr-only">de </span><s id="origPrice5"></s>
               <span class="price-final" id="finalPrice5"></span>
               <span class="price-saving" id="saving5"></span>
             </div>
             <div class="atc-bottom">
               <div class="atc-discount-tag" id="discTag5"></div>
-              <div style="display:flex;align-items:center;gap:14px;flex-shrink:0">
+              <div class="atc-qty-row">
                 <div class="qty-control">
                   <button class="qty-btn" data-qtd-tipo="5gb" data-qtd-delta="-1" aria-label="Diminuir">−</button>
                   <input class="qty-input" id="qty5" type="number" value="0" min="0" max="999" data-qtd-tipo="5gb" />
@@ -316,14 +316,14 @@
                 <div class="period">/conta/mês</div>
               </div>
             </div>
-            <div class="price-breakdown" id="breakdown25" style="display:none">
+            <div class="price-breakdown is-hidden" id="breakdown25">
               <span class="sr-only">de </span><s id="origPrice25"></s>
               <span class="price-final" id="finalPrice25"></span>
               <span class="price-saving" id="saving25"></span>
             </div>
             <div class="atc-bottom">
               <div class="atc-discount-tag" id="discTag25"></div>
-              <div style="display:flex;align-items:center;gap:14px;flex-shrink:0">
+              <div class="atc-qty-row">
                 <div class="qty-control">
                   <button class="qty-btn" data-qtd-tipo="25gb" data-qtd-delta="-1" aria-label="Diminuir">−</button>
                   <input class="qty-input" id="qty25" type="number" value="0" min="0" max="999" data-qtd-tipo="25gb" />
@@ -348,14 +348,14 @@
                 <div class="period">/conta/mês</div>
               </div>
             </div>
-            <div class="price-breakdown" id="breakdown50" style="display:none">
+            <div class="price-breakdown is-hidden" id="breakdown50">
               <span class="sr-only">de </span><s id="origPrice50"></s>
               <span class="price-final" id="finalPrice50"></span>
               <span class="price-saving" id="saving50"></span>
             </div>
             <div class="atc-bottom">
               <div class="atc-discount-tag" id="discTag50"></div>
-              <div style="display:flex;align-items:center;gap:14px;flex-shrink:0">
+              <div class="atc-qty-row">
                 <div class="qty-control">
                   <button class="qty-btn" data-qtd-tipo="50gb" data-qtd-delta="-1" aria-label="Diminuir">−</button>
                   <input class="qty-input" id="qty50" type="number" value="0" min="0" max="999" data-qtd-tipo="50gb" />
@@ -368,7 +368,7 @@
 
           <!-- Incluso em todas as contas -->
           <div class="included-box">
-            <div class="included-label"><svg class="icon" style="color:var(--cit-success)" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg> Incluso em todas as contas</div>
+            <div class="included-label"><svg class="icon icon--success" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg> Incluso em todas as contas</div>
             <div class="included-grid">
               <div class="included-item"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Webmail para computador e celular</div>
               <div class="included-item"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Protocolos IMAP / POP3 / SMTP</div>
@@ -377,7 +377,7 @@
               <div class="included-item"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Painel de gerenciamento</div>
               <div class="included-item"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Compatível com Outlook, Gmail App e Apple Mail</div>
             </div>
-            <p style="margin-top:12px;font-size:.8125rem;color:var(--cit-text-secondary)">
+            <p class="calc-note">
               <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#info"></use></svg>
               Domínio não incluído: use um domínio que a empresa já tem ou peça o registro de um novo na contratação.
             </p>
@@ -402,7 +402,7 @@
             </div>
 
             <!-- Lines (hidden when empty) -->
-            <div id="csLines" style="display:none">
+            <div id="csLines" class="is-hidden">
               <div class="cs-lines" id="csSummaryLines"></div>
               <div class="cs-line total-line">
                 <span class="lbl">Total</span>
@@ -416,15 +416,15 @@
               <div class="cs-feature"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Cancele quando quiser</div>
               <div class="cs-feature-nota">O serviço segue até o fim do ciclo pago.</div>
               <div class="cs-feature"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Sem taxa de adesão</div>
-              <div class="cs-feature"><svg class="icon icon-pix" style="font-size:.8rem" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg> Pix, boleto e cartão</div>
+              <div class="cs-feature"><svg class="icon icon-pix icon--pix" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg> Pix, boleto e cartão</div>
             </div>
 
-            <div style="margin-top:18px">
-              <a id="calcCtaBtn" role="link" aria-disabled="true" class="btn btn-primary" style="pointer-events:none;opacity:.45;justify-content:center">
+            <div class="cs-cta">
+              <a id="calcCtaBtn" role="link" aria-disabled="true" class="btn btn-primary">
                 <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#zap"></use></svg> Contratar Agora
               </a>
-              <p style="text-align:center;font-size:.8125rem;color:var(--cit-text-muted);margin-top:8px">
-                <svg class="icon" style="color:var(--cit-success)" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg> Pagamento seguro via Asaas
+              <p class="cs-secure">
+                <svg class="icon icon--success" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg> Pagamento seguro via Asaas
               </p>
             </div>
           </div>
@@ -451,7 +451,7 @@
     <div class="container">
       <div class="section-header text-center fade-in">
         <div class="tag"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#list-checks"></use></svg> Como funciona</div>
-        <h2 style="margin-top:14px">Do pagamento ao e-mail ativo<br/>em 4 passos</h2>
+        <h2 class="mt-14">Do pagamento ao e-mail ativo<br/>em 4 passos</h2>
       </div>
       <div class="steps-grid">
         <div class="step-card fade-in">
@@ -486,7 +486,7 @@
       <div class="painel-grid">
         <div class="text-col fade-in">
           <div class="tag"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#layout-dashboard"></use></svg> Painel do Cliente</div>
-          <h2 style="margin-top:14px">Sua equipe gerencia<br/>sem abrir chamado</h2>
+          <h2 class="mt-14">Sua equipe gerencia<br/>sem abrir chamado</h2>
           <p>Crie caixas, troque senhas, baixe faturas e consulte o DNS pelo painel, sem depender do suporte.</p>
           <ul class="painel-features-list">
             <li><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg> Dashboard com visão geral do plano</li>
@@ -495,7 +495,7 @@
             <li><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg> Histórico de faturas com download em PDF</li>
             <li><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg> Registros de DNS e status da verificação do domínio</li>
           </ul>
-          <div style="margin-top:28px; display:flex; gap:12px; flex-wrap:wrap;">
+          <div class="cta-row">
             <a href="login.html" class="btn btn-primary">Acessar Painel</a>
             <a href="#pricing" class="btn btn-outline">Criar Conta</a>
           </div>
@@ -559,7 +559,7 @@
     <div class="container">
       <div class="section-header text-center fade-in">
         <div class="tag"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#store"></use></svg> Marketplace</div>
-        <h2 style="margin-top:14px">Serviços extras para<br/>contratar com o e-mail</h2>
+        <h2 class="mt-14">Serviços extras para<br/>contratar com o e-mail</h2>
         <p>E-mail Registrado e Microsoft 365 sob consulta, contratados junto com o e-mail.</p>
       </div>
       <div class="marketplace-grid">
@@ -592,7 +592,7 @@
     <div class="container">
       <div class="section-header text-center fade-in">
         <div class="tag"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-help"></use></svg> FAQ</div>
-        <h2 style="margin-top:14px">Perguntas frequentes</h2>
+        <h2 class="mt-14">Perguntas frequentes</h2>
         <p>Prazos, pagamento, suporte e cancelamento.</p>
       </div>
       <div class="faq-list fade-in">
@@ -674,7 +674,7 @@
         <div class="tag">
           <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#rocket"></use></svg> Pronto para começar?
         </div>
-        <h2 style="margin-top:14px">E-mail com o domínio da empresa</h2>
+        <h2 class="mt-14">E-mail com o domínio da empresa</h2>
         <p>Sem fidelidade e sem taxa de adesão. Cancele pelo painel quando quiser.</p>
         <div class="cta-actions">
           <a href="checkout.html" class="btn btn-white btn-lg">
@@ -737,6 +737,6 @@
        JAVASCRIPT
   ============================================================ -->
   <script src="assets/precos.js?v=25"></script>
-  <script src="assets/landing.js?v=2"></script>
+  <script src="assets/landing.js?v=3"></script>
 </body>
 </html>
