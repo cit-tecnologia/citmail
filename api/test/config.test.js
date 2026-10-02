@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { carregarConfig } from '../src/config.js';
+import { carregarConfig, carregarConfigFila, carregarConfigWorker } from '../src/config.js';
 import { construirApp } from '../src/app.js';
 import { criarCapturaDeLog } from './auxiliares.js';
 
@@ -93,4 +93,80 @@ test('Revisão: NODE_ENV ausente vira "production" (falha fechada) e desativa PO
   });
 
   assert.equal(resposta.statusCode, 404);
+});
+
+// CIT-56 (CA5): configuração por processo. `carregarConfig` ganha `redisUrl`
+// (opcional) e os parâmetros da fila; `carregarConfigFila` (CLI) exige
+// REDIS_URL em qualquer ambiente e não exige banco/CORS; `carregarConfigWorker`
+// (worker) soma o Telegram, obrigatório só em produção.
+
+const VALORES_FILA_TENTATIVAS_INVALIDOS = ['0', '21', '2.5', 'abc', '1e1', '0x10', ' 5'];
+for (const valor of VALORES_FILA_TENTATIVAS_INVALIDOS) {
+  test(`CA5: carregarConfig lança erro com FILA_TENTATIVAS = ${JSON.stringify(valor)}`, () => {
+    assert.throws(
+      () => carregarConfig({ ...AMBIENTE_BASE, FILA_TENTATIVAS: valor }),
+      (erro) => { assert.match(erro.message, /FILA_TENTATIVAS/); return true; },
+    );
+  });
+}
+
+const VALORES_FILA_BACKOFF_MS_INVALIDOS = ['0', '-1', 'abc', '3600001', '1e3', '0x10'];
+for (const valor of VALORES_FILA_BACKOFF_MS_INVALIDOS) {
+  test(`CA5: carregarConfig lança erro com FILA_BACKOFF_MS = ${JSON.stringify(valor)}`, () => {
+    assert.throws(
+      () => carregarConfig({ ...AMBIENTE_BASE, FILA_BACKOFF_MS: valor }),
+      (erro) => { assert.match(erro.message, /FILA_BACKOFF_MS/); return true; },
+    );
+  });
+}
+
+test('CA5: FILA_TENTATIVAS e FILA_BACKOFF_MS ausentes ou vazias usam os padrões (8 e 60000)', () => {
+  const configAusente = carregarConfig(AMBIENTE_BASE);
+  assert.equal(configAusente.filaTentativas, 8);
+  assert.equal(configAusente.filaBackoffMs, 60000);
+
+  const configVazia = carregarConfig({ ...AMBIENTE_BASE, FILA_TENTATIVAS: '', FILA_BACKOFF_MS: '' });
+  assert.equal(configVazia.filaTentativas, 8);
+  assert.equal(configVazia.filaBackoffMs, 60000);
+});
+
+test('CA5: FILA_PREFIXO com ":" lança erro citando a variável', () => {
+  assert.throws(
+    () => carregarConfig({ ...AMBIENTE_BASE, FILA_PREFIXO: 'citmail:x' }),
+    (erro) => { assert.match(erro.message, /FILA_PREFIXO/); return true; },
+  );
+});
+
+test('CA5(a): carregarConfig aceita ambiente de produção sem REDIS_URL e sem Telegram (API não exige fila)', () => {
+  const config = carregarConfig({ ...AMBIENTE_BASE, NODE_ENV: 'production' });
+  assert.equal(config.redisUrl, undefined);
+});
+
+test('CA5(b): carregarConfigFila exige REDIS_URL mesmo sem DATABASE_URL/CORS_ORIGENS', () => {
+  assert.throws(
+    () => carregarConfigFila({ NODE_ENV: 'development' }),
+    (erro) => { assert.match(erro.message, /REDIS_URL/); return true; },
+  );
+});
+
+test('CA5(b): carregarConfigFila é válida com só REDIS_URL (sem banco nem CORS)', () => {
+  const config = carregarConfigFila({ REDIS_URL: 'redis://127.0.0.1:56379' });
+  assert.equal(config.redisUrl, 'redis://127.0.0.1:56379');
+});
+
+test('CA5(c): carregarConfigWorker em produção exige TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID', () => {
+  assert.throws(
+    () => carregarConfigWorker({ NODE_ENV: 'production', REDIS_URL: 'redis://127.0.0.1:56379', TELEGRAM_CHAT_ID: 'CHAT-FICTICIO' }),
+    (erro) => { assert.match(erro.message, /TELEGRAM_BOT_TOKEN/); return true; },
+  );
+  assert.throws(
+    () => carregarConfigWorker({ NODE_ENV: 'production', REDIS_URL: 'redis://127.0.0.1:56379', TELEGRAM_BOT_TOKEN: 'TOKEN-FICTICIO' }),
+    (erro) => { assert.match(erro.message, /TELEGRAM_CHAT_ID/); return true; },
+  );
+});
+
+test('CA5(c): carregarConfigWorker fora de produção é válida sem Telegram', () => {
+  const config = carregarConfigWorker({ NODE_ENV: 'development', REDIS_URL: 'redis://127.0.0.1:56379' });
+  assert.equal(config.telegramBotToken, undefined);
+  assert.equal(config.telegramChatId, undefined);
 });

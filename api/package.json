@@ -14,15 +14,21 @@
     "migrar:reverter": "node --env-file-if-exists=.env node_modules/node-pg-migrate/bin/node-pg-migrate.js down -m migrations",
     "nova-migracao": "node-pg-migrate create -m migrations --migration-file-language sql",
     "banco:teste": "docker compose --profile teste up -d --wait banco-teste",
+    "servicos:teste": "docker compose --profile teste up -d --wait banco-teste redis-teste",
+    "worker": "node --env-file-if-exists=.env src/worker.js",
+    "reprocessar": "node --env-file-if-exists=.env src/cli/reprocessar.js",
     "lint": "eslint . --max-warnings=0",
     "test": "node --import ./test/sem-rede.js --test --test-concurrency=1"
   },
   "dependencies": {
     "@fastify/ajv-compiler": "^4.0.6",
     "@fastify/cors": "^11.3.0",
+    "bullmq": "6.3.11",
     "fastify": "^5.12.5",
+    "ioredis": "6.0.0",
     "node-pg-migrate": "^9.0.0",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "pino": "10.3.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",

@@ -2,7 +2,7 @@ name: Testes E2E
 
 # Três jobs, exigidos pelo ruleset em develop e main (nomes fixos: playwright, api, segredos):
 # - playwright: testes E2E do site (npm test da raiz);
-# - api: lint e testes da API (api/) com PostgreSQL de serviço;
+# - api: lint e testes da API (api/) com PostgreSQL e Redis de serviço;
 # - segredos: gitleaks com .gitleaks.toml nos commits do PR (base..head).
 # No workflow_call (publicar-homologacao.yml), playwright e api rodam e bloqueiam a publicação;
 # segredos fica "skipped" (o código já passou pelo scan no PR e o push não tem base..head).
@@ -55,9 +55,20 @@ jobs:
           --health-interval 2s
           --health-timeout 3s
           --health-retries 30
+      redis:
+        # mesma imagem do compose.yaml (redis-teste); efêmero, sem senha
+        image: redis:7-alpine
+        ports:
+          - 56379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
     env:
       # loopback: único host aceito pela guarda test/sem-rede.js
       DATABASE_URL_TESTE: postgres://postgres@127.0.0.1:55433/postgres
+      REDIS_URL_TESTE: redis://127.0.0.1:56379
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:

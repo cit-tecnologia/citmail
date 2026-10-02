@@ -1,6 +1,6 @@
-# PostgreSQL local da API. Portas publicadas só no loopback.
-# Desenvolvimento: docker compose up -d --wait banco
-# Testes:          docker compose --profile teste up -d --wait banco-teste
+# PostgreSQL e Redis locais da API. Portas publicadas só no loopback.
+# Desenvolvimento: docker compose up -d --wait banco redis
+# Testes:          docker compose --profile teste up -d --wait banco-teste redis-teste
 name: citmail-api
 
 services:
@@ -41,5 +41,36 @@ services:
       timeout: 3s
       retries: 30
 
+  # Fila de jobs (ADR 0005/0006): AOF ligado e `noeviction` (Redis cheio recusa escrita
+  # em vez de apagar job ou sessão; por isso a retenção das filas é obrigatória).
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "127.0.0.1:56378:6379"
+    volumes:
+      - redis-dados:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis-teste:
+    image: redis:7-alpine
+    profiles: ["teste"]
+    # Descartável: sem AOF nem RDB, dados em tmpfs.
+    command: ["redis-server", "--appendonly", "no", "--save", "", "--maxmemory-policy", "noeviction"]
+    ports:
+      - "127.0.0.1:56379:6379"
+    tmpfs:
+      - /data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
 volumes:
   banco-dados:
+  redis-dados:
