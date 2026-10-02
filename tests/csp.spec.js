@@ -1032,8 +1032,9 @@ test.describe('CSP sem estilo inline', { tag: '@CIT-152' }, () => {
       test.skip(testInfo.project.name !== 'desktop', 'leitura de arquivo: roda num perfil só');
     });
 
-    test('CA1 páginas e assets/*.js sem <style>, sem atributo style= em tag e sem setAttribute/createElement de style', () => {
-      const achados = [...PAGINAS_152, ...SCRIPTS_152]
+    test('CA1 páginas, assets/*.js e o sprite sem <style>, sem atributo style= em tag e sem setAttribute/createElement de style', () => {
+      // o sprite entra porque é parseado na página (DOMParser no smoke de ícones): style= nele vira violação style-src-attr
+      const achados = [...PAGINAS_152, ...SCRIPTS_152, 'assets/icons.svg']
         .flatMap(arquivo => achadosComLinha(arquivo, lerFonte(arquivo), REGEX_ESTILO_INLINE));
       expect(achados, 'estilo inline (arquivo:linha)').toEqual([]);
     });
@@ -1161,13 +1162,35 @@ test.describe('CSP sem estilo inline', { tag: '@CIT-152' }, () => {
 
     // print() só depois de a folha carregar, exatamente uma vez (guarda "impresso")
     await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__prints)).toBe(1);
-    await page.waitForTimeout(500); // janela para uma 2ª chamada (load + cache) aparecer
+    // janela maior que a reserva de 3 s do checkout.js: o setTimeout de reserva não pode imprimir de novo
+    await page.waitForTimeout(3500);
     expect(await page.evaluate(() => /** @type {any} */ (window).__prints), 'print() chamado mais de uma vez').toBe(1);
 
     const mensagensDoPopup = mensagens
       .filter(m => m.page() === popup && (m.type() === 'error' || /Content Security Policy/i.test(m.text())))
       .map(m => m.text());
     expect(mensagensDoPopup, 'erro ou violação de CSP no pop-up do boleto').toEqual([]);
+    await popup.close();
+  });
+
+  test('CA3 pop-up do boleto: com a folha travada, imprime uma vez pela reserva de 3 s', async ({ page, erros }) => {
+    await neutralizarPrintDoPopup(page);
+    await checkoutAteBoleto(page);
+    await page.unrouteAll({ behavior: 'wait' });
+    // folha que nunca responde: nem load nem error; só a reserva de 3 s aciona a impressão
+    await page.context().route('**/assets/boleto.css*', () => {});
+
+    const popupPromise = page.waitForEvent('popup');
+    await page.locator('#downloadBoleto').click();
+    const popup = await popupPromise;
+    const inicio = Date.now();
+    await expect(popup.locator('h1')).toHaveText('Boleto CITMail');
+
+    await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__prints), { timeout: 6000 }).toBe(1);
+    expect(Date.now() - inicio, 'a impressão deveria vir da reserva de 3 s, não antes').toBeGreaterThanOrEqual(2500);
+    expect(await popup.evaluate(() => getComputedStyle(document.body).paddingTop), 'folha travada não aplica').not.toBe('40px');
+    await page.waitForTimeout(1000);
+    expect(await page.evaluate(() => /** @type {any} */ (window).__prints), 'print() chamado mais de uma vez').toBe(1);
     await popup.close();
   });
 
