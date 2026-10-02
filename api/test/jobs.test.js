@@ -1,40 +1,59 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { construirAppTeste } from './auxiliares.js';
+import { setTimeout as esperar } from 'node:timers/promises';
+import { construirAppTeste, criarFilasTeste } from './auxiliares.js';
 import { executarJob } from '../src/jobs/executar.js';
+import { criarConexaoProdutor } from '../src/fila/conexao.js';
+import { criarFilas } from '../src/fila/filas.js';
+import { criarLogger } from '../src/log.js';
 
-test('CA2: job de exemplo bem-sucedido registra início, execução e fim com o mesmo reqId da requisição, sem chave duplicada', async (t) => {
-  const { app, captura, fechar } = await construirAppTeste();
+// CIT-56 (CA8): a rota `POST /api/exemplos/job` passou a só enfileirar (202
+// com `jobId`; 503 com a fila fora). `construirAppTeste` precisa repassar uma
+// `filas` injetada a `construirApp(config, { ..., filas })` (decisão 9 do
+// plano; `app.js`/`exemplo/rotas.js` já aceitam); se `auxiliares.js` ainda
+// não tiver essa opção quando este arquivo rodar, é a única mudança que falta
+// nele para os testes abaixo (fora do escopo deste arquivo — ver relatório).
+
+async function aguardarCondicao(condicao, { timeoutMs = 6000, intervaloMs = 20 } = {}) {
+  const prazo = Date.now() + timeoutMs;
+  for (;;) {
+    const valor = await condicao();
+    if (valor) return valor;
+    if (Date.now() >= prazo) throw new Error('aguardarCondicao: tempo esgotado');
+    await esperar(intervaloMs);
+  }
+}
+
+test('CA8: POST /api/exemplos/job responde 202 com jobId e o worker processa com o mesmo reqId da resposta', async (t) => {
+  const aux = criarFilasTeste({ tentativas: 3, backoffMs: 300 });
+  t.after(aux.fechar);
+  aux.criarWorkers();
+
+  const { app, fechar } = await construirAppTeste({ filas: aux.filas });
   t.after(fechar);
 
   const resposta = await app.inject({ method: 'POST', url: '/api/exemplos/job', payload: {} });
+  assert.equal(resposta.statusCode, 202);
+  const { jobId } = resposta.json();
+  assert.equal(typeof jobId, 'string');
   const requestId = resposta.headers['x-request-id'];
 
-  assert.equal(resposta.statusCode, 200);
+  await aguardarCondicao(async () => {
+    const job = await aux.filas.jobs.getJob(jobId);
+    return job ? (await job.getState()) === 'completed' : false;
+  });
 
-  const linhasDoJob = captura.linhas().filter((linha) => linha.reqId === requestId && linha.job === 'exemplo');
-  const mensagens = linhasDoJob.map((linha) => linha.msg);
+  const linhasDoJob = aux.captura.linhas().filter((l) => l.reqId === requestId && l.job === 'exemplo');
+  const mensagens = linhasDoJob.map((l) => l.msg);
+  assert.ok(mensagens.includes('job iniciado'));
+  assert.ok(mensagens.includes('processando exemplo'));
 
-  assert.ok(mensagens.includes('job iniciado'), 'era esperado o log "job iniciado"');
-  assert.ok(mensagens.includes('processando exemplo'), 'era esperado o log "processando exemplo"');
-
-  const linhaFim = linhasDoJob.find((linha) => linha.msg === 'job concluído');
+  const linhaFim = linhasDoJob.find((l) => l.msg === 'job concluído');
   assert.ok(linhaFim, 'era esperado o log "job concluído"');
-  assert.ok(
-    Number.isInteger(linhaFim.duracaoMs) && linhaFim.duracaoMs >= 0,
-    `duracaoMs deveria ser inteiro >= 0, recebeu ${linhaFim.duracaoMs}`,
-  );
+  assert.ok(Number.isInteger(linhaFim.duracaoMs) && linhaFim.duracaoMs >= 0);
 
-  // Confere na linha bruta (não no objeto já reconstruído pelo JSON.parse,
-  // que perderia a duplicidade): `reqId` deve aparecer uma única vez, senão
-  // o job recebeu o logger da requisição (já filho, com reqId) em vez do
-  // logger raiz (`app.log`) para criar seu próprio filho.
-  const linhasBrutas = captura
-    .texto()
-    .split('\n')
-    .map((linha) => linha.trim())
-    .filter(Boolean);
-
+  // "reqId" único na linha bruta (CIT-55).
+  const linhasBrutas = aux.captura.texto().split('\n').map((l) => l.trim()).filter(Boolean);
   for (const linhaBruta of linhasBrutas) {
     const objeto = JSON.parse(linhaBruta);
     if (objeto.reqId === requestId && objeto.job === 'exemplo') {
@@ -44,23 +63,62 @@ test('CA2: job de exemplo bem-sucedido registra início, execução e fim com o 
   }
 });
 
-test('CA2: job de exemplo que falha registra "job falhou" (level 50) com a mensagem do erro e sem "job concluído"', async (t) => {
-  const { app, captura, fechar } = await construirAppTeste();
+test('CA8: POST /api/exemplos/job com falhar:true gera 3 linhas "job falhou" (nível 50) e nenhuma "erro não tratado"', async (t) => {
+  const aux = criarFilasTeste({ tentativas: 3, backoffMs: 300 });
+  t.after(aux.fechar);
+  aux.criarWorkers();
+
+  const { app, fechar } = await construirAppTeste({ filas: aux.filas });
   t.after(fechar);
 
   const resposta = await app.inject({ method: 'POST', url: '/api/exemplos/job', payload: { falhar: true } });
+  assert.equal(resposta.statusCode, 202);
+  const { jobId } = resposta.json();
   const requestId = resposta.headers['x-request-id'];
 
-  assert.equal(resposta.statusCode, 500);
+  await aguardarCondicao(async () => {
+    const job = await aux.filas.jobs.getJob(jobId);
+    return job ? (await job.getState()) === 'failed' : false;
+  });
 
-  const linhasDoJob = captura.linhas().filter((linha) => linha.reqId === requestId && linha.job === 'exemplo');
-  const linhaFalhou = linhasDoJob.find((linha) => linha.msg === 'job falhou');
-
-  assert.ok(linhaFalhou, 'era esperado o log "job falhou"');
-  assert.equal(linhaFalhou.level, 50);
-  assert.equal(linhaFalhou.err?.message, 'falha simulada do job de exemplo');
-  assert.ok(!linhasDoJob.some((linha) => linha.msg === 'job concluído'), 'não deveria haver "job concluído"');
+  const linhasFalhou = aux.captura.linhas().filter((l) => l.reqId === requestId && l.job === 'exemplo' && l.msg === 'job falhou');
+  assert.equal(linhasFalhou.length, 3);
+  for (const linha of linhasFalhou) {
+    assert.equal(linha.level, 50);
+    assert.equal(linha.err?.message, 'falha simulada do job de exemplo');
+  }
+  assert.ok(!aux.captura.linhas().some((l) => l.msg === 'erro não tratado'));
 });
+
+test('CA8: com o Redis inacessível, a rota responde 503 em até 3 segundos, sem a URL no log', async (t) => {
+  const prefixo = `teste-ca8-sem-redis-${process.pid}`;
+  const conexao = criarConexaoProdutor('redis://127.0.0.1:1');
+  const log = criarLogger({ level: 'info' });
+  const filas = criarFilas({ conexao, prefixo, tentativas: 3, backoffMs: 300, log });
+  t.after(async () => {
+    await filas.close().catch(() => {});
+    conexao.disconnect();
+  });
+
+  const { app, captura, fechar } = await construirAppTeste({ filas });
+  t.after(fechar);
+
+  const inicio = Date.now();
+  const resposta = await app.inject({ method: 'POST', url: '/api/exemplos/job', payload: {} });
+  const duracao = Date.now() - inicio;
+
+  assert.equal(resposta.statusCode, 503);
+  assert.deepEqual(resposta.json(), { erro: 'fila indisponível' });
+  assert.ok(duracao < 3000, `esperava responder em menos de 3000ms, levou ${duracao}ms`);
+  assert.ok(!captura.texto().includes('127.0.0.1:1'), 'o log não deveria conter a URL/porta do Redis');
+});
+
+// CA8 "job fantasma" (Redis volta depois do 503 via proxy TCP local): tirado
+// da suíte por instabilidade — a 1ª execução travou (handles do BullMQ sobre
+// o proxy nunca soltam o event loop, "Promise resolution is still pending"
+// mesmo fechando `filas`/conexão no `t.after`), exatamente o caso que o plano
+// (.omc/plans/CIT-56.md, linha do CA8 "Job fantasma") previu e autorizou
+// deixar só registrado no ADR 0005 quando o proxy se mostrar instável.
 
 test('CA2: chamada direta de executarJob sem correlacaoId recebe um UUID v4 novo', async (t) => {
   const { app, captura, fechar } = await construirAppTeste();
@@ -77,12 +135,14 @@ test('CA2: chamada direta de executarJob sem correlacaoId recebe um UUID v4 novo
   );
 });
 
-test('CA2: POST /api/exemplos/job não existe fora de desenvolvimento (NODE_ENV=production)', async (t) => {
-  const { app, fechar } = await construirAppTeste({ sobrescritasConfig: { nodeEnv: 'production' } });
+test('CA8: POST /api/exemplos/job continua 404 em produção, mesmo com filas injetadas', async (t) => {
+  const aux = criarFilasTeste({ tentativas: 3, backoffMs: 300 });
+  t.after(aux.fechar);
+
+  const { app, fechar } = await construirAppTeste({ filas: aux.filas, sobrescritasConfig: { nodeEnv: 'production' } });
   t.after(fechar);
 
   const resposta = await app.inject({ method: 'POST', url: '/api/exemplos/job', payload: {} });
-
   assert.equal(resposta.statusCode, 404);
 });
 
