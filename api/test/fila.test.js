@@ -16,6 +16,8 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { urlRedisTeste, criarFilasTeste } from './auxiliares.js';
 
+const CAMINHO_API = fileURLToPath(new URL('..', import.meta.url));
+
 async function aguardarCondicao(condicao, { timeoutMs = 6000, intervaloMs = 20 } = {}) {
   const prazo = Date.now() + timeoutMs;
   for (;;) {
@@ -93,13 +95,23 @@ test('CA1(b): filas.jobs e filas.alertas nascem com attempts, backoff exponencia
     backoff: { type: 'exponential', delay: 300 },
     removeOnComplete: { age: 86400, count: 1000 },
     removeOnFail: { age: 2592000, count: 10000 },
+    stackTraceLimit: 0,
   });
   assert.deepEqual(filas.alertas.defaultJobOptions, {
     attempts: 3,
     backoff: { type: 'exponential', delay: 20 },
     removeOnComplete: { age: 86400, count: 1000 },
     removeOnFail: { age: 2592000, count: 1000 },
+    stackTraceLimit: 0,
   });
+});
+
+test('Revisão: filas.jobs e filas.alertas limitam o stream de eventos a 1000 entradas (streams.events.maxLen)', async (t) => {
+  const { filas, fechar } = criarFilasTeste({ tentativas: 3, backoffMs: 300 });
+  t.after(fechar);
+
+  assert.equal(filas.jobs.opts.streams?.events?.maxLen, 1000);
+  assert.equal(filas.alertas.opts.streams?.events?.maxLen, 1000);
 });
 
 test('CA1(c): job de nome desconhecido vai a "failed" com attemptsMade 1, failedReason e log "job desconhecido"', async (t) => {
@@ -143,9 +155,9 @@ test('CA4(b): job ativo num processo de worker morto com SIGKILL volta como "sta
 
   const job = await filas.jobs.add('exemplo', { requestId: 'req-ficticio-ca4b', esperarMs: 5000 });
 
-  const caminhoFixture = fileURLToPath(new URL('./fixtures/worker-filho.js', import.meta.url));
-  const filho = spawn(process.execPath, [caminhoFixture], {
-    env: { ...process.env, REDIS_URL: urlRedisTeste(), FILA_PREFIXO: prefixo, NODE_ENV: 'test' },
+  const filho = spawn(process.execPath, ['--import', './test/sem-rede.js', 'test/fixtures/worker-filho.js'], {
+    cwd: CAMINHO_API,
+    env: { PATH: process.env.PATH, REDIS_URL: urlRedisTeste(), FILA_PREFIXO: prefixo, NODE_ENV: 'test' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let saidaFilho = '';
@@ -163,6 +175,43 @@ test('CA4(b): job ativo num processo de worker morto com SIGKILL volta como "sta
 
   await aguardarCondicao(async () => (await estadoDoJob(filas.jobs, job.id)) === 'completed', { timeoutMs: 25000 });
   assert.ok(viuStalled, 'esperava o evento "stalled" para o job travado');
+});
+
+test('Revisão: erro do job é saneado antes de ir ao BullMQ — failedReason só com o nome do erro, sem stacktrace', async (t) => {
+  const { filas, criarWorkers, fechar } = criarFilasTeste({ tentativas: 1, backoffMs: 300 });
+  t.after(fechar);
+
+  const emailFicticio = 'fulano@exemplo.invalid';
+  criarWorkers({ handlers: { sempreFalha: async () => { throw new Error(`falha ao processar ${emailFicticio}`); } } });
+
+  const job = await filas.jobs.add('sempreFalha', {});
+  await aguardarCondicao(async () => (await estadoDoJob(filas.jobs, job.id)) === 'failed');
+
+  const atualizado = await filas.jobs.getJob(job.id);
+  assert.equal(atualizado.failedReason, 'Error');
+  assert.ok(!atualizado.failedReason.includes(emailFicticio));
+  assert.equal(atualizado.stacktrace?.length ?? 0, 0);
+});
+
+test('Revisão: erro saneado preserva o code válido no formato "<name> (<code>)"', async (t) => {
+  const { filas, criarWorkers, fechar } = criarFilasTeste({ tentativas: 1, backoffMs: 300 });
+  t.after(fechar);
+
+  criarWorkers({
+    handlers: {
+      sempreFalha: async () => {
+        const erro = new Error('falha ao conectar a um endereço interno sensível');
+        erro.code = 'ECONNREFUSED';
+        throw erro;
+      },
+    },
+  });
+
+  const job = await filas.jobs.add('sempreFalha', {});
+  await aguardarCondicao(async () => (await estadoDoJob(filas.jobs, job.id)) === 'failed');
+
+  const atualizado = await filas.jobs.getJob(job.id);
+  assert.equal(atualizado.failedReason, 'Error (ECONNREFUSED)');
 });
 
 test('CA7: fechar() lança se sobrar, após o obliterate, uma chave do prefixo sem TTL', async () => {

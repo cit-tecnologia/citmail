@@ -43,8 +43,8 @@ function criarFetchFalso(implementacao) {
   return fetchFalso;
 }
 
-test('CA2(a)+(h): job esgotado gera 1 alerta em "alertas" com data {jobId, job, pedidoId} (campo "job", não mascarado) e 1 POST ao Telegram só com ids', async (t) => {
-  const { filas, captura, log, criarWorkers, fechar } = criarFilasTeste({ tentativas: 3, backoffMs: 300, alertaTentativas: 3, alertaBackoffMs: 20 });
+test('CA2(a): job esgotado gera 1 alerta em "alertas" com data {jobId, job, pedidoId} e 1 POST ao Telegram só com ids', async (t) => {
+  const { filas, log, criarWorkers, fechar } = criarFilasTeste({ tentativas: 3, backoffMs: 300, alertaTentativas: 3, alertaBackoffMs: 20 });
   t.after(fechar);
 
   const fetchFalso = criarFetchFalso(async () => ({ ok: true, status: 200 }));
@@ -76,11 +76,25 @@ test('CA2(a)+(h): job esgotado gera 1 alerta em "alertas" com data {jobId, job, 
   assert.match(corpo.text, new RegExp(`pedido=${UUID_FICTICIO}\\b`));
   assert.ok(!corpo.text.includes('fulano'), 'o texto não deveria conter o email do payload');
   assert.ok(!JSON.stringify(corpo).includes('fulano'));
+});
 
-  // (h): o campo `job` (não `nome`) chega são ao log, sem passar pela
-  // máscara de `camposSensiveis` (que mascararia um campo chamado `nome`).
-  const linhaComJob = captura.linhas().find((l) => l.jobId === job.id || l.job === 'sempreFalha');
-  assert.ok(linhaComJob, 'esperava alguma linha de log referenciando o job esgotado');
+test('Revisão: pedidoId inválido também é saneado em data do alerta (job_esgotado), não só no texto do Telegram', async (t) => {
+  const { filas, log, criarWorkers, fechar } = criarFilasTeste({ tentativas: 1, backoffMs: 300, alertaTentativas: 3, alertaBackoffMs: 20 });
+  t.after(fechar);
+
+  const fetchFalso = criarFetchFalso(async () => ({ ok: true, status: 200 }));
+  const enviarAlerta = criarEnvioTelegram({ token: TOKEN_FICTICIO, chatId: CHAT_FICTICIO, fetch: fetchFalso, log });
+  criarWorkers({
+    handlers: { sempreFalha: async () => { throw new Error('falha proposital'); } },
+    enviarAlerta,
+  });
+
+  await filas.jobs.add('sempreFalha', { pedidoId: 'abc' });
+  await aguardarCondicao(() => fetchFalso.chamadas.length === 1);
+
+  const alertasConcluidos = await filas.alertas.getJobs(['completed']);
+  assert.equal(alertasConcluidos.length, 1);
+  assert.equal(alertasConcluidos[0].data.pedidoId, '-', 'pedidoId inválido deveria virar "-" já no data, não só no texto');
 });
 
 for (const pedidoId of ['abc', undefined, '-'.repeat(36)]) {
@@ -130,8 +144,17 @@ test('CA2(d): alerta que esgota não gera outro alerta e loga "alerta falhou"', 
 
   await aguardarCondicao(async () => (await filas.alertas.getJobCounts('failed')).failed === 1);
 
-  const contagens = await filas.alertas.getJobCounts();
-  const total = Object.values(contagens).reduce((soma, n) => soma + n, 0);
+  // Reconsulta por uma janela curta com teto antes de afirmar: um 2º alerta
+  // (bug) pode aparecer com um atraso pequeno depois do 1º virar "failed".
+  const prazo = Date.now() + 300;
+  let total;
+  do {
+    const contagens = await filas.alertas.getJobCounts();
+    total = Object.values(contagens).reduce((soma, n) => soma + n, 0);
+    if (total > 1) break;
+    await esperar(20);
+  } while (Date.now() < prazo);
+
   assert.equal(total, 1, 'o alerta esgotado não deveria gerar outro job em "alertas"');
   assert.ok(captura.linhas().some((l) => l.msg === 'alerta falhou'));
 });
@@ -222,7 +245,7 @@ test('CA2(j): o listener de esgotado não deixa rejeição sem tratamento (job s
   assert.equal(rejeicaoNaoTratada, undefined, 'getState que rejeita não deveria gerar rejeição sem tratamento');
 });
 
-test('CA5/CA2: sem token/chatId, criarEnvioTelegram só loga "alerta sem telegram" e nunca chama fetch', async () => {
+test('CA5/CA2(h): sem token/chatId, criarEnvioTelegram só loga "alerta sem telegram" (campo "job" não mascarado) e nunca chama fetch', async () => {
   const captura = criarCapturaDeLog();
   const log = criarLogger({ level: 'info', stream: captura.stream });
   const fetchFalso = criarFetchFalso(async () => ({ ok: true, status: 200 }));

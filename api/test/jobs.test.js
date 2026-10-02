@@ -1,18 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { setTimeout as esperar } from 'node:timers/promises';
-import { construirAppTeste, criarFilasTeste } from './auxiliares.js';
+import { construirAppTeste, criarFilasTeste, urlRedisTeste } from './auxiliares.js';
 import { executarJob } from '../src/jobs/executar.js';
-import { criarConexaoProdutor } from '../src/fila/conexao.js';
+import { criarConexaoProdutor, criarConexaoWorker } from '../src/fila/conexao.js';
 import { criarFilas } from '../src/fila/filas.js';
 import { criarLogger } from '../src/log.js';
 
 // CIT-56 (CA8): a rota `POST /api/exemplos/job` passou a só enfileirar (202
-// com `jobId`; 503 com a fila fora). `construirAppTeste` precisa repassar uma
-// `filas` injetada a `construirApp(config, { ..., filas })` (decisão 9 do
-// plano; `app.js`/`exemplo/rotas.js` já aceitam); se `auxiliares.js` ainda
-// não tiver essa opção quando este arquivo rodar, é a única mudança que falta
-// nele para os testes abaixo (fora do escopo deste arquivo — ver relatório).
+// com `jobId`; 503 com a fila fora). `construirAppTeste` repassa `filas`
+// injetada a `construirApp(config, { ..., filas })` (decisão 9 do plano).
 
 async function aguardarCondicao(condicao, { timeoutMs = 6000, intervaloMs = 20 } = {}) {
   const prazo = Date.now() + timeoutMs;
@@ -133,6 +130,26 @@ test('CA2: chamada direta de executarJob sem correlacaoId recebe um UUID v4 novo
     /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
     'reqId deveria ser um UUID v4',
   );
+});
+
+test('Revisão: sem filas injetada, com config.redisUrl o app cria a própria fila (202) e a fecha no app.close()', { timeout: 15000 }, async () => {
+  const prefixo = `teste-app-fila-propria-${process.pid}`;
+  const { app, fechar } = await construirAppTeste({
+    sobrescritasConfig: { redisUrl: urlRedisTeste(), filaPrefixo: prefixo, filaTentativas: 3, filaBackoffMs: 300 },
+  });
+
+  const resposta = await app.inject({ method: 'POST', url: '/api/exemplos/job', payload: {} });
+  assert.equal(resposta.statusCode, 202);
+  assert.equal(typeof resposta.json().jobId, 'string');
+
+  await fechar(); // não deveria travar: onClose fecha a fila/conexão própria do app.
+
+  // Limpeza: essa fila não passou por `criarFilasTeste()`/`fechar()`; apaga
+  // as chaves do prefixo numa conexão nova, só para não vazar estado.
+  const conexao = criarConexaoWorker(urlRedisTeste());
+  const chaves = await conexao.keys(`${prefixo}:*`);
+  if (chaves.length > 0) await conexao.del(...chaves);
+  await conexao.quit();
 });
 
 test('CA8: POST /api/exemplos/job continua 404 em produção, mesmo com filas injetadas', async (t) => {

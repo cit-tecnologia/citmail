@@ -72,6 +72,23 @@ test('CA3: reprocessar() com jobId inexistente devolve código 1 e não cria cha
   assert.deepEqual(chavesDepois, chavesAntes);
 });
 
+for (const jobIdInvalido of ['../etc/passwd', 'id com espaço', 'a'.repeat(65), 'id;rm -rf', 'tem:dois-pontos']) {
+  test(`CA3: reprocessar() rejeita jobId fora do formato (${JSON.stringify(jobIdInvalido)}) com código 1 e mensagem exata, sem alterar nada`, async (t) => {
+    const aux = criarFilasTeste({ tentativas: 3, backoffMs: 300 });
+    t.after(aux.fechar);
+    await Promise.all([aux.filas.jobs.waitUntilReady(), aux.filas.alertas.waitUntilReady()]);
+    const chavesAntes = new Set(await aux.conexao.keys(`${aux.prefixo}:*`));
+
+    const saida = saidaDeTeste();
+    const codigo = await reprocessar({ filas: aux.filas, jobId: jobIdInvalido, saida });
+    assert.equal(codigo, 1);
+    assert.equal(saida.linhas.join(''), 'jobId inválido: use só letras, números, _ e - (até 64 caracteres)\n');
+
+    const chavesDepois = new Set(await aux.conexao.keys(`${aux.prefixo}:*`));
+    assert.deepEqual(chavesDepois, chavesAntes, 'jobId inválido não deveria sequer acessar o Redis');
+  });
+}
+
 test('CA3: reprocessar() com job em waiting devolve código 2 e não altera o job', async (t) => {
   const aux = criarFilasTeste({ tentativas: 3, backoffMs: 300 });
   t.after(aux.fechar);
@@ -92,7 +109,11 @@ test('CA3: processo da CLI sem DATABASE_URL/CORS_ORIGENS sai 0 e não imprime da
   const job = await esgotarJob(aux, { requestId: 'req-ficticio-ca3-cli', pedidoId: '00000000-0000-4000-8000-000000000001' });
 
   const env = { PATH: process.env.PATH, NODE_ENV: 'test', REDIS_URL: urlRedisTeste(), FILA_PREFIXO: aux.prefixo };
-  const filho = spawn(process.execPath, ['src/cli/reprocessar.js', job.id], { cwd: CAMINHO_API, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  const filho = spawn(
+    process.execPath,
+    ['--import', './test/sem-rede.js', 'src/cli/reprocessar.js', job.id],
+    { cwd: CAMINHO_API, env, stdio: ['ignore', 'pipe', 'pipe'] },
+  );
   let saida = '';
   filho.stdout.on('data', (p) => { saida += p.toString('utf8'); });
   filho.stderr.on('data', (p) => { saida += p.toString('utf8'); });
