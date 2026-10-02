@@ -108,8 +108,8 @@ function sendForgot() {
   closeForgot();
   // show toast-like feedback
   const note = document.createElement('div');
-  note.style.cssText = 'position:fixed;bottom:24px;right:24px;background:var(--cit-navy-500);color:white;padding:12px 18px;border-radius:var(--cit-radius-md);font-size:.875rem;display:flex;align-items:center;gap:10px;box-shadow:var(--shadow-lg);z-index:9999;animation:cit-fade-up var(--cit-duration-enter) var(--cit-ease) both';
-  note.innerHTML = `<svg class="icon" style="color:var(--cit-success)" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg> Link enviado para <strong>${esc(email)}</strong>`;
+  note.className = 'toast-link';
+  note.innerHTML = `<svg class="icon icon--success" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg> Link enviado para <strong>${esc(email)}</strong>`;
   document.body.appendChild(note);
   setTimeout(() => { note.style.opacity='0'; note.style.transition='opacity .3s'; setTimeout(()=>note.remove(),300); }, 4000);
 }
@@ -119,7 +119,7 @@ document.getElementById('forgotOverlay').addEventListener('click', e => {
   if (e.target === document.getElementById('forgotOverlay')) closeForgot();
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && document.getElementById('forgotOverlay').style.display !== 'none') closeForgot();
+  if (e.key === 'Escape' && getComputedStyle(document.getElementById('forgotOverlay')).display !== 'none') closeForgot();
 });
 
 // Auto-focus email on load

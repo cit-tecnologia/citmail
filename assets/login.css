@@ -316,3 +316,15 @@ h1,h2,h3 { font-family: var(--font-title); font-weight: 600; line-height: 1.2; l
   .right-panel { background: white; padding: 24px 16px; align-items: flex-start; padding-top: 40px; }
   .login-card { border: none; padding: 0; max-width: 100%; }
 }
+
+/* ── CIT-152: classes no lugar dos estilos inline ── */
+.toast-link {
+  position: fixed; bottom: 24px; right: 24px;
+  background: var(--cit-navy-500); color: white;
+  padding: 12px 18px; border-radius: var(--cit-radius-md);
+  font-size: .875rem; display: flex; align-items: center; gap: 10px;
+  box-shadow: var(--shadow-lg); z-index: 9999;
+  animation: cit-fade-up var(--cit-duration-enter) var(--cit-ease) both;
+}
+.icon.icon--success { color: var(--cit-success); }
+.is-hidden { display: none; }
