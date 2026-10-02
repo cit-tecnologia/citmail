@@ -11,6 +11,8 @@ const paginas = [
 // CIT-49/CIT-158: páginas com CSP por meta e script externo (smoke também roda contra CITMAIL_BASE_URL).
 const comCsp = ['index.html', 'checkout.html', 'login.html', 'painel.html'];
 const scriptDaPagina = { 'index.html': 'landing.js', 'checkout.html': 'checkout.js', 'login.html': 'login.js', 'painel.html': 'painel.js' };
+// CIT-152: CSS de cada página em assets/<página>.css (conferido pelo caminho, sem a query ?v=).
+const folhaDaPagina = { 'index.html': 'landing.css', 'checkout.html': 'checkout.css', 'login.html': 'login.css', 'painel.html': 'painel.css' };
 // login.html/painel.html entraram na CIT-158, não na CIT-49/CIT-52 (ver CA7 do plano).
 const tagsCspPorPagina = {
   'index.html': ['@CIT-49', '@CIT-52'],
@@ -31,7 +33,7 @@ const arquivosDeFonte = [
 
 for (const { arquivo, titulo } of paginas) {
   const tags = ['@CIT-12', '@CIT-13'];
-  if (comCsp.includes(arquivo)) tags.push(...tagsCspPorPagina[arquivo]);
+  if (comCsp.includes(arquivo)) tags.push(...tagsCspPorPagina[arquivo], '@CIT-152');
 
   // também é o smoke da homologação (CITMAIL_BASE_URL), por isso não fixa o subcaminho /citmail/
   test(`${arquivo} carrega sem erros e com todos os ícones do sprite`, { tag: tags }, async ({ page, baseURL, erros }) => {
@@ -77,6 +79,14 @@ for (const { arquivo, titulo } of paginas) {
       const status = await page.evaluate(async js => (await fetch(new URL(`assets/${js}`, location.href))).status, arquivoJs);
       expect(status, `assets/${arquivoJs} não respondeu 200`).toBe(200);
 
+      // CA7 (CIT-152): a página carregou a própria folha pelo caminho assets/<página>.css, ignorando a query.
+      const folha = folhaDaPagina[arquivo];
+      const folhasCarregadas = await page.evaluate(() => [...document.styleSheets]
+        .filter(f => f.href).map(f => new URL(/** @type {string} */ (f.href)).pathname));
+      expect(folhasCarregadas.some(caminho => caminho.endsWith(`/assets/${folha}`)), `assets/${folha} entre as folhas carregadas: ${folhasCarregadas.join(', ')}`).toBe(true);
+      const statusFolha = await page.evaluate(async css => (await fetch(new URL(`assets/${css}`, location.href))).status, folha);
+      expect(statusFolha, `assets/${folha} não respondeu 200`).toBe(200);
+
       // CA3 (CIT-52): fontes locais (CSS + 6 woff2) servidas, inclusive na homologação.
       const statusFontes = await page.evaluate(async lista => {
         const respostas = await Promise.all(lista.map(caminho => fetch(new URL(caminho, location.href))));
@@ -88,3 +98,43 @@ for (const { arquivo, titulo } of paginas) {
     }
   });
 }
+
+// CIT-152, CA5: a 320 px, nenhuma das quatro páginas (nem os modais) rola na horizontal.
+test.describe('CIT-152 CA5 — 320 px', { tag: '@CIT-152' }, () => {
+  test.beforeEach(async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile', 'só aplica no perfil mobile');
+    await page.setViewportSize({ width: 320, height: 640 });
+  });
+  const semRolagemHorizontal = page => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+
+  for (const { arquivo } of paginas) {
+    test(`CA5 ${arquivo} a 320 px sem rolagem horizontal`, async ({ page, erros }) => {
+      await page.goto(arquivo, { waitUntil: 'networkidle' });
+      expect(await semRolagemHorizontal(page), `${arquivo}: scrollWidth <= innerWidth`).toBe(true);
+    });
+  }
+
+  test('CA5 login a 320 px com o modal "Recuperar senha" aberto e com o toast sem rolagem horizontal', async ({ page, erros }) => {
+    await page.goto('login.html', { waitUntil: 'networkidle' });
+    await page.locator('[data-login-acao="esqueci"]').click();
+    await expect(page.locator('#forgotOverlay')).toBeVisible();
+    expect(await semRolagemHorizontal(page), 'modal aberto').toBe(true);
+    await page.locator('#fForgotEmail').fill('teste@fixture.com.br');
+    await page.locator('[data-login-acao="enviar"]').click();
+    await expect(page.locator('body > div', { hasText: 'Link enviado' })).toBeVisible();
+    expect(await semRolagemHorizontal(page), 'toast visível').toBe(true);
+  });
+
+  test('CA5 painel a 320 px com o modal DNS ("Adicionar" e "Editar") aberto sem rolagem horizontal', async ({ page, erros }) => {
+    await page.goto('painel.html', { waitUntil: 'networkidle' });
+    await page.locator('#sidebarToggle').click();
+    await page.locator('.nav-item[data-section="dns"]').click();
+    await page.locator('#btnDnsAdd').click();
+    await expect(page.locator('#modalDnsRecord')).toHaveClass(/open/);
+    expect(await semRolagemHorizontal(page), 'modal DNS "Adicionar"').toBe(true);
+    await page.locator('[data-fechar-modal="modalDnsRecord"]').first().click();
+    await page.locator('[data-dns-acao="editar"][data-dns-id="1"]').click();
+    await expect(page.locator('#modalDnsRecord')).toHaveClass(/open/);
+    expect(await semRolagemHorizontal(page), 'modal DNS "Editar"').toBe(true);
+  });
+});
