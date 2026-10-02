@@ -1138,6 +1138,9 @@ test.describe('CSP sem estilo inline', { tag: '@CIT-152' }, () => {
   test('CA3/CA9 pop-up do boleto: folha assets/boleto.css aplicada, sem <style>, sem mensagem de CSP e print() uma vez', async ({ page, erros }) => {
     await neutralizarPrintDoPopup(page);
     await checkoutAteBoleto(page);
+    // O mock do ViaCEP (page.route) no opener deixa pendurada a requisição de assets/boleto.css do pop-up
+    // about:blank, que herda a interceptação sem handler; o CEP já foi usado, então a rota sai antes de abrir.
+    await page.unrouteAll({ behavior: 'wait' });
 
     const mensagens = [];
     page.context().on('console', msg => mensagens.push(msg));
