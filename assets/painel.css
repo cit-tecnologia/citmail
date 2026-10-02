@@ -805,3 +805,18 @@ tbody tr:last-child td { border-bottom: none; }
 .toggle-switch input:checked + .toggle-knob { background: var(--cit-primary); }
 .toggle-switch input:checked + .toggle-knob::before { transform: translateX(18px); }
 .toggle-switch input:focus-visible + .toggle-knob { box-shadow: 0 0 0 3px rgba(0,198,192,.45); }
+
+/* ── CIT-152: classes no lugar dos estilos inline ── */
+.progress-fill--uso-0 { width: 0; }
+.progress-fill--uso-12-4 { width: 12.4%; }
+.progress-fill--uso-13 { width: 13%; }
+.progress-fill--uso-17 { width: 17%; }
+.progress-fill--uso-32 { width: 32%; }
+.activity-dot--green { background: var(--cit-green-50); color: var(--cit-green-700); }
+.activity-dot--blue { background: var(--cit-blue-50); color: var(--cit-primary); }
+.activity-dot--amber { background: var(--cit-amber-50); color: var(--cit-amber-700); }
+.btn-row > .btn.btn-fit { flex: 0 0 auto; }
+.icon.icon--primary { color: var(--cit-primary); }
+.icon.icon--secondary { color: var(--cit-text-secondary); }
+.icon.mr-8 { margin-right: 8px; }
+.is-hidden { display: none; }
