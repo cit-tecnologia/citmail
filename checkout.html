@@ -66,7 +66,7 @@
         </div>
         <div class="step-connector" id="conn5"></div>
         <div class="step-item">
-          <div class="step-circle" id="sc6"><svg class="icon" style="font-size:.7rem" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg></div>
+          <div class="step-circle" id="sc6"><svg class="icon icon--step-check" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg></div>
           <span class="step-label" id="sl6">Acesso</span>
         </div>
       </div>
@@ -149,7 +149,7 @@
           </div>
         </div>
 
-        <div id="step1Error" class="alert-box alert-err step-error" style="display:none">
+        <div id="step1Error" class="alert-box alert-err step-error is-hidden">
           <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#triangle-alert"></use></svg> Adicione pelo menos uma conta para continuar.
         </div>
 
@@ -197,11 +197,11 @@
         </div>
 
         <!-- Panel: new domain name input + PIX -->
-        <div id="domainNewPanel" style="display:none">
-          <div class="field" style="margin-bottom:16px">
+        <div id="domainNewPanel" class="is-hidden">
+          <div class="field mb-16">
             <label>Nome do domínio desejado <span class="req">*</span></label>
             <div class="domain-row">
-              <div class="domain-at"><svg class="icon" style="margin-right:4px" aria-hidden="true"><use href="assets/icons.svg#at-sign"></use></svg></div>
+              <div class="domain-at"><svg class="icon mr-4" aria-hidden="true"><use href="assets/icons.svg#at-sign"></use></svg></div>
               <input type="text" id="fDomNew" placeholder="minhaempresa" />
               <div class="domain-tld" id="domNewTld">.com.br</div>
             </div>
@@ -212,7 +212,7 @@
           <!-- PIX for domain -->
           <div class="pix-box" id="domPixBox">
             <div class="pix-box-title">
-              <svg class="icon icon-pix" style="margin-right:6px" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg>Pagamento anual do domínio via Pix
+              <svg class="icon icon-pix mr-6" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg>Pagamento anual do domínio via Pix
             </div>
             <div class="pix-box-desc" id="domPixDesc">Registrar domínio .com.br</div>
             <div class="pix-qr">
@@ -234,8 +234,8 @@
         </div>
 
         <!-- Panel: existing domain input -->
-        <div id="domainExistPanel" style="display:none">
-          <div class="field" style="margin-bottom:10px">
+        <div id="domainExistPanel" class="is-hidden">
+          <div class="field mb-10">
             <label>Seu domínio atual <span class="req">*</span></label>
             <input type="text" id="fDomExist" placeholder="minhaempresa.com.br" />
             <span class="field-error" id="err-dom-exist">Informe seu domínio.</span>
@@ -246,7 +246,7 @@
           </div>
         </div>
 
-        <div id="step2Error" class="alert-box alert-err step-error" style="display:none">
+        <div id="step2Error" class="alert-box alert-err step-error is-hidden">
           <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#triangle-alert"></use></svg> Selecione uma opção de domínio para continuar.
         </div>
 
@@ -460,9 +460,9 @@
                   </div>
                 </div>
                 <!-- Extra domain PIX panel -->
-                <div id="extraDomPixPanel" class="pix-box pix-box--sm" style="display:none">
+                <div id="extraDomPixPanel" class="pix-box pix-box--sm is-hidden">
                   <div class="pix-box-title">
-                    <svg class="icon icon-pix" style="margin-right:6px" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg>Pix para domínios extras — <span id="extraDomPixTotal">R$ 0,00</span>/ano
+                    <svg class="icon icon-pix mr-6" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg>Pix para domínios extras — <span id="extraDomPixTotal">R$ 0,00</span>/ano
                   </div>
                   <div class="pix-qr pix-qr--sm">
                     <span class="pix-qr-placeholder"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#qr-code"></use></svg></span>
@@ -503,7 +503,7 @@
         </div>
 
         <!-- Add-ons subtotal -->
-        <div id="addonsSubtotal" class="addons-subtotal" style="display:none">
+        <div id="addonsSubtotal" class="addons-subtotal is-hidden">
           <div class="addons-subtotal-head">
             <span>Add-ons selecionados</span>
             <span id="addonsSubtotalVal">+ R$ 0,00/mês</span>
@@ -574,7 +574,7 @@
           </div>
         </div>
 
-        <div class="form-row" id="cnpjRow" style="display:none">
+        <div class="form-row is-hidden" id="cnpjRow">
           <div class="field">
             <label>CNPJ <span class="req">*</span></label>
             <input type="text" id="fCNPJ" placeholder="00.000.000/0001-00" maxlength="18" />
@@ -634,7 +634,7 @@
               <option selected>SP</option><option>SE</option><option>TO</option>
             </select>
           </div>
-          <div class="field" style="align-self:flex-end">
+          <div class="field self-end">
             <!-- spacer -->
           </div>
         </div>
@@ -747,20 +747,20 @@
               <span class="payment-badge badge-neutral">Parcelado</span>
             </div>
             <div class="card-panel">
-              <div class="form-row full" style="margin-bottom:14px">
+              <div class="form-row full mb-14">
                 <div class="field card-number-field">
                   <label>Número do Cartão <span class="req">*</span></label>
                   <input type="text" id="fCardNum" placeholder="0000 0000 0000 0000" maxlength="19" />
                   <span class="card-brand-icon" id="cardBrandIcon" data-brand=""><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#credit-card"></use></svg></span>
                 </div>
               </div>
-              <div class="form-row" style="margin-bottom:14px">
+              <div class="form-row mb-14">
                 <div class="field">
                   <label>Nome no Cartão <span class="req">*</span></label>
-                  <input type="text" id="fCardName" placeholder="JOAO DA SILVA" style="text-transform:uppercase" />
+                  <input type="text" id="fCardName" placeholder="JOAO DA SILVA" class="text-uppercase" />
                 </div>
               </div>
-              <div class="form-row" style="margin-bottom:14px">
+              <div class="form-row mb-14">
                 <div class="field">
                   <label>Validade <span class="req">*</span></label>
                   <input type="text" id="fCardExp" placeholder="MM/AA" maxlength="5" />
@@ -770,7 +770,7 @@
                   <input type="text" id="fCardCvv" placeholder="123" maxlength="4" />
                 </div>
               </div>
-              <div class="field" style="margin-bottom:14px">
+              <div class="field mb-14">
                 <label>Parcelamento</label>
                 <select class="installments-select" id="fInstallments">
                   <option value="1">1× de R$ 59,00 (sem juros)</option>
@@ -792,7 +792,7 @@
         </div>
 
         <div class="asaas-notice">
-          <svg class="icon" style="color:var(--cit-success)" aria-hidden="true"><use href="assets/icons.svg#shield-check"></use></svg>
+          <svg class="icon text-success" aria-hidden="true"><use href="assets/icons.svg#shield-check"></use></svg>
           Pagamento processado com segurança pelo
           <strong>Asaas</strong>
           — PCI DSS Compliant
@@ -805,7 +805,7 @@
 
       <!-- ========== STEP 6: ACESSO ========== -->
       <div class="step-panel card" id="step6">
-        <div class="success-page" style="display:block">
+        <div class="success-page success-page--visivel">
           <div class="success-icon">
             <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>
           </div>
@@ -813,7 +813,7 @@
           <p>Seu e-mail corporativo está sendo configurado.<br/>Você receberá as credenciais no e-mail cadastrado.</p>
 
           <div class="access-card">
-            <h4><svg class="icon" style="margin-right:6px" aria-hidden="true"><use href="assets/icons.svg#key-round"></use></svg> Seus acessos</h4>
+            <h4><svg class="icon mr-6" aria-hidden="true"><use href="assets/icons.svg#key-round"></use></svg> Seus acessos</h4>
             <div class="access-item">
               <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#mail"></use></svg>
               <div>
@@ -888,7 +888,7 @@
 
         <div class="sum-economia" id="sumEconomia" hidden></div>
 
-        <div class="summary-features" style="margin-top:14px">
+        <div class="summary-features mt-14">
           <div class="summary-feature"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Webmail + IMAP/POP3/SMTP</div>
           <div class="summary-feature"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Antispam e antivírus</div>
           <div class="summary-feature"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> SSL/TLS grátis</div>
@@ -898,7 +898,7 @@
         </div>
 
         <div class="secure-badges">
-          <div class="secure-badge"><svg class="icon" style="color:var(--cit-success)" aria-hidden="true"><use href="assets/icons.svg#shield-check"></use></svg> Pagamento processado pelo Asaas</div>
+          <div class="secure-badge"><svg class="icon text-success" aria-hidden="true"><use href="assets/icons.svg#shield-check"></use></svg> Pagamento processado pelo Asaas</div>
           <div class="secure-badge"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#rotate-ccw"></use></svg> Cancele quando quiser</div>
           <div class="secure-badge"><svg class="icon icon-pix" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg> Pix, boleto e cartão</div>
         </div>
@@ -908,7 +908,7 @@
   </div><!-- /checkout-wrapper -->
 
   <script src="assets/precos.js?v=25"></script>
-  <script src="assets/checkout.js?v=1"></script>
+  <script src="assets/checkout.js?v=2"></script>
 
 </body>
 </html>

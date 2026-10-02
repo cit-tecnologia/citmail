@@ -785,3 +785,18 @@ s[data-preco-tabela], .sum-disc s { color: var(--cit-error); text-decoration-lin
   .pix-qr { width: 130px; height: 130px; }
   .header-secure-extra { display: none; }
 }
+
+/* Antigos estilos inline do HTML (CIT-152): no fim da folha para vencer as regras de mesma especificidade.
+   O JS mostra/oculta por CSSOM (el.style.display), que vence .is-hidden. */
+.icon--step-check { font-size: .7rem; }
+.mr-4 { margin-right: 4px; }
+.mr-6 { margin-right: 6px; }
+.mb-10 { margin-bottom: 10px; }
+.mb-14 { margin-bottom: 14px; }
+.mb-16 { margin-bottom: 16px; }
+.mt-14 { margin-top: 14px; }
+.self-end { align-self: flex-end; }
+.text-uppercase { text-transform: uppercase; }
+.text-success { color: var(--cit-success); }
+.success-page--visivel { display: block; }
+.is-hidden { display: none; }

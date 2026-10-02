@@ -377,7 +377,7 @@ function updateStepBar(n) {
     const sl = document.getElementById('sl' + i);
     if (!sc) continue;
     sc.className = 'step-circle' + (i < n ? ' done' : i === n ? ' active' : '');
-    if (i < n || i === 6) sc.innerHTML = '<svg class="icon" style="font-size:.7rem" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>';
+    if (i < n || i === 6) sc.innerHTML = '<svg class="icon icon--step-check" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>';
     else sc.textContent = i;
     if (sl) sl.className = 'step-label' + (i < n ? ' done' : i === n ? ' active' : '');
   }
@@ -757,13 +757,25 @@ function downloadBoleto() {
   const total = document.getElementById('sumTotal').textContent.trim();
   const w = window.open('', '_blank');
   if (!w) { alert('Permita pop-ups deste site para baixar o boleto em PDF.'); return; }
+  // URL absoluta: o about:blank do pop-up não tem a base do checkout. Folha da mesma origem (CSP style-src 'self').
+  const folha = new URL('assets/boleto.css?v=1', document.baseURI).href;
   w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Boleto CITMail</title>
-    <style>body{font-family:Poppins,system-ui,sans-serif;color:#23344E;padding:40px;line-height:1.6}h1{font-family:Montserrat,system-ui,sans-serif;font-size:22px;font-weight:600}code{font-family:ui-monospace,Consolas,monospace;font-size:16px}</style>
+    <link rel="stylesheet" href="${folha}">
     </head><body><h1>Boleto CITMail</h1><p>Valor: ${total}</p><p>Linha digitável:<br><code>${code}</code></p>
     <p>Compensação em até 3 dias úteis após o pagamento.</p></body></html>`);
   w.document.close();
   w.focus();
-  w.print();
+  // Imprime uma única vez, depois que a folha carregar (ou falhar); se já veio do cache, imprime direto.
+  const link = w.document.querySelector('link[rel="stylesheet"]');
+  let impresso = false;
+  const imprimir = () => {
+    if (impresso) return;
+    impresso = true;
+    w.print();
+  };
+  link.addEventListener('load', imprimir, { once: true });
+  link.addEventListener('error', imprimir, { once: true });
+  if (link.sheet) imprimir();
 }
 /* ================================================================
    VÍNCULOS — cada controle recebe o seu listener no próprio elemento
