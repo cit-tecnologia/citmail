@@ -752,9 +752,13 @@ function copiarComFeedback(botao, texto, opcoes = {}) {
   promessa.then(() => { if (atual()) sucesso(); }, () => { if (atual()) falha(); });
 }
 // Abre o boleto numa página própria e aciona a impressão, onde o cliente escolhe "Salvar como PDF".
+// Escapa texto antes de ir para o HTML do pop-up (o código e o valor do boleto virão do Asaas).
+function escHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
 function downloadBoleto() {
-  const code = document.getElementById('boletoCode').textContent.trim();
-  const total = document.getElementById('sumTotal').textContent.trim();
+  const code = escHtml(document.getElementById('boletoCode').textContent.trim());
+  const total = escHtml(document.getElementById('sumTotal').textContent.trim());
   const w = window.open('', '_blank');
   if (!w) { alert('Permita pop-ups deste site para baixar o boleto em PDF.'); return; }
   // URL absoluta: o about:blank do pop-up não tem a base do checkout. Folha da mesma origem (CSP style-src 'self').
@@ -765,7 +769,8 @@ function downloadBoleto() {
     <p>Compensação em até 3 dias úteis após o pagamento.</p></body></html>`);
   w.document.close();
   w.focus();
-  // Imprime uma única vez, depois que a folha carregar (ou falhar); se já veio do cache, imprime direto.
+  // Imprime uma única vez, depois que a folha carregar ou falhar (o load dispara também com a folha em cache);
+  // se a folha travar, imprime assim mesmo após 3 s.
   const link = w.document.querySelector('link[rel="stylesheet"]');
   let impresso = false;
   const imprimir = () => {
@@ -775,7 +780,7 @@ function downloadBoleto() {
   };
   link.addEventListener('load', imprimir, { once: true });
   link.addEventListener('error', imprimir, { once: true });
-  if (link.sheet) imprimir();
+  setTimeout(imprimir, 3000);
 }
 /* ================================================================
    VÍNCULOS — cada controle recebe o seu listener no próprio elemento
