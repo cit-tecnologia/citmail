@@ -4,7 +4,10 @@
 import { Job, UnrecoverableError, Worker } from 'bullmq'
 import { executarJob } from '../jobs/executar.js'
 import { jobExemplo } from '../jobs/exemplo.js'
+import { pedidoSeguro } from '../alertas/telegram.js'
 
+// Handlers fora de produção. Em produção (`nodeEnv === 'production'`) o job de
+// exemplo não é registrado: enfileirado lá, vai a `failed` como job desconhecido.
 export const handlersPadrao = { exemplo: jobExemplo }
 
 // 20 por minuto: o limite do Telegram por grupo.
@@ -15,7 +18,8 @@ function registrarErroDoWorker(worker, log) {
   worker.on('error', (err) => log.error({ erro: err?.name, fila: worker.name }, 'erro no worker'))
 }
 
-// Decide pelo estado (não por `attemptsMade >= attempts`): cobre tentativas esgotadas
+// `pedidoId` do alerta passa por `pedidoSeguro` (UUID estrito ou `-`): o job de alerta
+// também fica no Redis. Decide pelo estado (não por `attemptsMade >= attempts`): cobre tentativas esgotadas
 // e `UnrecoverableError`. Nunca rejeita (listener de evento).
 export function criarAvisoDeEsgotado({ filas, log }) {
   return async function aoFalhar(job) {
@@ -34,7 +38,7 @@ export function criarAvisoDeEsgotado({ filas, log }) {
       }
       // `jobId` deduplica o mesmo esgotamento; reprocessado e esgotado de novo, alerta novo.
       await filas.alertas.add('job_esgotado',
-        { jobId: job.id, job: job.name, pedidoId: job.data?.pedidoId },
+        { jobId: job.id, job: job.name, pedidoId: pedidoSeguro(job.data?.pedidoId) },
         { jobId: `alerta-${job.id}-${finalizadoEm}` })
     } catch (err) {
       log.error({ erro: err?.name, jobId: job?.id }, 'alerta não enfileirado')
@@ -45,12 +49,26 @@ export function criarAvisoDeEsgotado({ filas, log }) {
 /**
  * Cria os workers de `jobs` e `alertas`. `opcoesWorker` (`lockDuration`,
  * `stalledInterval`, `limiter`...) só nos testes; em produção, os padrões do BullMQ
- * e o limite de alertas acima.
+ * e o limite de alertas acima. Sem `handlers`, usa `handlersPadrao`, exceto com
+ * `nodeEnv === 'production'` (nenhum handler por enquanto).
+ * `close()` fecha os workers (esperando o job ativo) e depois espera os listeners de
+ * `failed` ainda em curso, para o alerta não se perder num encerramento normal.
  *
  * @returns {{ jobs: Worker, alertas: Worker, close: () => Promise<void> }}
  */
-export function criarWorkers({ conexao, filas, prefixo, log, handlers = handlersPadrao, enviarAlerta, opcoesWorker = {} }) {
+export function criarWorkers({
+  conexao, filas, prefixo, log, nodeEnv,
+  handlers = nodeEnv === 'production' ? {} : handlersPadrao,
+  enviarAlerta, opcoesWorker = {}
+}) {
   const { limiter = LIMITE_ALERTAS, ...opcoesComuns } = opcoesWorker
+  // Listeners de `failed` em curso (nunca rejeitam): `close()` espera por eles.
+  const pendentes = new Set()
+  const rastreado = (listener) => (...args) => {
+    const promessa = listener(...args)
+    pendentes.add(promessa)
+    promessa.finally(() => pendentes.delete(promessa))
+  }
 
   const jobs = new Worker('jobs', async (job) => {
     const handler = Object.hasOwn(handlers, job.name) ? handlers[job.name] : undefined
@@ -68,8 +86,8 @@ export function criarWorkers({ conexao, filas, prefixo, log, handlers = handlers
     await enviarAlerta(job.data)
   }, { ...opcoesComuns, limiter, connection: conexao, prefix: prefixo })
 
-  jobs.on('failed', criarAvisoDeEsgotado({ filas, log }))
-  alertas.on('failed', async (job) => {
+  jobs.on('failed', rastreado(criarAvisoDeEsgotado({ filas, log })))
+  alertas.on('failed', rastreado(async (job) => {
     try {
       if (typeof job?.getState !== 'function') return
       if (await job.getState() === 'failed') {
@@ -78,7 +96,7 @@ export function criarWorkers({ conexao, filas, prefixo, log, handlers = handlers
     } catch (err) {
       log.error({ erro: err?.name }, 'alerta falhou')
     }
-  })
+  }))
   registrarErroDoWorker(jobs, log)
   registrarErroDoWorker(alertas, log)
 
@@ -87,6 +105,9 @@ export function criarWorkers({ conexao, filas, prefixo, log, handlers = handlers
     alertas,
     async close() {
       await Promise.all([jobs.close(), alertas.close()])
+      while (pendentes.size > 0) {
+        await Promise.allSettled([...pendentes])
+      }
     }
   }
 }

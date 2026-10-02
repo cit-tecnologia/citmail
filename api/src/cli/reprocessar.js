@@ -7,15 +7,24 @@ import { carregarConfigFila } from '../config.js'
 import { criarConexaoProdutor } from '../fila/conexao.js'
 import { criarFilas } from '../fila/filas.js'
 
+// Ids do BullMQ (números ou `jobId` próprio, ex.: `alerta-<id>-<ts>`); outro formato
+// nem chega ao Redis.
+const JOB_ID_VALIDO = /^[\w-]{1,64}$/
+
 // Com o Redis fora, o BullMQ espera a conexão indefinidamente: a CLI desiste antes.
 const LIMITE_MS = 10000
 
 /**
- * @returns {Promise<number>} 0 reenfileirado; 1 job não encontrado; 2 fora de `failed`.
+ * @returns {Promise<number>} 0 reenfileirado; 1 uso, `jobId` inválido ou job não
+ *   encontrado; 2 fora de `failed`.
  */
 export async function reprocessar({ filas, jobId, saida = process.stdout }) {
   if (!jobId) {
     saida.write('uso: npm run reprocessar -- <jobId>\n')
+    return 1
+  }
+  if (!JOB_ID_VALIDO.test(jobId)) {
+    saida.write('jobId inválido: use só letras, números, _ e - (até 64 caracteres)\n')
     return 1
   }
   const job = await Job.fromId(filas.jobs, jobId)

@@ -81,4 +81,4 @@ WantedBy=multi-user.target
 - 2026-09-25: criação (CIT-47).
 - 2026-09-25: ajustes da revisão (CIT-47).
 - 2026-09-26: aceito pelo responsável (CIT-47). Itens em "Decisões em aberto" do README e revisões previstas pela #48 continuam valendo.
-- 2026-10-01: worker da fila como processo próprio, com `npm run worker` (`node src/worker.js`) como comando da futura unidade `systemd` da #57; o worker não lê banco nem CORS e encerra no SIGTERM esperando o job ativo (CIT-56).
+- 2026-10-01: worker da fila como processo próprio, com `npm run worker` (`node src/worker.js`) como comando da futura unidade `systemd` da #57; o worker não lê banco nem CORS e encerra no SIGTERM esperando o job ativo e os alertas em curso (um segundo sinal é ignorado). A unidade do worker precisa de `TimeoutStopSec` maior que a duração máxima de um job mais alguns segundos para o alerta; senão o systemd mata o processo no meio do encerramento (CIT-56).

@@ -13,7 +13,7 @@ export class ErroTelegram extends Error {
 }
 
 // `pedidoId` fora do formato UUID estrito vira `-`: o campo não carrega texto livre.
-function pedidoSeguro(pedidoId) {
+export function pedidoSeguro(pedidoId) {
   return typeof pedidoId === 'string' && UUID_ESTRITO.test(pedidoId) ? pedidoId : '-'
 }
 
@@ -43,7 +43,7 @@ export function criarEnvioTelegram({ token, chatId, fetch = globalThis.fetch, lo
       })
     } catch (err) {
       log.warn({ erro: err?.name }, 'envio ao telegram falhou')
-      throw new ErroTelegram('telegram respondeu rede')
+      throw new ErroTelegram('telegram indisponível (rede)')
     }
     // Corpo descartado: só o status interessa.
     resposta.body?.cancel?.().catch(() => {})

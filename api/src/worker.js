@@ -29,13 +29,19 @@ const workers = criarWorkers({
   filas,
   prefixo: config.filaPrefixo,
   log,
+  nodeEnv: config.nodeEnv,
   enviarAlerta: criarEnvioTelegram({ token: config.telegramBotToken, chatId: config.telegramChatId, log })
 })
 log.info({ prefixo: config.filaPrefixo }, 'worker iniciado')
 
-// `worker.close()` espera o job ativo terminar antes de sair.
+// `workers.close()` espera o job ativo terminar e os alertas em curso serem enfileirados
+// antes de fechar as filas e a conexão. Um segundo sinal durante o encerramento é
+// ignorado (a unidade systemd mata o processo após `TimeoutStopSec`).
+let encerrando = false
 for (const sinal of ['SIGTERM', 'SIGINT']) {
-  process.once(sinal, async () => {
+  process.on(sinal, async () => {
+    if (encerrando) return
+    encerrando = true
     log.info({ sinal }, 'encerrando')
     let codigo = 0
     try {
