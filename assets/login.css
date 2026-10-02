@@ -1,0 +1,318 @@
+/* Estilos de login.html, fora do HTML para a CSP não precisar de 'unsafe-inline' em style-src (CIT-152). */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  /* Aliases legados -> tokens do Brandbook CIT (assets/tokens.css). */
+  --brand-900: var(--cit-navy-500);
+  --brand-800: var(--cit-navy-600);
+  --brand-700: var(--cit-blue-700);
+  --brand-600: var(--cit-blue-500);
+  --brand-500: var(--cit-blue-400);
+  --brand-400: var(--cit-blue-300);
+  --brand-300: var(--cit-blue-200);
+  --brand-200: var(--cit-blue-100);
+  --brand-100: var(--cit-blue-100);
+  --brand-50:  var(--cit-blue-50);
+  --accent:    var(--cit-turquoise-500);
+  --green:       var(--cit-success);
+  --green-bg:    var(--cit-success-subtle);
+  --green-light: var(--cit-success-subtle);
+  --green-dark:  var(--cit-success-strong);
+  --yellow:    var(--cit-warning);
+  --yellow-bg: var(--cit-warning-subtle);
+  --red:       var(--cit-error);
+  --red-bg:    var(--cit-error-subtle);
+  --gray-900:  var(--cit-text-primary);
+  --gray-700:  var(--cit-neutral-700);
+  --gray-600:  var(--cit-neutral-600);
+  --gray-500:  var(--cit-neutral-500);
+  --gray-400:  var(--cit-neutral-400);
+  --gray-300:  var(--cit-neutral-300);
+  --gray-200:  var(--cit-neutral-200);
+  --gray-100:  var(--cit-neutral-100);
+  --white:     #FFFFFF;
+  --font-title: var(--cit-font-display);
+  --font-body:  var(--cit-font-body);
+  --radius-sm: var(--cit-radius-sm);
+  --radius-md: var(--cit-radius-md);
+  --radius-lg: var(--cit-radius-lg);
+  --radius-xl: var(--cit-radius-xl);
+  --shadow-sm: var(--cit-shadow-sm);
+  --shadow-md: var(--cit-shadow-md);
+  --shadow-lg: var(--cit-shadow-lg);
+  --transition: var(--cit-duration-hover) var(--cit-ease);
+}
+
+html { height: 100%; }
+body {
+  font-family: var(--font-body);
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--cit-navy-500);
+  color: var(--cit-text-primary);
+  line-height: var(--cit-leading-relaxed);
+  -webkit-font-smoothing: antialiased;
+}
+h1,h2,h3 { font-family: var(--font-title); font-weight: 600; line-height: 1.2; letter-spacing: var(--cit-tracking-display); }
+
+/* Malha institucional 88px — somente em bloco escuro ou azul */
+.cit-mesh { position: relative; overflow: hidden; }
+.cit-mesh::before {
+  content: '';
+  position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px);
+  background-size: 88px 88px;
+  -webkit-mask-image: radial-gradient(120% 90% at 80% 12%, #000, transparent 72%);
+          mask-image: radial-gradient(120% 90% at 80% 12%, #000, transparent 72%);
+}
+
+/* ── PAINEL ESQUERDO — navy + malha ── */
+.left-panel {
+  background: var(--cit-navy-500);
+  display: flex; flex-direction: column;
+  padding: clamp(32px,5vw,64px);
+}
+.left-logo { position: relative; z-index: 1; }
+.left-logo img { display: block; height: 36px; width: auto; }
+
+.left-content {
+  flex: 1; display: flex; flex-direction: column;
+  justify-content: center; position: relative; z-index: 1;
+  padding: 40px 0;
+}
+/* Eyebrow com filete de acento turquesa */
+.left-tag {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--font-body); font-weight: 600;
+  font-size: .6875rem; letter-spacing: var(--cit-tracking-eyebrow); text-transform: uppercase;
+  color: var(--cit-text-inverse-secondary);
+  margin-bottom: 20px;
+}
+.left-tag::before {
+  content: ''; width: 24px; height: 2px; flex-shrink: 0;
+  background: var(--cit-turquoise-500);
+}
+.left-content h2 {
+  font-size: clamp(2rem, 3.4vw, 3rem);
+  font-weight: 700; line-height: 1.1; color: white;
+  margin-bottom: 16px;
+}
+.left-content h2 span { color: var(--cit-turquoise-400); }
+.left-content p {
+  font-size: 1rem; color: var(--cit-text-inverse-secondary);
+  max-width: 380px;
+  margin-bottom: 40px;
+}
+
+.feature-list {
+  display: flex; flex-direction: column; gap: 14px;
+}
+.feature-item {
+  display: flex; align-items: center; gap: 12px;
+  color: rgba(255,255,255,.85); font-size: 1rem;
+}
+.feature-icon {
+  width: 32px; height: 32px; border-radius: var(--cit-radius-sm);
+  background: rgba(255,255,255,.06); border: 1px solid var(--cit-border-color-dark);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .9rem; color: var(--white); flex-shrink: 0;
+}
+
+.left-footer {
+  position: relative; z-index: 1;
+  color: rgba(255,255,255,.56); font-size: .8125rem;
+}
+.left-slogan {
+  font-family: var(--font-title); font-weight: 600;
+  color: var(--white); font-size: 1rem; margin-bottom: 8px;
+}
+
+/* ── PAINEL DIREITO ── */
+.right-panel {
+  background: var(--cit-bg-subtle);
+  display: flex; align-items: center; justify-content: center;
+  padding: clamp(24px,4vw,48px);
+}
+.login-card {
+  background: white;
+  border-radius: var(--cit-radius-lg);
+  border: 1px solid var(--cit-border-color);
+  padding: clamp(28px,5vw,48px);
+  width: 100%; max-width: 420px;
+}
+
+.login-card-logo {
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 28px;
+}
+.login-card-logo img { height: 40px; width: auto; }
+
+.login-card h1 {
+  font-size: clamp(1.25rem, 1.8vw, 1.375rem); font-weight: 600;
+  color: var(--cit-text-primary); text-align: center;
+  margin-bottom: 6px;
+}
+.login-card .subtitle {
+  text-align: center; font-size: 1rem;
+  color: var(--cit-text-secondary); margin-bottom: 28px;
+}
+
+/* ── CAMPOS — padrão .field do brandbook ── */
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+.field label { font-size: .8125rem; font-weight: 500; color: var(--cit-text-secondary); }
+.field label .req { color: var(--cit-error); margin-left: 2px; }
+.field-help { font-size: .8125rem; color: var(--cit-text-muted); }
+.input-wrap { position: relative; }
+.input-wrap > .icon {
+  position: absolute; left: 13px; top: 50%;
+  transform: translateY(-50%);
+  color: var(--cit-text-muted); font-size: .9rem;
+  pointer-events: none;
+}
+.input-wrap input {
+  width: 100%; height: 42px;
+  padding: 0 14px 0 38px;
+  border: 1px solid var(--cit-border-color-strong);
+  border-radius: var(--cit-radius-sm);
+  font-family: var(--font-body); font-size: .875rem;
+  color: var(--cit-text-primary); background: white; outline: none;
+  transition: border-color var(--transition), box-shadow var(--transition);
+}
+.input-wrap input::placeholder { color: var(--cit-neutral-400); }
+.input-wrap input:focus {
+  border-color: var(--cit-turquoise-500);
+  box-shadow: 0 0 0 3px rgba(0,198,192,.28);
+}
+.input-wrap input.error { border-color: var(--cit-error); }
+.input-wrap input.error:focus { box-shadow: 0 0 0 3px rgba(192,57,43,.28); }
+.input-wrap input:disabled {
+  background: var(--cit-bg-muted); opacity: .7; cursor: not-allowed;
+}
+.input-wrap .toggle-pass {
+  position: absolute; right: 8px; top: 50%;
+  transform: translateY(-50%);
+  background: none; border: none; cursor: pointer;
+  color: var(--cit-text-muted); font-size: .85rem; padding: 6px;
+  border-radius: 6px;
+  transition: color var(--transition);
+}
+.input-wrap .toggle-pass:hover { color: var(--cit-text-primary); }
+.field-error {
+  font-size: .8125rem; color: var(--cit-red-700);
+  display: none;
+}
+.field-error.visible { display: block; }
+
+.forgot-link {
+  text-align: right; margin-top: -8px; margin-bottom: 8px;
+}
+.forgot-link a {
+  font-size: .8125rem; color: var(--cit-text-link);
+  text-decoration: none; font-weight: 600;
+}
+.forgot-link a:hover { color: var(--cit-text-link-hover); text-decoration: underline; }
+
+/* ── BOTÕES — altura 40/48, raio 8, Poppins 600 ── */
+.btn, .btn-login, .btn-secondary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 40px; padding: 0 18px;
+  font-family: var(--font-body); font-weight: 600; font-size: .875rem;
+  border: 1px solid transparent; border-radius: var(--cit-radius-sm);
+  cursor: pointer; text-decoration: none;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+.btn-primary, .btn-login { background: var(--cit-primary); color: var(--cit-on-primary); }
+.btn-primary:hover, .btn-login:hover { background: var(--cit-primary-hover); }
+.btn-ghost { background: transparent; color: var(--cit-text-secondary); }
+.btn-ghost:hover { background: var(--cit-bg-muted); color: var(--cit-text-primary); }
+
+/* Botões de largura total do formulário (tamanho grande) */
+.btn-login, .btn-secondary { width: 100%; height: 48px; font-size: 1rem; }
+.btn-login { margin-top: 8px; }
+.btn-login:disabled { opacity: .45; cursor: not-allowed; }
+.btn-login .spinner {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.3);
+  border-top-color: white;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.divider-or {
+  display: flex; align-items: center; gap: 12px;
+  margin: 22px 0; color: var(--cit-text-muted); font-size: .8125rem;
+}
+.divider-or::before, .divider-or::after {
+  content: ''; flex: 1; height: 1px; background: var(--cit-divider);
+}
+
+/* Contorno do brandbook */
+.btn-secondary { background: transparent; color: var(--cit-primary); border-color: var(--cit-blue-300); }
+.btn-secondary:hover { border-color: var(--cit-primary); background: var(--cit-blue-50); }
+
+.signup-cta {
+  text-align: center; margin-top: 24px;
+  font-size: .8125rem; color: var(--cit-text-secondary);
+}
+.signup-cta a {
+  color: var(--cit-text-link); font-weight: 600; text-decoration: none;
+}
+.signup-cta a:hover { color: var(--cit-text-link-hover); text-decoration: underline; }
+
+.secure-note {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  margin-top: 20px; font-size: .8125rem; color: var(--cit-text-muted);
+}
+.secure-note .icon { color: var(--cit-success); }
+
+/* ── ALERTA DE ERRO — .alert--err do brandbook ── */
+.alert-error {
+  display: none;
+  background: var(--cit-red-50); color: var(--cit-red-700);
+  border: 1px solid rgba(192,57,43,.28);
+  border-radius: var(--cit-radius-md);
+  padding: 12px 14px;
+  font-size: 1rem;
+  margin-bottom: 16px;
+  align-items: center; gap: 10px;
+}
+.alert-error.visible { display: flex; }
+
+/* ── MODAL — recuperar senha ── */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 500;
+  background: rgba(35,52,78,.6);
+  align-items: center; justify-content: center; padding: 20px;
+}
+.modal {
+  background: white; width: 100%; max-width: 400px;
+  border: 1px solid var(--cit-border-color); border-radius: var(--cit-radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: cit-fade-up var(--cit-duration-enter) var(--cit-ease) both;
+}
+.modal-head {
+  padding: 20px 24px 16px; border-bottom: 1px solid var(--cit-divider);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-head h3 { font-size: clamp(1.25rem, 1.8vw, 1.375rem); color: var(--cit-text-primary); }
+.modal-close {
+  width: 32px; height: 32px; border-radius: var(--cit-radius-sm);
+  border: none; background: transparent; cursor: pointer;
+  color: var(--cit-text-secondary); font-size: .9rem;
+  transition: background var(--transition), color var(--transition);
+}
+.modal-close:hover { background: var(--cit-bg-muted); color: var(--cit-text-primary); }
+.modal-body { padding: 20px 24px; }
+.modal-body > p { font-size: 1rem; color: var(--cit-text-secondary); margin-bottom: 16px; }
+.modal-body .field { margin-bottom: 0; }
+.modal-foot { padding: 0 24px 20px; display: flex; gap: 10px; justify-content: flex-end; }
+
+/* mobile */
+@media (max-width: 768px) {
+  body { grid-template-columns: 1fr; }
+  .left-panel { display: none; }
+  .right-panel { background: white; padding: 24px 16px; align-items: flex-start; padding-top: 40px; }
+  .login-card { border: none; padding: 0; max-width: 100%; }
+}
