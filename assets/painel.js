@@ -222,7 +222,7 @@ function dnsRender() {
 }
 
 function dnsOpenAddRecord() {
-  document.getElementById('modalDnsTitle').innerHTML = '<svg class="icon" style="margin-right:8px" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg>Adicionar Registro';
+  document.getElementById('modalDnsTitle').innerHTML = '<svg class="icon mr-8" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg>Adicionar Registro';
   document.getElementById('dnsRType').value  = 'A';
   document.getElementById('dnsRHost').value  = '';
   document.getElementById('dnsRValue').value = '';
@@ -237,7 +237,7 @@ function dnsOpenEditRecord(id) {
   const records = dnsData[activeDnsDomain].records;
   const r = records.find(x => x.id === id);
   if (!r) return;
-  document.getElementById('modalDnsTitle').innerHTML = '<svg class="icon" style="margin-right:8px" aria-hidden="true"><use href="assets/icons.svg#pencil"></use></svg>Editar Registro';
+  document.getElementById('modalDnsTitle').innerHTML = '<svg class="icon mr-8" aria-hidden="true"><use href="assets/icons.svg#pencil"></use></svg>Editar Registro';
   document.getElementById('dnsRType').value  = r.type;
   document.getElementById('dnsRHost').value  = r.host;
   document.getElementById('dnsRValue').value = r.value;

@@ -1,5 +1,5 @@
 // @ts-check
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { test, expect } from './fixtures.js';
 import { test as testSemErros } from '@playwright/test';
 
@@ -15,8 +15,9 @@ const REGEX_HANDLER_EMBUTIDO = /<[^>]*\son[a-z]+\s*=\s*(["'`\\$]|[a-z])/i;
 const REGEX_CAMINHO_ABSOLUTO = /\b(?:href|src|action)\s*=\s*["'](\/(?!\/)[^"']*)["']/g;
 
 // CIT-52: fontes hospedadas localmente, sem Google Fonts; font-src 'self'.
-const CSP_INDEX = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'";
-const CSP_CHECKOUT = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; connect-src 'self' https://viacep.com.br; object-src 'none'; base-uri 'none'; form-action 'self'";
+// CIT-152: style-src sem 'unsafe-inline' (CSS em assets/<página>.css; D5 do plano).
+const CSP_INDEX = "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'";
+const CSP_CHECKOUT = "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self' https://viacep.com.br; object-src 'none'; base-uri 'none'; form-action 'self'";
 // CIT-158: mesma política do index (sem API própria ainda; connect-src ganha a origem quando o painel chamar a API — ADR 0013 item 5).
 const CSP_LOGIN_PAINEL = CSP_INDEX;
 
@@ -60,15 +61,19 @@ async function mockarViaCep(page) {
   }));
 }
 
-/** Neutraliza w.print() do pop-up (senão trava o teste headless); não altera o código, só o teste. */
+/** Neutraliza w.print() do pop-up (senão trava o teste headless); não altera o código, só o teste.
+ * Cada chamada de print() no pop-up incrementa window.__prints no opener (CIT-152: imprime uma vez só). */
 async function neutralizarPrintDoPopup(page) {
   await page.addInitScript(() => {
+    // @ts-ignore
+    window.__prints = 0;
     const abrirOriginal = window.open;
     // @ts-ignore
     window.open = function (...args) {
       // @ts-ignore
       const w = abrirOriginal.apply(window, args);
-      if (w) w.print = () => {};
+      // @ts-ignore
+      if (w) w.print = () => { window.__prints++; };
       return w;
     };
   });
@@ -954,5 +959,362 @@ test.describe('CSP — login e painel', { tag: '@CIT-158' }, () => {
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), `painel ${largura}px sem overflow horizontal`).toBe(true);
       });
     }
+  });
+});
+
+// CIT-152: style-src sem 'unsafe-inline' — CSS de cada página em assets/<página>.css, pop-up do boleto com
+// assets/boleto.css e nenhum estilo inline em HTML nem em markup montado por script.
+// Ver .omc/plans/CIT-152.md ("Critérios de aceite" e "Testes por critério").
+
+const PAGINAS_152 = ['index.html', 'checkout.html', 'login.html', 'painel.html'];
+const CSP_POR_PAGINA_152 = { 'index.html': CSP_INDEX, 'checkout.html': CSP_CHECKOUT, 'login.html': CSP_LOGIN_PAINEL, 'painel.html': CSP_LOGIN_PAINEL };
+const FOLHA_DA_PAGINA = { 'index.html': 'landing', 'checkout.html': 'checkout', 'login.html': 'login', 'painel.html': 'painel' };
+const SCRIPTS_152 = readdirSync(new URL('assets/', RAIZ)).filter(n => n.endsWith('.js')).map(n => `assets/${n}`);
+
+/** Estilo inline proibido (CA1): <style>, atributo style= dentro de uma tag (HTML ou string/template JS;
+ * ignora o CSSOM .style.x =), setAttribute('style' e createElement('style'. */
+const REGEX_ESTILO_INLINE = [
+  /<style\b/gi,
+  /<[^>]*\sstyle\s*=/gi,
+  /setAttribute\(\s*["']style/g,
+  /createElement\(\s*["']style/g,
+];
+
+/** Ocorrências de cada regex como "arquivo:linha: trecho". */
+function achadosComLinha(arquivo, fonte, regexes) {
+  return regexes.flatMap(re => [...fonte.matchAll(re)].map(m => {
+    const linha = fonte.slice(0, m.index).split('\n').length;
+    const fim = m.index + m[0].length;
+    return `${arquivo}:${linha}: ${fonte.slice(Math.max(fonte.lastIndexOf('\n', fim - 1) + 1, fim - 80), fim).trim()}`;
+  }));
+}
+
+/** Cor calculada de uma propriedade com var(token), lida de um elemento sonda (como checkout.spec.js). */
+async function corDoToken(page, token) {
+  return page.evaluate(tok => {
+    const sonda = document.createElement('div');
+    sonda.style.backgroundColor = `var(${tok})`;
+    document.body.appendChild(sonda);
+    const cor = getComputedStyle(sonda).backgroundColor;
+    sonda.remove();
+    return cor;
+  }, token);
+}
+
+/** Leva o checkout ao passo 5 com o boleto selecionado, por clique (mesmo caminho do CA3 do CIT-49). */
+async function checkoutAteBoleto(page) {
+  await mockarViaCep(page);
+  await page.goto('checkout.html', { waitUntil: 'networkidle' });
+  await page.locator('#ckCard5 .mini-qty-btn').last().click();
+  await page.locator('#step1 .btn-primary').click();
+  await page.locator('#doptBr').click();
+  await page.locator('#fDomNew').fill('minhaempresateste');
+  await page.locator('#step2 .btn-primary').click();
+  await page.locator('#step3 .btn-primary').click();
+  await page.locator('#fNome').fill('Maria Fictícia');
+  await page.locator('#fEmail').fill('maria@fixture.teste');
+  await page.locator('#fTelefone').fill('11999998888');
+  await page.locator('#fSenha').fill('senhaFicticia1');
+  await page.locator('#fCPF').fill('11122233344');
+  await page.locator('#fCEP').fill('01310-000');
+  await expect(page.locator('#fLogradouro')).toHaveValue('Rua Fictícia');
+  await page.locator('#fNumero').fill('100');
+  await page.locator('#termsCheck').check();
+  await page.locator('#btnSubmitCadastro').click();
+  await page.locator('#payBoleto .payment-name').click();
+  await expect(page.locator('#payBoleto')).toHaveClass(/selected/);
+}
+
+test.describe('CSP sem estilo inline', { tag: '@CIT-152' }, () => {
+
+  test.describe('leitura de arquivo (sem navegador)', () => {
+    test.beforeEach(({}, testInfo) => {
+      test.skip(testInfo.project.name !== 'desktop', 'leitura de arquivo: roda num perfil só');
+    });
+
+    test('CA1 páginas, assets/*.js e o sprite sem <style>, sem atributo style= em tag e sem setAttribute/createElement de style', () => {
+      // o sprite entra porque é parseado na página (DOMParser no smoke de ícones): style= nele vira violação style-src-attr
+      const achados = [...PAGINAS_152, ...SCRIPTS_152, 'assets/icons.svg']
+        .flatMap(arquivo => achadosComLinha(arquivo, lerFonte(arquivo), REGEX_ESTILO_INLINE));
+      expect(achados, 'estilo inline (arquivo:linha)').toEqual([]);
+    });
+
+    test('CA2 cada página tem uma única meta CSP, logo após o charset, com o content exato de D5 e sem exceção inline', () => {
+      for (const arquivo of PAGINAS_152) {
+        const html = lerFonte(arquivo);
+        const metas = [...html.matchAll(/<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]*)"/gi)].map(m => m[1]);
+        expect(metas, `${arquivo}: metas CSP`).toHaveLength(1);
+        const [tag1, tag2] = primeirasTagsDoHead(html);
+        expect(tag1, `${arquivo}: primeira tag do head`).toMatch(/^<meta\s+charset=/i);
+        expect(tag2, `${arquivo}: segunda tag do head`).toMatch(/http-equiv="Content-Security-Policy"/i);
+        expect(metas[0], `${arquivo}: content da CSP`).toBe(CSP_POR_PAGINA_152[arquivo]);
+        expect(metas[0], `${arquivo}: exceção para estilo/script inline`).not.toMatch(/unsafe-inline|unsafe-hashes|sha256-|nonce-/);
+      }
+    });
+
+    test('CA6 head da landing: preload da fonte, fonts.css, tokens.css e landing.css?v=, nessa ordem, sem <style>', () => {
+      const head = lerFonte('index.html').replace(/<!--[\s\S]*?-->/g, '').split(/<\/head>/i)[0];
+      const hrefs = [...head.matchAll(/<link\b[^>]*\bhref="([^"]+)"/gi)].map(m => m[1]);
+      const pos = re => hrefs.findIndex(h => re.test(h));
+      const ordem = [/montserrat-700\.woff2$/, /^assets\/fonts\.css$/, /^assets\/tokens\.css$/, /^assets\/landing\.css\?v=\d+$/].map(pos);
+      expect(ordem.every(i => i >= 0), `links do head: ${hrefs.join(', ')}`).toBe(true);
+      expect([...ordem].sort((a, b) => a - b), 'ordem preload → fonts.css → tokens.css → landing.css').toEqual(ordem);
+      expect(head).not.toMatch(/<style\b/i);
+    });
+
+    test('CA7 toda referência a assets/(landing|checkout|login|painel|boleto).css tem ?v=<número>', () => {
+      const RE_FOLHA = /assets\/(landing|checkout|login|painel|boleto)\.css[^"'`\s)>]*/g;
+      const referencias = [...PAGINAS_152, 'assets/checkout.js']
+        .flatMap(arquivo => [...lerFonte(arquivo).matchAll(RE_FOLHA)].map(m => ({ arquivo, ref: m[0], folha: m[1] })));
+      // cada página referencia a própria folha e o pop-up do boleto (checkout.js) referencia boleto.css
+      for (const arquivo of PAGINAS_152) {
+        expect(referencias.some(r => r.arquivo === arquivo && r.folha === FOLHA_DA_PAGINA[arquivo]),
+          `${arquivo} deveria referenciar assets/${FOLHA_DA_PAGINA[arquivo]}.css`).toBe(true);
+      }
+      expect(referencias.some(r => r.arquivo === 'assets/checkout.js' && r.folha === 'boleto'),
+        'assets/checkout.js deveria referenciar assets/boleto.css').toBe(true);
+      const semVersao = referencias.filter(r => !/\?v=\d+$/.test(r.ref)).map(r => `${r.arquivo}: ${r.ref}`);
+      expect(semVersao, 'referência sem ?v=<número>').toEqual([]);
+    });
+
+    test('CA8 landing.js não estiliza o CTA por CSSOM (o estado desabilitado vem de [aria-disabled])', () => {
+      const fonte = lerFonte('assets/landing.js');
+      expect(fonte, 'CSSOM no #calcCtaBtn').not.toMatch(/ctaBtn\.style\b/);
+    });
+  });
+
+  test('CA3 landing: calculadora até "Total de tabela", CTA habilitado e desabilitado, sem violação de CSP', async ({ page, erros }) => {
+    await registrarViolacoesCsp(page);
+    await page.goto('index.html', { waitUntil: 'networkidle' });
+    await page.locator('#card5 .qty-btn[data-qtd-delta="1"]').click();
+    await expect(page.locator('#csSummaryLines .cs-line', { hasText: 'Total de tabela' })).toBeVisible();
+    await expect(page.locator('#calcCtaBtn')).not.toHaveAttribute('aria-disabled');
+    await page.locator('#card5 .qty-btn[data-qtd-delta="-1"]').click();
+    await expect(page.locator('#calcCtaBtn')).toHaveAttribute('aria-disabled', 'true');
+    expect(await violacoesCsp(page), 'violações de CSP na landing').toEqual([]);
+  });
+
+  test('CA3 checkout: indicador de passos com o ícone check sem violação de CSP', async ({ page, erros }) => {
+    await registrarViolacoesCsp(page);
+    await page.goto('checkout.html', { waitUntil: 'networkidle' });
+    await page.locator('#ckCard5 .mini-qty-btn').last().click();
+    await page.locator('#step1 .btn-primary').click();
+    await expect(page.locator('#sc1 .icon use')).toHaveAttribute('href', 'assets/icons.svg#check');
+    await expect(page.locator('#sc1 .icon')).toBeVisible();
+    expect(await violacoesCsp(page), 'violações de CSP no checkout').toEqual([]);
+  });
+
+  test('CA3 login: toast "Link enviado" e Escape sem violação de CSP', async ({ page, erros }) => {
+    await registrarViolacoesCsp(page);
+    await page.goto('login.html', { waitUntil: 'networkidle' });
+    await page.locator('[data-login-acao="esqueci"]').click();
+    await page.locator('#fForgotEmail').fill('teste@fixture.com.br');
+    await page.locator('[data-login-acao="enviar"]').click();
+    const toast = page.locator('body > div', { hasText: 'Link enviado' });
+    await expect(toast).toBeVisible();
+    await expect(toast.locator('.icon')).toBeVisible();
+    await page.locator('[data-login-acao="esqueci"]').click();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#forgotOverlay')).toBeHidden();
+    expect(await violacoesCsp(page), 'violações de CSP no login').toEqual([]);
+  });
+
+  test('CA3 painel: modal DNS em "Adicionar" e "Editar" e toast sem violação de CSP', async ({ page, erros }, testInfo) => {
+    await registrarViolacoesCsp(page);
+    await page.goto('painel.html', { waitUntil: 'networkidle' });
+    await irParaSecao(page, 'dns', testInfo);
+    await page.locator('#btnDnsAdd').click();
+    await expect(page.locator('#modalDnsTitle')).toContainText('Adicionar Registro');
+    await expect(page.locator('#modalDnsTitle .icon use')).toHaveAttribute('href', 'assets/icons.svg#plus');
+    await page.locator('[data-fechar-modal="modalDnsRecord"]').first().click();
+    await page.locator('[data-dns-acao="editar"][data-dns-id="1"]').click();
+    await expect(page.locator('#modalDnsTitle')).toContainText('Editar Registro');
+    await expect(page.locator('#modalDnsTitle .icon use')).toHaveAttribute('href', 'assets/icons.svg#pencil');
+    await page.locator('[data-fechar-modal="modalDnsRecord"]').first().click();
+    await page.locator('#btnDnsCheckProp').click();
+    await expect(page.locator('#toastWrap .toast').first()).toBeVisible();
+    expect(await violacoesCsp(page), 'violações de CSP no painel').toEqual([]);
+  });
+
+  test('CA3/CA9 pop-up do boleto: folha assets/boleto.css aplicada, sem <style>, sem mensagem de CSP e print() uma vez', async ({ page, erros }) => {
+    await neutralizarPrintDoPopup(page);
+    await checkoutAteBoleto(page);
+    // O mock do ViaCEP (page.route) no opener deixa pendurada a requisição de assets/boleto.css do pop-up
+    // about:blank, que herda a interceptação sem handler; o CEP já foi usado, então a rota sai antes de abrir.
+    await page.unrouteAll({ behavior: 'wait' });
+
+    const mensagens = [];
+    page.context().on('console', msg => mensagens.push(msg));
+    const popupPromise = page.waitForEvent('popup');
+    await page.locator('#downloadBoleto').click();
+    const popup = await popupPromise;
+    await expect(popup.locator('h1')).toHaveText('Boleto CITMail');
+
+    // folha da mesma origem por <link>, com a URL absoluta calculada no checkout (D4)
+    await expect(popup.locator('link[rel="stylesheet"]')).toHaveCount(1);
+    const href = await popup.locator('link[rel="stylesheet"]').getAttribute('href');
+    expect(new URL(/** @type {string} */ (href)).pathname, 'href da folha do pop-up').toMatch(/\/assets\/boleto\.css$/);
+    await expect(popup.locator('style')).toHaveCount(0);
+
+    await expect(popup.locator('body')).toHaveCSS('padding-top', '40px');
+    await expect(popup.locator('h1')).toHaveCSS('font-size', '22px');
+    await expect(popup.locator('code')).toHaveCSS('font-size', '16px');
+
+    // print() só depois de a folha carregar, exatamente uma vez (guarda "impresso")
+    await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__prints)).toBe(1);
+    // janela maior que a reserva de 3 s do checkout.js: o setTimeout de reserva não pode imprimir de novo
+    await page.waitForTimeout(3500);
+    expect(await page.evaluate(() => /** @type {any} */ (window).__prints), 'print() chamado mais de uma vez').toBe(1);
+
+    const mensagensDoPopup = mensagens
+      .filter(m => m.page() === popup && (m.type() === 'error' || /Content Security Policy/i.test(m.text())))
+      .map(m => m.text());
+    expect(mensagensDoPopup, 'erro ou violação de CSP no pop-up do boleto').toEqual([]);
+    await popup.close();
+  });
+
+  test('CA3 pop-up do boleto: com a folha travada, imprime uma vez pela reserva de 3 s', async ({ page, erros }) => {
+    await neutralizarPrintDoPopup(page);
+    await checkoutAteBoleto(page);
+    await page.unrouteAll({ behavior: 'wait' });
+    // folha que nunca responde: nem load nem error; só a reserva de 3 s aciona a impressão
+    await page.context().route('**/assets/boleto.css*', () => {});
+
+    const popupPromise = page.waitForEvent('popup');
+    await page.locator('#downloadBoleto').click();
+    const popup = await popupPromise;
+    const inicio = Date.now();
+    await expect(popup.locator('h1')).toHaveText('Boleto CITMail');
+
+    await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__prints), { timeout: 6000 }).toBe(1);
+    expect(Date.now() - inicio, 'a impressão deveria vir da reserva de 3 s, não antes').toBeGreaterThanOrEqual(2500);
+    expect(await popup.evaluate(() => getComputedStyle(document.body).paddingTop), 'folha travada não aplica').not.toBe('40px');
+    await page.waitForTimeout(1000);
+    expect(await page.evaluate(() => /** @type {any} */ (window).__prints), 'print() chamado mais de uma vez').toBe(1);
+    await popup.close();
+  });
+
+  test('CA8 login: Escape com o modal fechado não chama closeForgot; com o modal aberto, fecha', async ({ page, erros }) => {
+    await page.goto('login.html', { waitUntil: 'networkidle' });
+    await page.evaluate(() => {
+      // @ts-ignore
+      window.__fechamentos = 0;
+      // @ts-ignore
+      const original = window.closeForgot;
+      // @ts-ignore
+      window.closeForgot = function () { window.__fechamentos++; return original(); };
+    });
+    const fechamentos = () => page.evaluate(() => /** @type {any} */ (window).__fechamentos);
+
+    await expect(page.locator('#forgotOverlay')).toBeHidden();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#forgotOverlay')).toBeHidden();
+    expect(await fechamentos(), 'Escape com o modal fechado não deveria fechar nada').toBe(0);
+
+    await page.locator('[data-login-acao="esqueci"]').click();
+    await expect(page.locator('#forgotOverlay')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#forgotOverlay')).toBeHidden();
+    expect(await fechamentos(), 'Escape com o modal aberto fecha uma vez').toBe(1);
+  });
+
+  test('CA8/CA9 landing: CTA desabilitado com o carrinho vazio e habilitado após escolher um plano', async ({ page, erros }) => {
+    await page.goto('index.html', { waitUntil: 'networkidle' });
+    const cta = page.locator('#calcCtaBtn');
+    await expect(cta).toHaveAttribute('aria-disabled', 'true');
+    await expect(cta).toHaveCSS('pointer-events', 'none');
+    await expect(cta).toHaveCSS('opacity', '0.45');
+    await expect(cta).toHaveCSS('justify-content', 'center');
+
+    await page.locator('#card5 .qty-btn[data-qtd-delta="1"]').click();
+    await expect(cta).not.toHaveAttribute('aria-disabled');
+    // hoje o CSSOM grava 'all'; com o estado por [aria-disabled] passa ao padrão 'auto' — ambos clicáveis
+    await expect(cta).toHaveCSS('pointer-events', /^(auto|all)$/);
+    await expect(cta).toHaveCSS('opacity', '1');
+    await expect(cta).toHaveAttribute('href', /checkout\.html\?/);
+
+    await page.locator('#card5 .qty-btn[data-qtd-delta="-1"]').click();
+    await expect(cta).toHaveAttribute('aria-disabled', 'true');
+    await expect(cta).toHaveCSS('pointer-events', 'none');
+    await expect(cta).toHaveCSS('opacity', '0.45');
+  });
+
+  test('CA8 checkout: painéis ocultos na carga aparecem e somem como hoje', async ({ page, erros }) => {
+    await page.goto('checkout.html', { waitUntil: 'networkidle' });
+    for (const id of ['step1Error', 'domainNewPanel', 'domainExistPanel', 'step2Error', 'extraDomPixPanel', 'addonsSubtotal', 'cnpjRow']) {
+      await expect(page.locator(`#${id}`), `#${id} oculto na carga`).toBeHidden();
+    }
+
+    await page.evaluate(() => goStep(2));
+    await page.locator('#doptBr').click();
+    await expect(page.locator('#domainNewPanel')).toBeVisible();
+    await expect(page.locator('#domainExistPanel')).toBeHidden();
+    await page.locator('#doptExist').click();
+    await expect(page.locator('#domainExistPanel')).toBeVisible();
+    await expect(page.locator('#domainNewPanel')).toBeHidden();
+
+    await page.evaluate(() => goStep(3));
+    const secaoDominio = page.locator('#step3 .addon-sec-btn')
+      .filter({ has: page.locator('.addon-sec-nome', { hasText: /^Domínio secundário$/ }) });
+    await secaoDominio.click();
+    await page.locator('button[data-addon="extraDom"][data-addon-delta="1"]').click();
+    await expect(page.locator('#extraDomPixPanel')).toBeVisible();
+    await page.locator('button[data-addon="extraDom"][data-addon-delta="-1"]').click();
+    await expect(page.locator('#extraDomPixPanel')).toBeHidden();
+    // subtotal só soma add-ons mensais (o domínio extra é anual, por Pix)
+    await page.locator('button[data-addon="grupoEmail"][data-addon-delta="1"]').click();
+    await expect(page.locator('#addonsSubtotal')).toBeVisible();
+    await page.locator('button[data-addon="grupoEmail"][data-addon-delta="-1"]').click();
+    await expect(page.locator('#addonsSubtotal')).toBeHidden();
+
+    await page.evaluate(() => goStep(4));
+    await page.locator('[data-doc-tipo="cnpj"]').click();
+    await expect(page.locator('#cnpjRow')).toBeVisible();
+    await expect(page.locator('#cpfRow')).toBeHidden();
+    await page.locator('[data-doc-tipo="cpf"]').click();
+    await expect(page.locator('#cnpjRow')).toBeHidden();
+    await expect(page.locator('#cpfRow')).toBeVisible();
+  });
+
+  test('CA9 landing: títulos de seção com margin-top 14px e avatares do mockup com o fundo de cada token', async ({ page, erros }) => {
+    await page.goto('index.html', { waitUntil: 'networkidle' });
+    const titulos = ['E-mail, domínio e proteção', 'Consulte o domínio', 'Pague só pelas contas', 'Do pagamento ao e-mail ativo',
+      'Sua equipe gerencia', 'Serviços extras para', 'Perguntas frequentes', 'E-mail com o domínio da empresa'];
+    for (const texto of titulos) {
+      await expect(page.locator('h2', { hasText: texto }), `h2 "${texto}"`).toHaveCSS('margin-top', '14px');
+    }
+
+    const avatares = [['CL', '--cit-blue-500'], ['MK', '--cit-turquoise-800'], ['FN', '--cit-blue-700'], ['DI', '--cit-neutral-600']];
+    for (const [sigla, token] of avatares) {
+      await expect(page.locator('.avatar', { hasText: new RegExp(`^${sigla}$`) }), `.avatar ${sigla}`)
+        .toHaveCSS('background-color', await corDoToken(page, token));
+    }
+  });
+
+  test('CA9 painel: .activity-dot com fundo e cor de cada variante e barras de uso com a largura de cada classe', async ({ page, erros }, testInfo) => {
+    await page.goto('painel.html', { waitUntil: 'networkidle' });
+
+    const variantes = [
+      ['--cit-green-50', '--cit-green-700'], ['--cit-blue-50', '--cit-primary'], ['--cit-amber-50', '--cit-amber-700'],
+      ['--cit-green-50', '--cit-green-700'], ['--cit-blue-50', '--cit-primary'],
+    ];
+    const pontos = page.locator('#sec-dashboard .activity-dot');
+    await expect(pontos).toHaveCount(variantes.length);
+    for (const [i, [fundo, cor]] of variantes.entries()) {
+      await expect(pontos.nth(i), `.activity-dot #${i} fundo`).toHaveCSS('background-color', await corDoToken(page, fundo));
+      await expect(pontos.nth(i), `.activity-dot #${i} cor`).toHaveCSS('color', await corDoToken(page, cor));
+    }
+
+    /** Largura de cada .progress-fill visível da seção, relativa ao seu .progress-bar. */
+    const proporcoes = secao => page.evaluate(sel => [...document.querySelectorAll(`${sel} .progress-fill`)]
+      .map(f => f.getBoundingClientRect().width / /** @type {Element} */ (f.parentElement).getBoundingClientRect().width), secao);
+    const conferir = async (secao, esperadas) => {
+      await expect.poll(async () => (await proporcoes(secao)).length).toBe(esperadas.length);
+      await expect.poll(async () => (await proporcoes(secao)).every((p, i) => Math.abs(p - esperadas[i]) <= 0.005),
+        `${secao}: proporções ${esperadas.join(', ')}`).toBe(true);
+    };
+    await conferir('#sec-dashboard', [0.13, 0.32, 0.17]);
+    await irParaSecao(page, 'email', testInfo);
+    await conferir('#sec-email', [0.124, 0.13, 0.32, 0.17, 0, 0]);
   });
 });

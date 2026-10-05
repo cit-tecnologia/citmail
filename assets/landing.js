@@ -171,7 +171,7 @@ function recalcSummary() {
   economiaEl.hidden = isEmpty;
 
   if (!isEmpty) {
-    html += `<div class="cs-line" style="margin-top:6px;border-top:1px dashed var(--gray-200);padding-top:6px"><span class="lbl" style="font-weight:700">Total de tabela</span><span class="val"><s>R$ ${fmtCentavos(grandTabela)}</s></span></div>`;
+    html += `<div class="cs-line cs-line--total-tabela"><span class="lbl lbl--forte">Total de tabela</span><span class="val"><s>R$ ${fmtCentavos(grandTabela)}</s></span></div>`;
     linesEl.innerHTML = html;
     totalEl.textContent = `R$ ${fmtCentavos(grandTotal)}`;
     periodEl.textContent = billing === 'annual' ? `/mês · R$ ${fmtCentavos(grandTotal*12)}/ano` : '/mês';
@@ -191,8 +191,6 @@ function recalcSummary() {
     ctaBtn.removeAttribute('role');
     ctaBtn.removeAttribute('aria-disabled');
   }
-  ctaBtn.style.pointerEvents = isEmpty ? 'none' : 'all';
-  ctaBtn.style.opacity = isEmpty ? '0.45' : '1';
 }
 
 // ---- DOMAIN SEARCH ----

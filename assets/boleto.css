@@ -1,0 +1,4 @@
+/* Pop-up do boleto (checkout.js, downloadBoleto). Sem @font-face: usa a fonte do sistema. */
+body { font-family: Poppins, system-ui, sans-serif; color: #23344E; padding: 40px; line-height: 1.6; }
+h1 { font-family: Montserrat, system-ui, sans-serif; font-size: 22px; font-weight: 600; }
+code { font-family: ui-monospace, Consolas, monospace; font-size: 16px; }

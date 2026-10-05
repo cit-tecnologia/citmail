@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'">
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="CITMail: e-mail corporativo com o domínio da sua empresa. Contas de 5, 25 e 50 GB, com webmail, antispam e painel de gestão." />
   <title>CITMail — E-mail corporativo com domínio próprio</title>
@@ -13,1033 +13,7 @@
   <link rel="stylesheet" href="assets/fonts.css" />
   <link rel="stylesheet" href="assets/tokens.css" />
 
-  <style>
-    /* =========================================================
-       RESET & TOKENS
-    ========================================================= */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      /* Aliases legados -> tokens do Brandbook CIT (assets/tokens.css). */
-      --brand-900: var(--cit-navy-500);
-      --brand-800: var(--cit-navy-600);
-      --brand-700: var(--cit-blue-700);
-      --brand-600: var(--cit-blue-500);
-      --brand-500: var(--cit-blue-400);
-      --brand-400: var(--cit-blue-300);
-      --brand-300: var(--cit-blue-200);
-      --brand-200: var(--cit-blue-100);
-      --brand-100: var(--cit-blue-100);
-      --brand-50:  var(--cit-blue-50);
-      --accent:    var(--cit-turquoise-500);
-      --green:       var(--cit-success);
-      --green-bg:    var(--cit-success-subtle);
-      --green-light: var(--cit-success-subtle);
-      --green-dark:  var(--cit-success-strong);
-      --yellow:    var(--cit-warning);
-      --yellow-bg: var(--cit-warning-subtle);
-      --red:       var(--cit-error);
-      --red-bg:    var(--cit-error-subtle);
-      --gray-900:  var(--cit-text-primary);
-      --gray-700:  var(--cit-neutral-700);
-      --gray-600:  var(--cit-neutral-600);
-      --gray-500:  var(--cit-neutral-500);
-      --gray-400:  var(--cit-neutral-400);
-      --gray-300:  var(--cit-neutral-300);
-      --gray-200:  var(--cit-neutral-200);
-      --gray-100:  var(--cit-neutral-100);
-      --white:     #FFFFFF;
-      --font-title: var(--cit-font-display);
-      --font-body:  var(--cit-font-body);
-      --radius-sm: var(--cit-radius-sm);
-      --radius-md: var(--cit-radius-md);
-      --radius-lg: var(--cit-radius-lg);
-      --radius-xl: var(--cit-radius-xl);
-      --shadow-sm: var(--cit-shadow-sm);
-      --shadow-md: var(--cit-shadow-md);
-      --shadow-lg: var(--cit-shadow-lg);
-      --transition: var(--cit-duration-hover) var(--cit-ease);
-    }
-
-    html { scroll-behavior: smooth; }
-    body {
-      font-family: var(--font-body);
-      color: var(--cit-text-primary);
-      background: var(--white);
-      line-height: var(--cit-leading-relaxed);
-      overflow-x: hidden;
-      -webkit-font-smoothing: antialiased;
-    }
-
-    /* =========================================================
-       TYPOGRAPHY — escala do Brandbook CIT
-    ========================================================= */
-    h1, h2, h3, h4 {
-      font-family: var(--font-title);
-      font-weight: 600;
-      line-height: 1.15;
-      letter-spacing: var(--cit-tracking-display);
-    }
-    h1 { font-size: clamp(2rem, 4.2vw, 3rem); font-weight: 700; line-height: 1.1; }
-    h2 { font-size: clamp(1.625rem, 3vw, 2.25rem); }
-    h3 { font-size: clamp(1.25rem, 1.8vw, 1.375rem); line-height: 1.3; }
-    p   { line-height: var(--cit-leading-relaxed); color: var(--cit-text-secondary); }
-
-    /* =========================================================
-       UTILITIES
-    ========================================================= */
-    .container {
-      width: 100%;
-      max-width: var(--cit-container-max);
-      margin: 0 auto;
-      padding: 0 clamp(16px, 4vw, 48px);
-    }
-    .section { padding: clamp(56px, 8vw, 96px) 0; }
-    .text-center { text-align: center; }
-
-    /* Rótulo de seção (eyebrow) com filete de acento turquesa */
-    .tag {
-      display: inline-flex; align-items: center; gap: 8px;
-      font-family: var(--font-body); font-weight: 600;
-      font-size: .6875rem; letter-spacing: var(--cit-tracking-eyebrow); text-transform: uppercase;
-      color: var(--cit-primary);
-    }
-    .tag .icon { color: var(--cit-text-primary); } /* ícone decorativo: navy; o azul fica só no texto de ênfase */
-    .tag::before {
-      content: ''; width: 24px; height: 2px; flex-shrink: 0;
-      background: var(--cit-turquoise-500);
-    }
-    .tag--dark { color: var(--cit-text-inverse-secondary); }
-    .tag--dark .icon, #cta-final .tag .icon { color: inherit; }
-    .section-header { max-width: 640px; margin: 0 auto 56px; }
-    .section-header p { font-size: 1rem; margin-top: 12px; }
-
-    /* Malha institucional 88px — somente em bloco escuro ou azul */
-    .cit-mesh { position: relative; overflow: hidden; }
-    .cit-mesh::before {
-      content: '';
-      position: absolute; inset: 0; pointer-events: none;
-      background-image:
-        linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px);
-      background-size: 88px 88px;
-      -webkit-mask-image: radial-gradient(120% 90% at 80% 12%, #000, transparent 72%);
-              mask-image: radial-gradient(120% 90% at 80% 12%, #000, transparent 72%);
-    }
-    .cit-mesh > .container { position: relative; z-index: 1; }
-
-    /* =========================================================
-       BUTTONS — altura 32/40/48, raio 8
-    ========================================================= */
-    .btn {
-      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-      height: 40px; padding: 0 18px;
-      font-family: var(--font-body); font-weight: 600; font-size: .875rem;
-      border-radius: var(--cit-radius-sm); border: 1px solid transparent;
-      cursor: pointer; text-decoration: none; white-space: nowrap;
-      transition: background var(--transition), color var(--transition), border-color var(--transition);
-    }
-    .btn-primary { background: var(--cit-primary); color: var(--cit-on-primary); }
-    .btn-primary:hover { background: var(--cit-primary-hover); }
-    .btn-outline {
-      background: transparent; color: var(--cit-primary);
-      border-color: var(--cit-blue-300);
-    }
-    .btn-outline:hover { border-color: var(--cit-primary); background: var(--cit-blue-50); }
-    .btn-white { background: var(--white); color: var(--cit-primary); }
-    .btn-white:hover { background: var(--cit-blue-50); }
-    .btn-outline-dark {
-      background: transparent; color: var(--white);
-      border-color: rgba(255,255,255,.4);
-    }
-    .btn-outline-dark:hover { background: rgba(255,255,255,.08); border-color: var(--white); }
-    .btn-lg { height: 48px; padding: 0 26px; font-size: 1rem; }
-    .btn-sm { height: 32px; padding: 0 14px; font-size: .8125rem; }
-
-    /* Badge do brandbook: raio 6, borda 1px, texto + cor */
-    .badge {
-      display: inline-flex; align-items: center; gap: 6px;
-      height: 24px; padding: 0 10px;
-      border: 1px solid; border-radius: 6px;
-      font-family: var(--font-body); font-size: .6875rem; font-weight: 600;
-      white-space: nowrap;
-    }
-    .badge-blue   { background: var(--cit-blue-50);  color: var(--cit-blue-700);  border-color: var(--cit-blue-200); }
-    .badge-green  { background: var(--cit-green-50); color: var(--cit-green-700); border-color: rgba(30,142,78,.32); }
-    .badge-yellow { background: var(--cit-amber-50); color: var(--cit-amber-700); border-color: rgba(184,121,26,.32); }
-    .badge-neutral { background: var(--cit-bg-muted); color: var(--cit-text-secondary); border-color: var(--cit-border-color-strong); }
-
-    /* =========================================================
-       HEADER / NAV
-    ========================================================= */
-    #header {
-      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
-      background: var(--cit-navy-500);
-      border-bottom: 1px solid var(--cit-border-color-dark);
-      transition: box-shadow var(--transition);
-    }
-    #header.scrolled { box-shadow: var(--shadow-md); }
-
-    .nav {
-      display: flex; align-items: center;
-      height: 68px; gap: 24px;
-    }
-    .nav-logo {
-      display: flex; align-items: center; gap: 10px;
-      text-decoration: none; flex-shrink: 0;
-    }
-
-    .nav-links {
-      display: flex; align-items: center; gap: 4px;
-      list-style: none; margin-left: auto;
-    }
-    .nav-links a {
-      color: var(--cit-text-inverse-secondary);
-      font-size: .875rem; font-weight: 500;
-      text-decoration: none; padding: 8px 12px;
-      border-radius: var(--radius-sm);
-      transition: color var(--transition), background var(--transition);
-    }
-    .nav-links a:hover { color: var(--white); background: rgba(255,255,255,.08); }
-
-    .nav-ctas { display: flex; align-items: center; gap: 10px; margin-left: 16px; }
-    .nav-ctas .btn-outline { color: var(--white); border-color: rgba(255,255,255,.4); }
-    .nav-ctas .btn-outline:hover { background: rgba(255,255,255,.08); border-color: var(--white); }
-
-    .nav-toggle {
-      display: none; flex-direction: column; gap: 5px;
-      background: none; border: none; cursor: pointer;
-      padding: 8px; margin-left: auto;
-    }
-    .nav-toggle span {
-      display: block; width: 24px; height: 2px;
-      background: var(--white); border-radius: 2px;
-    }
-
-    @media (max-width: 900px) {
-      .nav-links, .nav-ctas { display: none; }
-      .nav-toggle { display: flex; }
-
-      .nav-mobile-open .nav-links {
-        display: flex; flex-direction: column;
-        position: fixed; top: 68px; left: 0; right: 0;
-        background: var(--cit-navy-500);
-        padding: 20px 24px 32px;
-        border-bottom: 1px solid var(--cit-border-color-dark);
-        gap: 0;
-      }
-      .nav-mobile-open .nav-links a {
-        padding: 13px 0; border-bottom: 1px solid rgba(255,255,255,.06);
-        border-radius: 0; font-size: 1rem;
-      }
-      .nav-mobile-open .nav-ctas {
-        display: flex; flex-direction: column;
-        position: fixed; top: calc(68px + var(--mobile-links-height, 320px));
-        left: 0; right: 0; padding: 20px 24px;
-        background: var(--cit-navy-500);
-      }
-      .nav-mobile-open .nav-ctas .btn { width: 100%; justify-content: center; }
-    }
-
-    /* =========================================================
-       HERO — navy + malha
-    ========================================================= */
-    #hero {
-      min-height: 100vh;
-      background: var(--cit-navy-500);
-      display: flex; align-items: center;
-      padding-top: 68px;
-    }
-    #hero > .container { position: relative; z-index: 1; }
-    .hero-grid {
-      display: grid; grid-template-columns: 1fr 1fr;
-      gap: 64px; align-items: center;
-      padding: clamp(56px, 8vw, 96px) 0;
-    }
-    .hero-badge {
-      display: inline-flex; align-items: center; gap: 8px;
-      height: 28px; padding: 0 12px; margin-bottom: 24px;
-      background: rgba(255,255,255,.06); color: var(--cit-text-inverse-secondary);
-      border: 1px solid var(--cit-border-color-dark); border-radius: 6px;
-      font-family: var(--font-body); font-size: .6875rem; font-weight: 600;
-      text-transform: uppercase; letter-spacing: var(--cit-tracking-eyebrow);
-    }
-    .hero-badge::before {
-      content: '';
-      width: 6px; height: 6px;
-      background: var(--cit-success); border-radius: 50%;
-    }
-
-    .hero-title {
-      color: var(--white); margin-bottom: 20px;
-      font-size: clamp(2.25rem, 5vw, 3.25rem); line-height: 1.04;
-      text-wrap: balance;
-    }
-    .hero-title .highlight { color: var(--cit-turquoise-400); }
-    .hero-title .nowrap-word { white-space: nowrap; }
-    .hero-subtitle {
-      color: var(--cit-text-inverse-secondary); font-size: 1rem;
-      margin-bottom: 36px; max-width: 480px;
-    }
-    .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 48px; }
-    .hero-stats {
-      display: flex; flex-wrap: wrap; gap: 28px 40px;
-      padding-top: 24px; border-top: 1px solid var(--cit-border-color-dark);
-    }
-    .hero-stat { max-width: 9rem; }
-    .hero-stat .number {
-      font-family: var(--font-title); font-weight: 800;
-      font-size: 1.625rem; letter-spacing: var(--cit-tracking-display);
-      color: var(--white); font-variant-numeric: tabular-nums;
-    }
-    .hero-stat .label {
-      font-size: .8125rem; color: rgba(255,255,255,.56);
-    }
-
-    /* Hero visual — email mockup */
-    .hero-visual {
-      position: relative; display: flex; align-items: center; justify-content: center;
-    }
-    .hero-mockup {
-      background: var(--cit-navy-600);
-      border: 1px solid var(--cit-border-color-dark);
-      border-radius: var(--cit-radius-lg);
-      padding: 28px;
-      width: 100%;
-      max-width: 420px;
-    }
-    .mockup-bar {
-      display: flex; align-items: center; gap: 8px; margin-bottom: 20px;
-    }
-    .mockup-dot { width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.2); }
-    .mockup-url {
-      flex: 1; background: rgba(255,255,255,.06);
-      border-radius: 6px; padding: 6px 12px;
-      color: rgba(255,255,255,.56); font-size: .78rem;
-      display: flex; align-items: center; gap: 6px;
-    }
-    .mockup-email-row {
-      display: flex; align-items: center; gap: 12px;
-      padding: 12px 14px; border-radius: var(--radius-sm);
-      margin-bottom: 6px; transition: background var(--transition);
-      cursor: default;
-    }
-    .mockup-email-row:hover { background: rgba(255,255,255,.06); }
-    .mockup-email-row.unread { background: rgba(0,108,176,.22); }
-    .avatar {
-      width: 36px; height: 36px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-family: var(--font-title); font-weight: 700; font-size: .8rem; color: white;
-      flex-shrink: 0;
-    }
-    .mockup-email-info { flex: 1; min-width: 0; }
-    .mockup-sender { color: white; font-size: .82rem; font-weight: 600; }
-    .mockup-subject { color: rgba(255,255,255,.56); font-size: .75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .mockup-time { color: rgba(255,255,255,.56); font-size: .7rem; }
-    .mockup-footer {
-      margin-top: 18px; padding-top: 16px;
-      border-top: 1px solid var(--cit-border-color-dark);
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .mockup-address {
-      font-family: var(--font-title); font-weight: 600;
-      font-size: .8rem; color: var(--cit-blue-300);
-    }
-    .mockup-pill {
-      display: inline-flex; align-items: center; height: 22px; padding: 0 8px;
-      font-size: .7rem; font-weight: 600; border-radius: 6px;
-      background: rgba(30,142,78,.18); color: var(--cit-green-50);
-      border: 1px solid rgba(30,142,78,.5);
-    }
-
-    /* Selos flutuantes do hero */
-    .hero-float {
-      position: absolute;
-      background: var(--white);
-      border: 1px solid var(--cit-border-color);
-      border-radius: var(--cit-radius-md);
-      padding: 10px 14px;
-      box-shadow: var(--shadow-md);
-      display: flex; align-items: center; gap: 10px;
-      font-size: .8rem; font-weight: 600; color: var(--cit-text-primary);
-    }
-    .hero-float-1 { top: -20px; right: -24px; }
-    .hero-float .icon { font-size: 1.2rem; }
-
-    @media (max-width: 900px) {
-      .hero-grid { grid-template-columns: 1fr; gap: 48px; }
-      .hero-grid > * { min-width: 0; }
-      .hero-visual { order: -1; }
-      .hero-mockup { max-width: 100%; }
-      .hero-float-1 { top: -12px; right: 12px; }
-    }
-
-    /* =========================================================
-       TRUST BAR
-    ========================================================= */
-    .trust-bar {
-      background: var(--cit-bg-subtle);
-      padding: 20px 0;
-      border-bottom: 1px solid var(--cit-border-color);
-    }
-    .trust-bar-inner {
-      display: flex; align-items: center; flex-wrap: wrap; gap: 16px 40px;
-      justify-content: center;
-    }
-    .trust-item {
-      display: flex; align-items: center; gap: 8px;
-      font-size: .8125rem; font-weight: 500; color: var(--cit-neutral-700);
-    }
-    .trust-item .icon { color: var(--cit-text-primary); font-size: .9rem; }
-
-    /* =========================================================
-       FEATURES
-    ========================================================= */
-    #features { background: var(--white); }
-    .features-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 20px;
-    }
-    @media (min-width: 600px) and (max-width: 899px) {
-      /* 2 por linha; card ímpar final ocupa a linha inteira */
-      .features-grid { grid-template-columns: repeat(2, 1fr); }
-      .features-grid .feature-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
-    }
-    @media (min-width: 900px) {
-      /* 3 por linha; a última linha incompleta divide a largura sem órfão */
-      .features-grid { grid-template-columns: repeat(6, 1fr); }
-      .features-grid .feature-card { grid-column: span 2; }
-      .features-grid .feature-card:nth-last-child(2):nth-child(3n+1),
-      .features-grid .feature-card:last-child:nth-child(3n+2) { grid-column: span 3; }
-    }
-    .feature-card {
-      background: var(--white);
-      border: 1px solid var(--cit-border-color);
-      border-radius: var(--cit-radius-lg);
-      padding: 24px;
-      transition: border-color var(--transition), transform var(--transition);
-    }
-    .feature-card:hover {
-      border-color: var(--cit-blue-300);
-      transform: translateY(var(--cit-lift));
-    }
-    .feature-icon {
-      width: 48px; height: 48px;
-      background: var(--cit-blue-50);
-      border-radius: var(--cit-radius-md);
-      display: flex; align-items: center; justify-content: center;
-      margin-bottom: 18px;
-    }
-    .feature-icon .icon { font-size: 1.3rem; color: var(--cit-text-primary); }
-    .feature-card h3 { margin-bottom: 8px; }
-    .feature-card p { font-size: 1rem; }
-
-    /* =========================================================
-       DOMAIN SEARCH — bloco navy
-    ========================================================= */
-    #domain-search { background: var(--cit-navy-500); }
-    .domain-search-inner { max-width: 700px; margin: 0 auto; text-align: center; }
-    .domain-search-inner h2 { color: white; }
-    .domain-search-inner p { color: var(--cit-text-inverse-secondary); margin-top: 12px; margin-bottom: 36px; }
-
-    .domain-form {
-      display: flex; gap: 0;
-      background: white; border-radius: var(--cit-radius-md);
-      overflow: hidden;
-    }
-    .domain-prefix {
-      display: flex; align-items: center;
-      background: var(--cit-bg-subtle); border-right: 1px solid var(--cit-border-color);
-      padding: 0 16px;
-      font-weight: 600; color: var(--cit-text-secondary); font-size: 1rem;
-      white-space: nowrap;
-    }
-    .domain-input {
-      flex: 1; border: none; outline: none; min-width: 0;
-      height: 48px; padding: 0 16px; font-size: 1rem; font-family: var(--font-body);
-      color: var(--cit-text-primary);
-    }
-    .domain-input:focus-visible { box-shadow: inset 0 0 0 2px var(--cit-focus); }
-    .domain-suffix {
-      display: flex; align-items: center;
-      padding: 0 14px;
-      font-size: 1rem; font-weight: 600; color: var(--cit-primary);
-      border-left: 1px solid var(--cit-border-color);
-      background: var(--cit-bg-subtle);
-    }
-    .domain-form .btn-primary { border-radius: 0; height: 48px; padding: 0 28px; }
-
-    .domain-result { margin-top: 16px; min-height: 32px; }
-    .domain-available,
-    .domain-taken {
-      display: block; text-align: left;
-      padding: 8px 14px; border: 1px solid; border-radius: var(--cit-radius-sm);
-      font-weight: 600; font-size: .8125rem;
-    }
-    .domain-available { background: var(--cit-green-50); color: var(--cit-green-700); border-color: rgba(30,142,78,.32); }
-    .domain-taken     { background: var(--cit-red-50);   color: var(--cit-red-700);   border-color: rgba(192,57,43,.32); }
-    .domain-available .icon, .domain-taken .icon { vertical-align: -.125em; margin-right: var(--cit-space-1); }
-    .domain-loading { color: var(--cit-text-inverse-secondary); font-size: .8125rem; }
-
-    .tld-list {
-      display: flex; flex-wrap: wrap; gap: 8px;
-      justify-content: center; margin-top: 20px;
-    }
-    .tld-chip {
-      background: transparent; color: var(--cit-text-inverse-secondary);
-      border: 1px solid rgba(255,255,255,.24);
-      height: 28px; padding: 0 12px; border-radius: 6px;
-      display: inline-flex; align-items: center;
-      font-size: .78rem; font-weight: 600; cursor: pointer;
-      transition: background var(--transition), color var(--transition), border-color var(--transition);
-    }
-    .tld-chip:hover, .tld-chip.active { background: white; color: var(--cit-primary); border-color: white; }
-
-    @media (max-width: 600px) {
-      .domain-form { flex-direction: column; }
-      .domain-prefix, .domain-suffix { display: none; }
-      .domain-input { flex: none; border-bottom: 1px solid var(--cit-border-color); }
-      .domain-form .btn-primary { border-radius: 0; }
-    }
-
-    /* =========================================================
-       PRICING — CALCULADORA
-    ========================================================= */
-    #pricing { background: var(--cit-bg-subtle); }
-
-    /* Billing toggle */
-    .billing-toggle {
-      display: flex; align-items: center; justify-content: center;
-      gap: 14px; margin-bottom: 40px;
-    }
-    .billing-toggle span {
-      font-weight: 600; font-size: .8125rem; color: var(--cit-text-secondary);
-      cursor: pointer; transition: color var(--transition);
-    }
-    .billing-toggle span.active { color: var(--cit-primary); }
-    .toggle-switch {
-      width: 48px; height: 26px;
-      background: var(--cit-primary); border-radius: var(--cit-radius-full);
-      position: relative; cursor: pointer; flex-shrink: 0;
-      transition: background var(--transition);
-    }
-    .toggle-knob {
-      position: absolute; top: 3px; left: 3px;
-      width: 20px; height: 20px;
-      background: white; border-radius: 50%;
-      transition: transform var(--transition);
-    }
-    .toggle-switch.annual { background: var(--cit-success); }
-    .toggle-switch.annual .toggle-knob { transform: translateX(22px); }
-    .save-badge {
-      display: inline-flex; align-items: center; height: 22px; padding: 0 8px;
-      background: var(--cit-green-50); color: var(--cit-green-700);
-      border: 1px solid rgba(30,142,78,.32); border-radius: 6px;
-      font-size: .6875rem; font-weight: 600;
-    }
-
-    /* Calculadora layout */
-    .calc-wrapper {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 340px;
-      gap: 24px;
-      align-items: start;
-    }
-    .calc-left, .calc-summary { min-width: 0; }
-    @media (max-width: 960px) {
-      .calc-wrapper { grid-template-columns: minmax(0, 1fr); }
-      .calc-summary { order: -1; }
-    }
-
-    /* Incluso label */
-    .included-label {
-      display: inline-flex; align-items: center; gap: 6px;
-      height: 24px; padding: 0 10px; margin-bottom: 14px;
-      font-size: .6875rem; font-weight: 600; text-transform: uppercase;
-      letter-spacing: var(--cit-tracking-eyebrow); color: var(--cit-text-secondary);
-      background: var(--cit-bg-muted); border: 1px solid var(--cit-border-color-strong);
-      border-radius: 6px;
-    }
-
-    /* Conta type card */
-    .account-type-card {
-      background: var(--white);
-      border: 1px solid var(--cit-border-color);
-      border-radius: var(--cit-radius-lg);
-      padding: 22px 24px;
-      margin-bottom: 12px;
-      transition: border-color var(--transition);
-    }
-    .account-type-card:hover { border-color: var(--cit-blue-300); }
-    /* Cartão de destaque: gradiente sutil azul 50 (permitido pelo brandbook) */
-    .account-type-card.has-qty {
-      border-color: var(--cit-blue-300);
-      background: linear-gradient(158deg, var(--cit-blue-50), #fff 62%);
-    }
-
-    .atc-top {
-      display: flex; align-items: center; gap: 14px; margin-bottom: 16px;
-    }
-    .atc-icon {
-      width: 48px; height: 48px; border-radius: var(--cit-radius-md);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 1.3rem; flex-shrink: 0;
-    }
-    .atc-icon.c5   { background: var(--cit-blue-50); }
-    .atc-icon.c25  { background: var(--cit-turquoise-50); }
-    .atc-icon.c50  { background: var(--cit-bg-muted); }
-    .atc-info { flex: 1; min-width: 0; }
-    .atc-name {
-      font-family: var(--font-title); font-weight: 600;
-      font-size: 1rem; color: var(--cit-text-primary);
-    }
-    .atc-storage { font-size: .8125rem; color: var(--cit-text-secondary); }
-    .atc-unit-price { text-align: right; }
-    .atc-unit-price .atc-unit-tabela { font-size: .8125rem; }
-    .atc-unit-price .price {
-      font-family: var(--font-title); font-weight: 800;
-      font-size: 1.3rem; color: var(--cit-success-strong);
-    }
-    .atc-unit-price .period { font-size: .8125rem; color: var(--cit-text-secondary); }
-
-    /* Volume discount badge */
-    .vol-badge {
-      display: inline-flex; align-items: center; gap: 5px;
-      height: 24px; padding: 0 10px; margin-bottom: 10px;
-      background: var(--cit-green-50); color: var(--cit-green-700);
-      border: 1px solid rgba(30,142,78,.32); border-radius: 6px;
-      font-size: .6875rem; font-weight: 600;
-    }
-    /* Price breakdown */
-    .price-breakdown {
-      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-      margin-bottom: 10px;
-    }
-    /* Preço de tabela riscado (CA12): mesmo padrão do checkout.html
-       — cor e riscado no <s>, tamanho herdado do contêiner que o envolve. */
-    #pricing s[data-preco-tabela], .price-breakdown s, .cs-disc s, .cs-line .val s { color: var(--cit-error); text-decoration-line: line-through; font-weight: inherit; }
-    .price-breakdown s { font-size: .8125rem; }
-    .price-final {
-      font-family: var(--font-title); font-weight: 800;
-      font-size: 1.2rem; color: var(--cit-success-strong);
-    }
-    .price-saving {
-      font-size: .6875rem; font-weight: 600; color: var(--cit-green-700);
-      background: var(--cit-green-50); border: 1px solid rgba(30,142,78,.32);
-      padding: 1px 8px; border-radius: 6px;
-    }
-
-    /* Quantity control */
-    .atc-bottom {
-      display: flex; align-items: center; justify-content: space-between; gap: 12px;
-      flex-wrap: wrap; row-gap: 10px;
-    }
-    /* Grupo qty-control + subtotal: à direita mesmo quando a linha quebra (largura estreita, CA de transbordo). */
-    .atc-bottom > div:last-child { margin-left: auto; }
-    .atc-discount-tag {
-      font-size: .8125rem; font-weight: 600; min-height: 20px;
-      color: var(--cit-green-700);
-    }
-    .qty-control {
-      display: flex; align-items: center; gap: 0;
-      border: 1px solid var(--cit-border-color-strong); border-radius: var(--cit-radius-sm);
-      overflow: hidden; flex-shrink: 0; background: white;
-    }
-    .account-type-card.has-qty .qty-control { border-color: var(--cit-blue-300); }
-    .qty-btn {
-      width: 40px; height: 40px;
-      background: var(--cit-bg-subtle); border: none; cursor: pointer;
-      font-size: 1.1rem; color: var(--cit-text-secondary);
-      display: flex; align-items: center; justify-content: center;
-      transition: background var(--transition), color var(--transition);
-      flex-shrink: 0;
-    }
-    .qty-btn:hover { background: var(--cit-blue-50); color: var(--cit-primary); }
-    .qty-btn:active { background: var(--cit-blue-100); }
-    .qty-input {
-      width: 52px; height: 40px; border: none; outline: none;
-      text-align: center; font-family: var(--font-title); font-weight: 700;
-      font-size: .95rem; color: var(--cit-text-primary);
-      background: white; font-variant-numeric: tabular-nums;
-    }
-    .qty-input::-webkit-inner-spin-button,
-    .qty-input::-webkit-outer-spin-button { -webkit-appearance: none; }
-
-    .atc-subtotal {
-      font-family: var(--font-title); font-weight: 700;
-      font-size: .9rem; color: var(--cit-text-muted); min-width: 110px; text-align: right;
-    }
-    .atc-subtotal.has-value { color: var(--cit-primary); }
-    /* Abaixo de 360px o controle de quantidade e o subtotal não cabem lado a lado
-       com valores altos (ex.: 1000 contas, "R$ 9.500,00/mês"): empilha à direita. */
-    @media (max-width: 359px) {
-      .atc-bottom > div:last-child { flex-direction: column; align-items: flex-end; gap: 6px; }
-      .atc-subtotal { min-width: 0; }
-    }
-
-    /* Summary panel */
-    .calc-summary {
-      position: sticky; top: 84px;
-    }
-    /* Abaixo de 960px o resumo sai do fluxo fixo e fica como o do checkout.html nessa largura
-       (checkout.html:484); order: -1 mantido (resumo acima dos cards no mobile). */
-    @media (max-width: 960px) {
-      .calc-summary { position: static; }
-    }
-    .calc-summary-card {
-      background: var(--white);
-      border: 1px solid var(--cit-border-color);
-      border-radius: var(--cit-radius-lg);
-      padding: 24px;
-    }
-    .cs-title {
-      font-family: var(--font-title); font-weight: 600;
-      font-size: 1rem; margin-bottom: 18px;
-      display: flex; align-items: center; gap: 8px; color: var(--cit-text-primary);
-    }
-    .cs-title .icon { color: var(--cit-text-primary); }
-    .cs-lines { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
-    .cs-line {
-      display: flex; justify-content: space-between; align-items: baseline;
-      font-size: .8125rem;
-    }
-    .cs-line .lbl { color: var(--cit-text-secondary); }
-    .cs-line .val { font-weight: 600; color: var(--cit-text-primary); }
-    .cs-line .val.discount { color: var(--cit-green-700); }
-    /* Cobrado do tipo, com a cascata (riscado) logo depois: cor de cobrado (CA12).
-       "Total de tabela" também casa, mas o texto dele está no <s>, que tem cor própria. */
-    #csSummaryLines .cs-line .val { color: var(--cit-success-strong); }
-    .cs-line.total-line {
-      border-top: 1px solid var(--cit-border-color); padding-top: 12px; margin-top: 4px;
-    }
-    .cs-line.total-line .lbl {
-      font-family: var(--font-title); font-weight: 600; font-size: 1rem;
-      color: var(--cit-text-primary);
-    }
-    .cs-line.total-line .val {
-      font-family: var(--font-title); font-weight: 800;
-      font-size: 1.5rem; color: var(--cit-primary); font-variant-numeric: tabular-nums;
-    }
-    /* Cascata "de R$ tabela · −15% contratação −R$X[ · −20% anual/−5% volume −R$Y]" (CA6/CA10) */
-    .cs-disc { padding-left: 8px; font-size: var(--cit-text-small); color: var(--cit-green-700); font-weight: 600; }
-    .cs-disc-seg { white-space: nowrap; }
-    .cs-economia { margin-top: 10px; font-size: var(--cit-text-small); font-weight: 600; color: var(--cit-success-strong); }
-    .cs-period { font-size: .8125rem; color: var(--cit-text-muted); text-align: right; margin-top: -4px; }
-    .cs-annual-note {
-      background: var(--cit-green-50); color: var(--cit-green-700);
-      border: 1px solid rgba(30,142,78,.28);
-      border-radius: var(--cit-radius-sm); padding: 8px 12px;
-      font-size: .8125rem; font-weight: 600; margin-bottom: 16px;
-      display: none; align-items: center; gap: 6px;
-    }
-    .cs-annual-note.visible { display: flex; }
-    .cs-empty {
-      text-align: center; padding: 20px 0;
-      color: var(--cit-text-muted); font-size: .8125rem;
-    }
-    .cs-empty .icon { font-size: 2rem; margin: 0 auto 8px; display: block; color: var(--cit-neutral-400); }
-    .cs-features {
-      margin-top: 14px; padding-top: 14px;
-      border-top: 1px solid var(--cit-border-color);
-      display: flex; flex-direction: column; gap: 6px;
-    }
-    .cs-feature {
-      display: flex; align-items: center; gap: 7px;
-      font-size: .8125rem; color: var(--cit-text-secondary);
-    }
-    .cs-feature .icon { color: var(--cit-text-primary); font-size: .8rem; }
-    .cs-feature-nota { font-size: .8125rem; color: var(--cit-text-muted); margin: -2px 0 0 calc(.8rem + 7px); }
-
-    /* Discount info note — alerta informativo do brandbook */
-    .discount-info {
-      display: flex; align-items: flex-start; gap: 10px;
-      background: var(--cit-blue-50); border: 1px solid var(--cit-blue-200);
-      border-radius: var(--cit-radius-md); padding: 14px 16px;
-      margin-bottom: 20px; font-size: .8125rem; color: var(--cit-blue-800);
-    }
-    .discount-info .icon { flex-shrink: 0; margin-top: 3px; }
-
-    /* Caixa "incluso" e nota comercial da calculadora */
-    .included-box {
-      background: var(--white); border: 1px solid var(--cit-border-color);
-      border-radius: var(--cit-radius-lg); padding: 20px 24px;
-    }
-    .domain-contratar { color: inherit; font-weight: 600; margin-left: var(--cit-space-2); }
-    .included-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
-    .included-item { display: flex; align-items: center; gap: 8px; font-size: .8125rem; color: var(--cit-neutral-700); }
-    .included-item .icon { font-size: .8rem; }
-    .pricing-note {
-      text-align: center; margin-top: 32px; padding: 20px 24px;
-      background: var(--cit-blue-50); border: 1px solid var(--cit-blue-200);
-      border-radius: var(--cit-radius-lg);
-    }
-    .pricing-note p { font-size: .8125rem; color: var(--cit-blue-800); }
-    .pricing-note a { color: var(--cit-primary); font-weight: 600; }
-
-    /* =========================================================
-       HOW IT WORKS
-    ========================================================= */
-    #how-it-works { background: var(--white); }
-    .steps-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 0; position: relative;
-    }
-    /* Filete de diagrama: 1px neutro 300 */
-    .steps-grid::before {
-      content: '';
-      position: absolute; top: 28px; left: calc(12.5% + 28px); right: calc(12.5% + 28px);
-      height: 1px;
-      background: var(--cit-border-color-strong);
-    }
-    .step-card { text-align: center; padding: 0 20px 0; }
-    .step-number {
-      width: 56px; height: 56px; border-radius: var(--cit-radius-md);
-      background: var(--white); color: var(--cit-primary);
-      border: 1px solid var(--cit-blue-300);
-      display: flex; align-items: center; justify-content: center;
-      font-family: var(--cit-font-mono); font-weight: 600; font-size: 1.125rem;
-      margin: 0 auto 20px; position: relative; z-index: 1;
-    }
-    .step-card h3 { margin-bottom: 8px; }
-    .step-card p { font-size: 1rem; }
-
-    @media (max-width: 700px) {
-      .steps-grid { grid-template-columns: 1fr; gap: 32px; }
-      .steps-grid::before { display: none; }
-    }
-
-    /* =========================================================
-       FAQ
-    ========================================================= */
-    #faq { background: var(--cit-bg-subtle); }
-    .faq-list { max-width: 760px; margin: 0 auto; }
-    .faq-item {
-      background: white; border-radius: var(--cit-radius-md);
-      border: 1px solid var(--cit-border-color);
-      margin-bottom: 10px; overflow: hidden;
-      transition: border-color var(--transition);
-    }
-    .faq-item:hover, .faq-item.open { border-color: var(--cit-blue-300); }
-    .faq-question {
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 16px; padding: 20px 24px;
-      cursor: pointer; background: none; border: none; width: 100%;
-      text-align: left; font: inherit;
-    }
-    .faq-question span {
-      font-family: var(--font-title); font-weight: 600;
-      font-size: 1rem; color: var(--cit-text-primary);
-    }
-    .faq-icon {
-      width: 28px; height: 28px; flex-shrink: 0;
-      background: var(--cit-blue-50); border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      color: var(--cit-primary); transition: transform var(--transition);
-    }
-    .faq-item.open .faq-icon { transform: rotate(45deg); }
-    .faq-answer {
-      max-height: 0; overflow: hidden;
-      transition: max-height .4s var(--cit-ease);
-    }
-    .faq-item.open .faq-answer { max-height: 60rem; }
-    .faq-answer p {
-      padding: 0 24px 20px;
-      font-size: 1rem; color: var(--cit-text-secondary); line-height: 1.6;
-      overflow-wrap: anywhere;
-    }
-
-    /* =========================================================
-       CTA FINAL — bloco azul CIT + malha
-    ========================================================= */
-    #cta-final {
-      background: var(--cit-primary);
-      text-align: center;
-    }
-    #cta-final h2 { color: white; }
-    #cta-final p { color: var(--white); font-size: 1rem; margin: 16px auto 36px; max-width: 520px; }
-    #cta-final .tag { color: var(--white); }
-    #cta-final .tag::before { background: white; } /* turquesa não contrasta sobre o azul CIT */
-    .cta-actions { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
-    #cta-final .guarantee-note {
-      margin-top: 20px; margin-bottom: 0; font-size: .8125rem; color: var(--white);
-      display: flex; align-items: center; justify-content: center; gap: 6px;
-    }
-
-    /* =========================================================
-       FOOTER — navy
-    ========================================================= */
-    footer {
-      background: var(--cit-navy-500); color: var(--cit-text-inverse-secondary);
-      padding: 56px 0 32px;
-    }
-    footer p { color: var(--cit-text-inverse-secondary); }
-    .footer-grid {
-      display: grid; grid-template-columns: 2fr 1fr 1fr;
-      gap: 48px; margin-bottom: 48px;
-    }
-    .footer-brand p { font-size: .8125rem; margin-top: 24px; max-width: 260px; }
-    .footer-brand .nav-logo { margin-bottom: 0; }
-    .footer-col h4 {
-      font-family: var(--font-title); font-weight: 600;
-      color: white; font-size: .875rem; margin-bottom: 16px;
-    }
-    .footer-col ul { list-style: none; }
-    .footer-col ul li { margin-bottom: 10px; }
-    .footer-col ul li a {
-      color: var(--cit-text-inverse-secondary); text-decoration: none;
-      font-size: .8125rem; transition: color var(--transition);
-    }
-    .footer-col ul li a:hover { color: white; }
-    .footer-bottom {
-      padding-top: 28px; border-top: 1px solid var(--cit-border-color-dark);
-      display: flex; flex-wrap: wrap; gap: 12px;
-      align-items: center; justify-content: space-between;
-    }
-    .footer-bottom p { font-size: .8125rem; color: rgba(255,255,255,.56); }
-
-    @media (max-width: 900px) {
-      .footer-grid { grid-template-columns: 1fr 1fr; }
-      .footer-brand { grid-column: 1 / -1; }
-    }
-    @media (max-width: 580px) {
-      .footer-grid { grid-template-columns: 1fr; }
-    }
-
-    /* =========================================================
-       MISC
-    ========================================================= */
-    .scroll-top {
-      position: fixed; bottom: 28px; right: 28px;
-      width: 44px; height: 44px;
-      background: var(--cit-primary); color: white;
-      border: none; border-radius: var(--cit-radius-sm);
-      cursor: pointer; font-size: 1rem;
-      box-shadow: var(--shadow-md);
-      display: flex; align-items: center; justify-content: center;
-      opacity: 0; pointer-events: none;
-      transition: opacity var(--transition), background var(--transition);
-      z-index: 999;
-    }
-    .scroll-top.visible { opacity: 1; pointer-events: all; }
-    .scroll-top:hover { background: var(--cit-primary-hover); }
-
-    /* Fade-in — tokens de movimento do brandbook */
-    .fade-in {
-      opacity: 0; transform: translateY(var(--cit-fadeup-from));
-      transition: opacity var(--cit-duration-enter) var(--cit-ease), transform var(--cit-duration-enter) var(--cit-ease);
-    }
-    .fade-in.visible { opacity: 1; transform: none; }
-
-    /* =========================================================
-       MARKETPLACE PREVIEW
-    ========================================================= */
-    #marketplace { background: var(--white); }
-    .marketplace-grid {
-      display: grid; grid-template-columns: repeat(3, 1fr);
-      gap: 20px;
-    }
-    @media (max-width: 900px) {
-      .marketplace-grid { grid-template-columns: repeat(2, 1fr); }
-      .marketplace-card:last-child:nth-child(odd) { grid-column: 1 / -1; }
-    }
-    @media (max-width: 580px) {
-      .marketplace-grid { grid-template-columns: 1fr; }
-    }
-    .marketplace-card {
-      background: var(--white);
-      border: 1px solid var(--cit-border-color); border-radius: var(--cit-radius-lg);
-      padding: 24px;
-      transition: border-color var(--transition), transform var(--transition);
-      display: flex; flex-direction: column; gap: 12px;
-    }
-    .marketplace-card:hover { border-color: var(--cit-blue-300); transform: translateY(var(--cit-lift)); }
-    .marketplace-card .badge { align-self: flex-start; }
-    .marketplace-icon { font-size: 2rem; }
-    .marketplace-card p { font-size: 1rem; flex: 1; }
-
-    /* =========================================================
-       PAINEL PREVIEW (Client Portal teaser)
-    ========================================================= */
-    #painel-preview { background: var(--cit-bg-subtle); }
-    .painel-grid {
-      display: grid; grid-template-columns: 1fr 1fr;
-      gap: 64px; align-items: center;
-    }
-    .painel-grid .text-col p { margin-top: 14px; margin-bottom: 28px; }
-    .painel-features-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
-    .painel-features-list li {
-      display: flex; align-items: center; gap: 10px;
-      font-size: 1rem; font-weight: 500; color: var(--cit-neutral-700);
-    }
-    .painel-features-list li .icon { color: var(--cit-text-primary); font-size: .9rem; }
-
-    /* Navegação em navy, conteúdo em neutro — como o portal do brandbook */
-    .painel-mockup {
-      background: var(--cit-navy-600);
-      border: 1px solid var(--cit-navy-700);
-      border-radius: var(--cit-radius-lg);
-      overflow: hidden;
-    }
-    .painel-topbar {
-      background: var(--cit-navy-500);
-      padding: 14px 20px;
-      display: flex; align-items: center; gap: 12px;
-      border-bottom: 1px solid var(--cit-border-color-dark);
-    }
-    .painel-topbar .dots { display: flex; gap: 6px; }
-    .painel-topbar .dots span {
-      width: 10px; height: 10px; border-radius: 50%; background: rgba(255,255,255,.2);
-    }
-    .painel-topbar .title { color: rgba(255,255,255,.56); font-size: .78rem; font-weight: 600; margin-left: auto; margin-right: auto; }
-    .painel-body {
-      display: grid; grid-template-columns: 180px 1fr;
-      min-height: 280px;
-    }
-    .painel-sidebar {
-      background: var(--cit-navy-500);
-      padding: 16px 12px;
-      border-right: 1px solid var(--cit-border-color-dark);
-    }
-    .sidebar-item {
-      display: flex; align-items: center; gap: 8px;
-      padding: 9px 10px; border-radius: var(--cit-radius-sm);
-      font-size: .75rem; color: rgba(255,255,255,.56);
-      cursor: default; margin-bottom: 2px;
-    }
-    .sidebar-item.active { background: rgba(64,145,196,.16); color: white; }
-    .sidebar-item .icon { font-size: .9rem; }
-    .painel-content { padding: 18px; }
-    .painel-stat-row { display: flex; gap: 10px; margin-bottom: 14px; }
-    .painel-stat {
-      flex: 1; background: rgba(255,255,255,.06);
-      border: 1px solid var(--cit-border-color-dark);
-      border-radius: var(--cit-radius-md); padding: 12px;
-    }
-    .painel-stat .label { font-size: .6875rem; color: rgba(255,255,255,.56); text-transform: uppercase; letter-spacing: var(--cit-tracking-eyebrow); }
-    .painel-stat .value { font-family: var(--font-title); font-weight: 700; color: white; font-size: 1.1rem; }
-    .painel-email-row {
-      display: flex; align-items: center; gap: 10px;
-      padding: 8px 10px; border-radius: var(--cit-radius-sm);
-      background: rgba(255,255,255,.04);
-      margin-bottom: 6px;
-    }
-    .painel-email-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cit-success); flex-shrink: 0; }
-    .painel-email-name { color: rgba(255,255,255,.85); font-size: .75rem; flex: 1; }
-    .painel-email-status {
-      font-size: .6875rem; font-weight: 600; color: var(--cit-green-50);
-      background: rgba(30,142,78,.18); border: 1px solid rgba(30,142,78,.5);
-      padding: 1px 6px; border-radius: 6px;
-    }
-
-    @media (max-width: 900px) {
-      .painel-grid { grid-template-columns: 1fr; }
-      .painel-grid > * { min-width: 0; }
-    }
-    @media (max-width: 540px) {
-      .painel-body { grid-template-columns: 1fr; }
-      .painel-sidebar { display: none; }
-    }
-  </style>
+  <link rel="stylesheet" href="assets/landing.css?v=1" />
 </head>
 
 <body>
@@ -1122,12 +96,12 @@
               <div class="mockup-dot"></div>
               <div class="mockup-dot"></div>
               <div class="mockup-url">
-                <svg class="icon" style="font-size:.65rem" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg>
+                <svg class="icon icon--xs" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg>
                 webmail.suaempresa.com.br
               </div>
             </div>
             <div class="mockup-email-row unread">
-              <div class="avatar" style="background:var(--cit-blue-500)">CL</div>
+              <div class="avatar avatar--blue-500">CL</div>
               <div class="mockup-email-info">
                 <div class="mockup-sender">Cliente Potencial</div>
                 <div class="mockup-subject">Solicitação de Orçamento</div>
@@ -1135,7 +109,7 @@
               <div class="mockup-time">09:42</div>
             </div>
             <div class="mockup-email-row">
-              <div class="avatar" style="background:var(--cit-turquoise-800)">MK</div>
+              <div class="avatar avatar--turquoise-800">MK</div>
               <div class="mockup-email-info">
                 <div class="mockup-sender">Marketing Interno</div>
                 <div class="mockup-subject">Campanha de junho pronta</div>
@@ -1143,7 +117,7 @@
               <div class="mockup-time">08:15</div>
             </div>
             <div class="mockup-email-row">
-              <div class="avatar" style="background:var(--cit-blue-700)">FN</div>
+              <div class="avatar avatar--blue-700">FN</div>
               <div class="mockup-email-info">
                 <div class="mockup-sender">Financeiro</div>
                 <div class="mockup-subject">NF-e referente ao contrato</div>
@@ -1151,7 +125,7 @@
               <div class="mockup-time">Ontem</div>
             </div>
             <div class="mockup-email-row">
-              <div class="avatar" style="background:var(--cit-neutral-600)">DI</div>
+              <div class="avatar avatar--neutral-600">DI</div>
               <div class="mockup-email-info">
                 <div class="mockup-sender">Diretoria</div>
                 <div class="mockup-subject">Reunião semanal — pauta</div>
@@ -1194,7 +168,7 @@
     <div class="container">
       <div class="section-header text-center fade-in">
         <div class="tag"><svg class="icon icon-fill" aria-hidden="true"><use href="assets/icons.svg#star"></use></svg> Recursos</div>
-        <h2 style="margin-top:14px">E-mail, domínio e proteção<br/>em um só contrato</h2>
+        <h2 class="mt-14">E-mail, domínio e proteção<br/>em um só contrato</h2>
         <p>Domínio, webmail, apps e antispam num só contrato, gerenciados pelo painel.</p>
       </div>
       <div class="features-grid">
@@ -1236,7 +210,7 @@
         <div class="tag tag--dark">
           <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#search"></use></svg> Buscar Domínio
         </div>
-        <h2 style="margin-top:14px">Consulte o domínio<br/>da sua empresa</h2>
+        <h2 class="mt-14">Consulte o domínio<br/>da sua empresa</h2>
         <p>Digite o nome da empresa e veja se o domínio parece livre. A disponibilidade é confirmada na contratação.</p>
 
         <div class="domain-form">
@@ -1268,7 +242,7 @@
     <div class="container">
       <div class="section-header text-center fade-in">
         <div class="tag"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#calculator"></use></svg> Preços</div>
-        <h2 style="margin-top:14px">Pague só pelas contas<br/>que sua equipe usa</h2>
+        <h2 class="mt-14">Pague só pelas contas<br/>que sua equipe usa</h2>
         <p>Escolha quantas contas de cada tipo contratar. Todos os preços já têm 15% de desconto nesta contratação e, no plano mensal, a partir de 5 contas do mesmo tipo entra mais 5%.</p>
       </div>
 
@@ -1310,14 +284,14 @@
                 <div class="period">/conta/mês</div>
               </div>
             </div>
-            <div class="price-breakdown" id="breakdown5" style="display:none">
+            <div class="price-breakdown is-hidden" id="breakdown5">
               <span class="sr-only">de </span><s id="origPrice5"></s>
               <span class="price-final" id="finalPrice5"></span>
               <span class="price-saving" id="saving5"></span>
             </div>
             <div class="atc-bottom">
               <div class="atc-discount-tag" id="discTag5"></div>
-              <div style="display:flex;align-items:center;gap:14px;flex-shrink:0">
+              <div class="atc-qty-row">
                 <div class="qty-control">
                   <button class="qty-btn" data-qtd-tipo="5gb" data-qtd-delta="-1" aria-label="Diminuir">−</button>
                   <input class="qty-input" id="qty5" type="number" value="0" min="0" max="999" data-qtd-tipo="5gb" />
@@ -1342,14 +316,14 @@
                 <div class="period">/conta/mês</div>
               </div>
             </div>
-            <div class="price-breakdown" id="breakdown25" style="display:none">
+            <div class="price-breakdown is-hidden" id="breakdown25">
               <span class="sr-only">de </span><s id="origPrice25"></s>
               <span class="price-final" id="finalPrice25"></span>
               <span class="price-saving" id="saving25"></span>
             </div>
             <div class="atc-bottom">
               <div class="atc-discount-tag" id="discTag25"></div>
-              <div style="display:flex;align-items:center;gap:14px;flex-shrink:0">
+              <div class="atc-qty-row">
                 <div class="qty-control">
                   <button class="qty-btn" data-qtd-tipo="25gb" data-qtd-delta="-1" aria-label="Diminuir">−</button>
                   <input class="qty-input" id="qty25" type="number" value="0" min="0" max="999" data-qtd-tipo="25gb" />
@@ -1374,14 +348,14 @@
                 <div class="period">/conta/mês</div>
               </div>
             </div>
-            <div class="price-breakdown" id="breakdown50" style="display:none">
+            <div class="price-breakdown is-hidden" id="breakdown50">
               <span class="sr-only">de </span><s id="origPrice50"></s>
               <span class="price-final" id="finalPrice50"></span>
               <span class="price-saving" id="saving50"></span>
             </div>
             <div class="atc-bottom">
               <div class="atc-discount-tag" id="discTag50"></div>
-              <div style="display:flex;align-items:center;gap:14px;flex-shrink:0">
+              <div class="atc-qty-row">
                 <div class="qty-control">
                   <button class="qty-btn" data-qtd-tipo="50gb" data-qtd-delta="-1" aria-label="Diminuir">−</button>
                   <input class="qty-input" id="qty50" type="number" value="0" min="0" max="999" data-qtd-tipo="50gb" />
@@ -1394,7 +368,7 @@
 
           <!-- Incluso em todas as contas -->
           <div class="included-box">
-            <div class="included-label"><svg class="icon" style="color:var(--cit-success)" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg> Incluso em todas as contas</div>
+            <div class="included-label"><svg class="icon icon--success" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg> Incluso em todas as contas</div>
             <div class="included-grid">
               <div class="included-item"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Webmail para computador e celular</div>
               <div class="included-item"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Protocolos IMAP / POP3 / SMTP</div>
@@ -1403,7 +377,7 @@
               <div class="included-item"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Painel de gerenciamento</div>
               <div class="included-item"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Compatível com Outlook, Gmail App e Apple Mail</div>
             </div>
-            <p style="margin-top:12px;font-size:.8125rem;color:var(--cit-text-secondary)">
+            <p class="calc-note">
               <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#info"></use></svg>
               Domínio não incluído: use um domínio que a empresa já tem ou peça o registro de um novo na contratação.
             </p>
@@ -1428,7 +402,7 @@
             </div>
 
             <!-- Lines (hidden when empty) -->
-            <div id="csLines" style="display:none">
+            <div id="csLines" class="is-hidden">
               <div class="cs-lines" id="csSummaryLines"></div>
               <div class="cs-line total-line">
                 <span class="lbl">Total</span>
@@ -1442,15 +416,15 @@
               <div class="cs-feature"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Cancele quando quiser</div>
               <div class="cs-feature-nota">O serviço segue até o fim do ciclo pago.</div>
               <div class="cs-feature"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Sem taxa de adesão</div>
-              <div class="cs-feature"><svg class="icon icon-pix" style="font-size:.8rem" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg> Pix, boleto e cartão</div>
+              <div class="cs-feature"><svg class="icon icon-pix icon--pix" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg> Pix, boleto e cartão</div>
             </div>
 
-            <div style="margin-top:18px">
-              <a id="calcCtaBtn" role="link" aria-disabled="true" class="btn btn-primary" style="pointer-events:none;opacity:.45;justify-content:center">
+            <div class="cs-cta">
+              <a id="calcCtaBtn" role="link" aria-disabled="true" class="btn btn-primary">
                 <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#zap"></use></svg> Contratar Agora
               </a>
-              <p style="text-align:center;font-size:.8125rem;color:var(--cit-text-muted);margin-top:8px">
-                <svg class="icon" style="color:var(--cit-success)" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg> Pagamento seguro via Asaas
+              <p class="cs-secure">
+                <svg class="icon icon--success" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg> Pagamento seguro via Asaas
               </p>
             </div>
           </div>
@@ -1477,7 +451,7 @@
     <div class="container">
       <div class="section-header text-center fade-in">
         <div class="tag"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#list-checks"></use></svg> Como funciona</div>
-        <h2 style="margin-top:14px">Do pagamento ao e-mail ativo<br/>em 4 passos</h2>
+        <h2 class="mt-14">Do pagamento ao e-mail ativo<br/>em 4 passos</h2>
       </div>
       <div class="steps-grid">
         <div class="step-card fade-in">
@@ -1512,7 +486,7 @@
       <div class="painel-grid">
         <div class="text-col fade-in">
           <div class="tag"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#layout-dashboard"></use></svg> Painel do Cliente</div>
-          <h2 style="margin-top:14px">Sua equipe gerencia<br/>sem abrir chamado</h2>
+          <h2 class="mt-14">Sua equipe gerencia<br/>sem abrir chamado</h2>
           <p>Crie caixas, troque senhas, baixe faturas e consulte o DNS pelo painel, sem depender do suporte.</p>
           <ul class="painel-features-list">
             <li><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg> Dashboard com visão geral do plano</li>
@@ -1521,7 +495,7 @@
             <li><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg> Histórico de faturas com download em PDF</li>
             <li><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg> Registros de DNS e status da verificação do domínio</li>
           </ul>
-          <div style="margin-top:28px; display:flex; gap:12px; flex-wrap:wrap;">
+          <div class="cta-row">
             <a href="login.html" class="btn btn-primary">Acessar Painel</a>
             <a href="#pricing" class="btn btn-outline">Criar Conta</a>
           </div>
@@ -1585,7 +559,7 @@
     <div class="container">
       <div class="section-header text-center fade-in">
         <div class="tag"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#store"></use></svg> Marketplace</div>
-        <h2 style="margin-top:14px">Serviços extras para<br/>contratar com o e-mail</h2>
+        <h2 class="mt-14">Serviços extras para<br/>contratar com o e-mail</h2>
         <p>E-mail Registrado e Microsoft 365 sob consulta, contratados junto com o e-mail.</p>
       </div>
       <div class="marketplace-grid">
@@ -1618,7 +592,7 @@
     <div class="container">
       <div class="section-header text-center fade-in">
         <div class="tag"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-help"></use></svg> FAQ</div>
-        <h2 style="margin-top:14px">Perguntas frequentes</h2>
+        <h2 class="mt-14">Perguntas frequentes</h2>
         <p>Prazos, pagamento, suporte e cancelamento.</p>
       </div>
       <div class="faq-list fade-in">
@@ -1700,7 +674,7 @@
         <div class="tag">
           <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#rocket"></use></svg> Pronto para começar?
         </div>
-        <h2 style="margin-top:14px">E-mail com o domínio da empresa</h2>
+        <h2 class="mt-14">E-mail com o domínio da empresa</h2>
         <p>Sem fidelidade e sem taxa de adesão. Cancele pelo painel quando quiser.</p>
         <div class="cta-actions">
           <a href="checkout.html" class="btn btn-white btn-lg">
@@ -1763,6 +737,6 @@
        JAVASCRIPT
   ============================================================ -->
   <script src="assets/precos.js?v=25"></script>
-  <script src="assets/landing.js?v=2"></script>
+  <script src="assets/landing.js?v=3"></script>
 </body>
 </html>
