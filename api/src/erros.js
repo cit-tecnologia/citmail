@@ -15,6 +15,9 @@ export class ErroDeDominio extends Error {
   }
 }
 
+// Máximo de itens em `campos` no 400 de validação, para todas as rotas.
+const LIMITE_CAMPOS = 20
+
 const mensagensPorRegra = {
   required: 'obrigatório',
   type: 'tipo inválido',
@@ -42,7 +45,8 @@ export function registrarErros(app) {
       return reply.code(erro.status).send({ erro: erro.erro })
     }
     if (erro.validation) {
-      const campos = erro.validation.map((item) => ({
+      // Só os primeiros: com `allErrors`, um corpo com milhares de chaves geraria milhares de itens.
+      const campos = erro.validation.slice(0, LIMITE_CAMPOS).map((item) => ({
         campo: nomeDoCampo(item),
         mensagem: mensagensPorRegra[item.keyword] ?? 'valor inválido'
       }))
