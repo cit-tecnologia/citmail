@@ -645,6 +645,13 @@ s[data-preco-tabela], .sum-disc s { color: var(--cit-error); text-decoration-lin
 .aviso-desconto-corpo { min-width: 0; }
 .aviso-desconto-titulo { font-family: var(--font-title); font-weight: 700; font-size: var(--cit-text-body); overflow-wrap: anywhere; }
 .aviso-desconto-texto { font-size: var(--cit-text-small); }
+/* Aviso de reajuste dos add-ons (#addonsAjusteAviso): sempre no DOM para o aria-live; vazio, não ocupa espaço */
+.addons-ajuste-aviso {
+  margin: 0 0 20px; padding: 10px 14px; font-size: var(--cit-text-small); overflow-wrap: anywhere;
+  background: var(--cit-info-subtle); color: var(--cit-info-strong);
+  border-left: 4px solid var(--cit-info); border-radius: var(--cit-radius-md);
+}
+.addons-ajuste-aviso:empty { margin: 0; padding: 0; border: 0; }
 
 /* Sanfona de add-ons: cabeçalho (h3 > button) e painel (role=region, hidden quando fechado) */
 .addon-sec { border: 1px solid var(--cit-border-color); border-radius: var(--cit-radius-md); background: var(--white); }

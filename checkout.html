@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="assets/fonts.css" />
   <link rel="stylesheet" href="assets/tokens.css" />
 
-  <link rel="stylesheet" href="assets/checkout.css?v=1" />
+  <link rel="stylesheet" href="assets/checkout.css?v=2" />
 </head>
 
 <body>
@@ -90,7 +90,7 @@
           </div>
           <div class="mini-qty-ctrl">
             <button class="mini-qty-btn" data-qtd-conta="5gb" data-qtd-delta="-1">−</button>
-            <input class="mini-qty-val" id="ckQty5" type="number" value="0" min="0" data-qtd-conta="5gb" />
+            <input class="mini-qty-val" id="ckQty5" type="number" value="0" min="0" max="500" data-qtd-conta="5gb" />
             <button class="mini-qty-btn" data-qtd-conta="5gb" data-qtd-delta="1">+</button>
           </div>
           <div class="mini-row-sub-col">
@@ -110,7 +110,7 @@
           </div>
           <div class="mini-qty-ctrl">
             <button class="mini-qty-btn" data-qtd-conta="25gb" data-qtd-delta="-1">−</button>
-            <input class="mini-qty-val" id="ckQty25" type="number" value="0" min="0" data-qtd-conta="25gb" />
+            <input class="mini-qty-val" id="ckQty25" type="number" value="0" min="0" max="500" data-qtd-conta="25gb" />
             <button class="mini-qty-btn" data-qtd-conta="25gb" data-qtd-delta="1">+</button>
           </div>
           <div class="mini-row-sub-col">
@@ -130,7 +130,7 @@
           </div>
           <div class="mini-qty-ctrl">
             <button class="mini-qty-btn" data-qtd-conta="50gb" data-qtd-delta="-1">−</button>
-            <input class="mini-qty-val" id="ckQty50" type="number" value="0" min="0" data-qtd-conta="50gb" />
+            <input class="mini-qty-val" id="ckQty50" type="number" value="0" min="0" max="500" data-qtd-conta="50gb" />
             <button class="mini-qty-btn" data-qtd-conta="50gb" data-qtd-delta="1">+</button>
           </div>
           <div class="mini-row-sub-col">
@@ -274,6 +274,9 @@
             <p class="aviso-desconto-texto">Condição exclusiva desta contratação</p>
           </div>
         </div>
+
+        <!-- Aviso de reajuste: os add-ons descem ao teto quando o total de contas diminui (vazio sem reajuste) -->
+        <p class="addons-ajuste-aviso" id="addonsAjusteAviso" aria-live="polite"></p>
 
         <!-- Add-ons em seções recolhíveis (sanfona); Grupo de E-mail fica fora, sempre visível -->
         <div class="addon-list">
@@ -908,7 +911,7 @@
   </div><!-- /checkout-wrapper -->
 
   <script src="assets/precos.js?v=26"></script>
-  <script src="assets/checkout.js?v=3"></script>
+  <script src="assets/checkout.js?v=4"></script>
 
 </body>
 </html>
