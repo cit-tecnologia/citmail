@@ -2077,7 +2077,7 @@ test.describe('checkout — cópia: feedback e falha', { tag: '@CIT-163' }, () =
         };
       });
       await page.clock.install({ time: new Date('2026-01-01T10:00:00') });
-      await page.goto('checkout.html', { waitUntil: 'networkidle' });
+      await page.goto('checkout.html?qty5=2', { waitUntil: 'networkidle' });
       await preparos[/** @type {'domPix'|'extraDomPix'|'pix'} */ (b.preparo)](page);
 
       const agora = await page.evaluate(() => Date.now());
@@ -2121,7 +2121,7 @@ test.describe('checkout — cópia: feedback e falha', { tag: '@CIT-163' }, () =
       }
       let dialogs = 0;
       page.on('dialog', d => { dialogs++; d.dismiss(); });
-      await page.goto('checkout.html', { waitUntil: 'networkidle' });
+      await page.goto('checkout.html?qty5=2', { waitUntil: 'networkidle' });
       await preparos[/** @type {'domPix'|'extraDomPix'|'pix'|'boleto'} */ (b.preparo)](page);
 
       const codigo = ((await page.locator(b.codigo).textContent()) ?? '').trim();
