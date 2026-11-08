@@ -47,7 +47,7 @@ export function registrarErros(app) {
     if (erro.validation) {
       // Só os primeiros: com `allErrors`, um corpo com milhares de chaves geraria milhares de itens.
       const campos = erro.validation.slice(0, LIMITE_CAMPOS).map((item) => ({
-        campo: nomeDoCampo(item),
+        campo: nomeDoCampo(item).slice(0, 100),
         mensagem: mensagensPorRegra[item.keyword] ?? 'valor inválido'
       }))
       return reply.code(400).send({ erro: 'validacao', campos })

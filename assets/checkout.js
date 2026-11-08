@@ -187,8 +187,8 @@ function limitarAddon(key, q) {
 
 function addonChange(key, delta) {
   const q = limitarAddon(key, (addonQtys[key] || 0) + delta);
+  if (q !== (addonQtys[key] || 0)) document.getElementById('addonsAjusteAviso').textContent = '';
   addonQtys[key] = q;
-  document.getElementById('addonsAjusteAviso').textContent = '';
   const inp = document.getElementById(ADDONS[key].qtd);
   if (inp) inp.value = q;
   refreshAddons();
@@ -196,8 +196,8 @@ function addonChange(key, delta) {
 
 function addonInput(key, raw) {
   const q = limitarAddon(key, parseInt(raw) || 0);
+  if (q !== (addonQtys[key] || 0)) document.getElementById('addonsAjusteAviso').textContent = '';
   addonQtys[key] = q;
-  document.getElementById('addonsAjusteAviso').textContent = '';
   // O campo mostra o que é cobrado (ex.: -3 → 0, 2.7 → 2, acima do teto → teto).
   const inp = document.getElementById(ADDONS[key].qtd);
   if (inp) inp.value = q;
@@ -217,6 +217,7 @@ function selectSkybox(plan) {
 
 // Leva cada add-on ao teto do total de contas atual e atualiza o max dos campos. Chamado quando as contas mudam
 // (e na carga): se algum add-on desceu, avisa em #addonsAjusteAviso; senão, limpa o aviso.
+// Não renderiza: quem chama renderiza em seguida (refreshAddons).
 function ajustarAddonsAoTeto() {
   let ajustou = false;
   Object.entries(ADDONS).forEach(([key, cfg]) => {
@@ -226,9 +227,8 @@ function ajustarAddonsAoTeto() {
     if (inp) { inp.max = teto; inp.value = addonQtys[key]; }
   });
   document.getElementById('addonsAjusteAviso').textContent = ajustou
-    ? 'Os add-ons foram ajustados ao número de contas: cada um vai até o total de contas escolhido.'
+    ? 'Os add-ons foram ajustados ao número de contas escolhido.'
     : '';
-  refreshAddons();
 }
 
 function refreshAddons() {
@@ -315,19 +315,27 @@ function ckChangeQty(type, delta) {
   const q = ckNormalizeQty(type, ckQtys[type] + delta, delta);
   ckQtys[type] = q;
   document.getElementById(d.qtyId).value = q;
-  ckRefresh();
   ajustarAddonsAoTeto();
+  renderContas();
+  refreshAddons();
 }
 function ckUpdateQty(type, raw) {
   const d = ACCOUNT_DEFS[type];
   const q = ckNormalizeQty(type, raw);
   ckQtys[type] = q;
   document.getElementById(d.qtyId).value = q;
-  ckRefresh();
   ajustarAddonsAoTeto();
+  renderContas();
+  refreshAddons();
 }
 
 function ckRefresh() {
+  renderContas();
+  updateSummary();
+  updateInstallments();
+}
+
+function renderContas() {
   Object.entries(ACCOUNT_DEFS).forEach(([type, d]) => {
     const qty  = ckQtys[type];
     const unit = unitPriceCentavos(type);
@@ -357,8 +365,6 @@ function ckRefresh() {
       discEl.textContent = '';
     }
   });
-  updateSummary();
-  updateInstallments();
 }
 
 function toggleCycle() {
@@ -893,7 +899,8 @@ document.getElementById('btnPagar').addEventListener('click', () => processPayme
   preencherTextosAddons();
   document.getElementById('doptBrPreco').textContent = `R$ ${fmtCentavos(PRECOS.dominio)}`;
   abrirSecoesIniciais();
-  ckRefresh();
   ajustarAddonsAoTeto();
+  renderContas();
+  refreshAddons();
   updateStepBar(1);
 })();

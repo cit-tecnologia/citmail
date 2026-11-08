@@ -71,6 +71,10 @@
         </div>
       </div>
 
+      <!-- Aviso de reajuste: os add-ons descem ao teto quando o total de contas diminui (vazio sem reajuste).
+           Fora dos painéis de passo para o aria-live anunciar em qualquer passo. -->
+      <p class="addons-ajuste-aviso" id="addonsAjusteAviso" aria-live="polite"></p>
+
       <!-- ========== STEP 1: PLANO ========== -->
       <div class="step-panel active card" id="step1">
         <div class="card-title"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#calculator"></use></svg> Selecione suas Contas de E-mail</div>
@@ -274,9 +278,6 @@
             <p class="aviso-desconto-texto">Condição exclusiva desta contratação</p>
           </div>
         </div>
-
-        <!-- Aviso de reajuste: os add-ons descem ao teto quando o total de contas diminui (vazio sem reajuste) -->
-        <p class="addons-ajuste-aviso" id="addonsAjusteAviso" aria-live="polite"></p>
 
         <!-- Add-ons em seções recolhíveis (sanfona); Grupo de E-mail fica fora, sempre visível -->
         <div class="addon-list">

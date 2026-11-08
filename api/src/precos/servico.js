@@ -57,7 +57,7 @@ function totalContas(contas) {
 }
 
 // Regras que o schema não expressa. Ordem fixa: total de contas, mínimo por tipo,
-// teto dos add-ons por conta. Com total 0, só sai `contas`.
+// teto dos add-ons por conta (Skybox e domínio extra têm teto fixo, aplicado pelo schema, sem passar por tetoAddon aqui). Com total 0, só sai `contas`.
 export function validarLimites({ contas, addons = {} }) {
   const total = totalContas(contas)
   if (total === 0) return [{ campo: 'contas', mensagem: FORA_DO_LIMITE }]
