@@ -2339,6 +2339,41 @@ test.describe('checkout — CIT-59: tetos de quantidade (CA5)', { tag: '@CIT-59'
     await expect(aviso).toBeVisible();
   });
 
+  test('CA5 aviso: logo após reduzir contas no passo 1, #addonsAjusteAviso está visível com o texto novo e fora de qualquer .step-panel', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty25=3');
+    await page.evaluate(() => goStep(3));
+    await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 3);
+    await page.evaluate(() => goStep(1));
+    await page.locator('button[data-qtd-conta="25gb"][data-qtd-delta="-1"]').click();
+
+    const aviso = page.locator('#addonsAjusteAviso');
+    await expect(page.locator('#step1')).toBeVisible();
+    await expect(aviso).toBeVisible();
+    await expect(aviso).toHaveText('Os add-ons foram ajustados ao número de contas escolhido.');
+    await expect(page.locator('.step-panel #addonsAjusteAviso')).toHaveCount(0);
+  });
+
+  test('CA5 aviso: + num add-on já travado no teto não limpa o aviso; uma mudança real de quantidade limpa', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty25=3');
+    await page.evaluate(() => goStep(3));
+    await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 3);
+    await page.evaluate(() => goStep(1));
+    await page.locator('button[data-qtd-conta="25gb"][data-qtd-delta="-1"]').click();
+    await page.evaluate(() => goStep(3));
+    const aviso = page.locator('#addonsAjusteAviso');
+    await expect(aviso).toHaveText(/\S/);
+    await expect(page.locator('#aqTalk')).toHaveValue('2');
+
+    await abrirSecao(page, 'Talk – Videoconferência');
+    await page.getByRole('button', { name: 'Aumentar Talk', exact: true }).click();
+    await expect(page.locator('#aqTalk')).toHaveValue('2');
+    await expect(aviso, 'sem mudança de quantidade o aviso continua').toHaveText(/\S/);
+
+    await page.getByRole('button', { name: 'Diminuir Talk', exact: true }).click();
+    await expect(page.locator('#aqTalk')).toHaveValue('1');
+    await expect(aviso, 'mudança real limpa o aviso').toHaveText('');
+  });
+
   test('CA5 add-ons: sem reajuste, #addonsAjusteAviso fica vazio', async ({ page, erros }) => {
     await page.goto('checkout.html?qty25=3');
     await page.evaluate(() => goStep(3));

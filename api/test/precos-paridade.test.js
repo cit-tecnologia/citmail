@@ -11,7 +11,7 @@ import { calcularOrcamento } from '../src/precos/servico.js';
 
 const CODIGO = readFileSync(new URL('../../assets/precos.js', import.meta.url), 'utf8');
 
-const EXPOR = '\n;({ PRECOS, DESCONTO_CONTRATACAO_PCT, DESCONTO_ANUAL_PCT, DESCONTO_VOLUME_PCT, VOLUME_MIN_QTD, cascataCentavos, tetoAddon })';
+const EXPOR = '\n;({ PRECOS, DESCONTO_CONTRATACAO_PCT, DESCONTO_ANUAL_PCT, DESCONTO_VOLUME_PCT, VOLUME_MIN_QTD, cascataCentavos, tetoAddon, tabelaCentavos, cobradoUnitCentavos })';
 
 const normalizar = (valor) => JSON.parse(JSON.stringify(valor));
 
@@ -32,6 +32,9 @@ function casosCascata() {
           nome: `conta ${tipo} ×${qtd} ${ciclo}`,
           entrada: { ciclo, contas: { [tipo]: qtd } },
           chave: tipo,
+          atual: (f) => f.PRECOS.contas[tipo],
+          qtd,
+          opcoes: { conta: true, anual: ciclo === 'anual' },
           front: (f) => f.cascataCentavos(f.PRECOS.contas[tipo], qtd, { conta: true, anual: ciclo === 'anual' }),
         });
       }
@@ -42,6 +45,9 @@ function casosCascata() {
       nome: `add-on ${chave} ×3`,
       entrada: { ciclo: 'mensal', contas: { '25gb': 3 }, addons: { [chave]: 3 } },
       chave,
+      atual: (f) => f.PRECOS.addons[chave],
+      qtd: 3,
+      opcoes: {},
       front: (f) => f.cascataCentavos(f.PRECOS.addons[chave], 3),
     });
   }
@@ -50,6 +56,9 @@ function casosCascata() {
       nome: `skybox ${plano} ×2`,
       entrada: { ciclo: 'mensal', contas: { '25gb': 1 }, addons: { skybox: { plano, quantidade: 2 } } },
       chave: 'skybox',
+      atual: (f) => f.PRECOS.addons.skybox[plano],
+      qtd: 2,
+      opcoes: {},
       front: (f) => f.cascataCentavos(f.PRECOS.addons.skybox[plano], 2),
     });
   }
@@ -93,6 +102,12 @@ function comparar(front, api) {
       { tabela_centavos, atual_centavos, subtotal_centavos, descontos },
       caso.nome,
     );
+    // Unitários: tabela e cobrado da API contra os helpers do front; qtd × cobrado fecha o subtotal.
+    const atualUnit = caso.atual(f);
+    assert.equal(item.unit_atual_centavos, atualUnit, `${caso.nome}: unit_atual_centavos`);
+    assert.equal(item.unit_tabela_centavos, f.tabelaCentavos(atualUnit), `${caso.nome}: unit_tabela_centavos`);
+    assert.equal(item.unit_cobrado_centavos, f.cobradoUnitCentavos(atualUnit, caso.qtd, caso.opcoes), `${caso.nome}: unit_cobrado_centavos`);
+    assert.equal(item.quantidade * item.unit_cobrado_centavos, item.subtotal_centavos, `${caso.nome}: quantidade × unit_cobrado`);
   }
 
   for (const qtd of [1, 2]) {
@@ -121,6 +136,8 @@ const MUTACOES = [
   ['preço do domínio', 'dominio: 7900', 'dominio: 7901'],
   ['desconto anual', 'DESCONTO_ANUAL_PCT = 20', 'DESCONTO_ANUAL_PCT = 21'],
   ['teto do domínio extra', 'extraDom: 20', 'extraDom: 21'],
+  ['teto de contas por tipo', 'contasPorTipo: 500', 'contasPorTipo: 501'],
+  ['teto de add-on por conta (min vira max)', 'Math.min(totalContas', 'Math.max(totalContas'],
   [
     'arredondamento da tabela',
     'return Math.round(atual * 100 / (100 - DESCONTO_CONTRATACAO_PCT));',

@@ -317,6 +317,17 @@ test('CA3: 100 chaves desconhecidas em addons → campos com exatamente 20 itens
   assert.equal(corpo.campos.length, 20);
 });
 
+test('CA3: chave desconhecida com 300 caracteres → campo com no máximo 100 caracteres', async (t) => {
+  const addons = { ['x'.repeat(300)]: 1 };
+  const resposta = await orcar(t, { ciclo: 'mensal', contas: { '5gb': 2 }, addons });
+
+  assert.equal(resposta.statusCode, 400);
+  const { campos } = resposta.json();
+  assert.equal(campos.length, 1);
+  assert.ok(campos[0].campo.length <= 100, `campo com ${campos[0].campo.length} caracteres`);
+  assert.equal(campos[0].mensagem, 'campo não permitido');
+});
+
 test('CA3: JSON inválido → 400 json_invalido', async (t) => {
   const { app, fechar } = await construirAppTeste({ comBanco: false });
   t.after(fechar);
