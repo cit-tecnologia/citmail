@@ -6,6 +6,7 @@ import { criarPool } from './banco.js'
 import { registrarErros } from './erros.js'
 import rotasSaude from './saude/rotas.js'
 import rotasExemplo from './exemplo/rotas.js'
+import rotasPrecos from './precos/rotas.js'
 import { caminhosMascarados, LogCitmail, serializadores } from './log.js'
 import { criarConexaoProdutor } from './fila/conexao.js'
 import { criarFilas } from './fila/filas.js'
@@ -85,6 +86,7 @@ export function construirApp(config, { pool, logStream, filas } = {}) {
 
   registrarErros(app)
   app.register(rotasSaude, { prefix: '/api' })
+  app.register(rotasPrecos, { prefix: '/api' })
   // A guarda de produção vem antes de qualquer fila: lá a rota de exemplo não existe,
   // nem com `filas` injetado. Fora de produção, `filas` injetado é de quem o criou
   // (o app não fecha); sem ele e com `REDIS_URL`, o app cria e fecha as suas.

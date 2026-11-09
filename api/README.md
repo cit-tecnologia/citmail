@@ -23,6 +23,7 @@ api/
     servidor.js        ponto de entrada da API: carrega a config, sobe o Fastify, encerra em SIGTERM/SIGINT
     worker.js          ponto de entrada do worker da fila (npm run worker): sem banco nem CORS; encerra em SIGTERM/SIGINT esperando o job ativo e os alertas em curso
     saude/rotas.js      GET /api/health
+    precos/             POST /api/orcamento (público, sem banco): tabela.js (tabela do servidor, limites e tetoAddon; paridade com assets/precos.js), servico.js (validarLimites e calcularOrcamento), rotas.js (schemas gerados da tabela)
     exemplo/rotas.js    POST /api/exemplos e POST /api/exemplos/job (só fora de produção; padrão de schema, erro e de rota que só enfileira)
     jobs/executar.js    executarJob: log correlacionado de job (job iniciado/concluído/falhou)
     jobs/exemplo.js     job de exemplo

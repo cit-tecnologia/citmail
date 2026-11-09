@@ -1238,3 +1238,76 @@ test.describe('landing — CIT-50: mobile', { tag: '@CIT-50' }, () => {
     });
   }
 });
+
+// CIT-59 CA5: teto de 500 contas por tipo na landing (limite lido de PRECOS.limites) e guarda sem PRECOS.limites.
+test.describe('landing — CIT-59: teto de quantidade de contas (CA5)', { tag: '@CIT-59' }, () => {
+  for (const tipo of ['5', '25', '50']) {
+    test(`CA5 digitar 900 em #qty${tipo} limita a 500 e o href do CTA leva qty${tipo}=500`, async ({ page, erros }) => {
+      await page.goto('index.html');
+      const input = page.locator(`#qty${tipo}`);
+      await input.fill('900');
+      await input.press('Tab');
+      await expect(input).toHaveValue('500');
+      await expect(page.locator('#calcCtaBtn')).toHaveAttribute('href', new RegExp(`qty${tipo}=500`));
+    });
+
+    test(`CA5 #qty${tipo} exibe max="500"`, async ({ page, erros }) => {
+      await page.goto('index.html');
+      await expect(page.locator(`#qty${tipo}`)).toHaveAttribute('max', '500');
+    });
+  }
+
+  test('CA5 o botão Aumentar com 500 contas de 5 GB mantém 500', async ({ page, erros }) => {
+    await page.goto('index.html');
+    const input = page.locator('#qty5');
+    await input.fill('500');
+    await input.press('Tab');
+    await page.locator('#card5').getByRole('button', { name: 'Aumentar' }).click();
+    await expect(input).toHaveValue('500');
+  });
+
+  test('CA5 o mínimo de 2 contas de 5 GB continua valendo (fill 1 vira 2)', async ({ page, erros }) => {
+    await page.goto('index.html');
+    const input = page.locator('#qty5');
+    await input.fill('1');
+    await input.press('Tab');
+    await expect(input).toHaveValue('2');
+  });
+
+  // Viewport explícito: o perfil mobile do projeto é Pixel 7 (412 px), então 375 e 320 são definidos aqui.
+  for (const largura of [1280, 375, 320]) {
+    test(`CA5 largura ${largura}px: 500 contas em cada tipo sem rolagem horizontal`, async ({ page, erros }) => {
+      await page.setViewportSize({ width: largura, height: largura === 1280 ? 900 : 800 });
+      await page.goto('index.html');
+      await page.evaluate(() => document.fonts.ready);
+      for (const tipo of ['5', '25', '50']) {
+        const input = page.locator(`#qty${tipo}`);
+        await input.fill('900');
+        await input.press('Tab');
+        await expect(input).toHaveValue('500');
+      }
+      const m = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
+      expect(m.sw, `${largura}px: rolagem horizontal do documento`).toBeLessThanOrEqual(m.cw);
+    });
+  }
+});
+
+// CIT-59 CA5: sem PRECOS.limites a landing mostra o aviso de preços indisponíveis e não lança erro de script.
+// Usa `test` puro: a fixture `erros` falharia com o 4xx/console de um precos.js adulterado de propósito, e o
+// que importa aqui é a ausência de pageerror, conferida à mão.
+testSemErros.describe('landing — CIT-59: guarda sem PRECOS.limites (CA5)', { tag: '@CIT-59' }, () => {
+  testSemErros('CA5 guarda: sem PRECOS.limites mostra o aviso no lugar da calculadora e não dá pageerror', async ({ page }) => {
+    const pageerrors = /** @type {string[]} */ ([]);
+    page.on('pageerror', err => pageerrors.push(err.message));
+    const fonte = readFileSync(new URL('../assets/precos.js', import.meta.url), 'utf8');
+    const body = fonte + '\ndelete PRECOS.limites;';
+    await page.route('**/assets/precos.js*', route => route.fulfill({ contentType: 'application/javascript', body }));
+    await page.goto('index.html');
+
+    await expect(page.locator('#pricing .calc-wrapper .discount-info[role="alert"]')).toHaveText(
+      'Não foi possível carregar os preços. Recarregue a página.'
+    );
+    await page.evaluate(() => { setBilling('annual'); toggleBilling(); changeQty('5gb', 1); updateQty('25gb', '3'); recalcAll(); });
+    expect(pageerrors, 'não deveria haver pageerror com a guarda de carga').toEqual([]);
+  });
+});

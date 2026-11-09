@@ -4,6 +4,9 @@
  * "tabela" = preço de tabela exibido riscado, derivado do atual (atual = tabela − 15%). */
 
 const PRECOS = {
+  // Versão da tabela, no formato AAAA-MM-DD.N (ADR 0012): muda com qualquer preço, desconto ou limite,
+  // aqui e em api/src/precos/tabela.js, no mesmo PR (o teste de paridade da API compara os dois).
+  versao: '2026-11-07.1',
   contas: { '5gb': 1000, '25gb': 1600, '50gb': 2500 },
   addons: {
     talk: 470,
@@ -13,6 +16,15 @@ const PRECOS = {
     skybox: { '50gb': 1770, '100gb': 2870, '1tb': 31900 },
   },
   dominio: 7900, // .com.br por ano (principal e extra)
+  // Tetos de quantidade, iguais aos LIMITES da API (o servidor responde 400 fora deles).
+  limites: {
+    contasPorTipo: 500,
+    minimoPorTipo: { '5gb': 2, '25gb': 1, '50gb': 1 },
+    addonsPorConta: ['talk', 'backup90', 'backup365', 'grupoEmail'],
+    addonsPorContaMax: 500,
+    skybox: 50,
+    extraDom: 20,
+  },
 };
 
 // Desconto de contratação já embutido no atual de todos os itens (atual = tabela − 15%).
@@ -67,6 +79,17 @@ function cascataCentavos(atualUnit, qtd, { conta = false, anual = false } = {}) 
   const segmentos = [{ rotulo: `−${DESCONTO_CONTRATACAO_PCT}% contratação`, valor: tabela - atual }];
   if (pct > 0) segmentos.push({ rotulo: anual ? `−${pct}% anual` : `−${pct}% volume`, valor: atual - cobrado });
   return { tabela, atual, cobrado, segmentos };
+}
+
+// Teto de um add-on dado o total de contas (igual ao tetoAddon da API). Sem contas, nenhum add-on.
+// Por conta (talk, backups, grupo de e-mail): até o total de contas, nunca acima de addonsPorContaMax.
+function tetoAddon(chave, totalContas) {
+  const lim = PRECOS.limites;
+  if (totalContas === 0) return 0;
+  if (lim.addonsPorConta.includes(chave)) return Math.min(totalContas, lim.addonsPorContaMax);
+  if (chave === 'skybox') return lim.skybox;
+  if (chave === 'extraDom') return lim.extraDom;
+  return 0;
 }
 
 // "1.234,56" com aritmética inteira (sem ponto flutuante nem locale).
