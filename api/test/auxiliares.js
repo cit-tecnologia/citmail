@@ -56,7 +56,8 @@ export async function criarBancoTemporario() {
 }
 
 /**
- * Encerra conexões pendentes e apaga o banco temporário. Idempotente.
+ * Encerra conexões pendentes e apaga o banco temporário e os papéis
+ * `<banco>_aplicacao` e `<banco>_retencao`. Idempotente.
  */
 export async function removerBancoTemporario(nomeBanco) {
   if (!nomeBanco) return;
@@ -71,6 +72,11 @@ export async function removerBancoTemporario(nomeBanco) {
       [nomeBanco],
     );
     await cliente.query(`DROP DATABASE IF EXISTS "${nomeBanco}"`);
+    // Papéis por banco da auditoria (CIT-58) são do cluster: saem junto com o banco.
+    for (const sufixo of ['_aplicacao', '_retencao']) {
+      const papel = await cliente.query('SELECT quote_ident($1) AS nome', [nomeBanco + sufixo]);
+      await cliente.query(`DROP ROLE IF EXISTS ${papel.rows[0].nome}`);
+    }
   } finally {
     await cliente.end();
   }
