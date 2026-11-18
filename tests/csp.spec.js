@@ -351,7 +351,7 @@ test.describe('CSP — landing e checkout', { tag: '@CIT-49' }, () => {
   test('CA5 (e) vínculos restantes: cópia do Pix do domínio/extra e do boleto, validade do cartão', async ({ page, context, erros }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await mockarViaCep(page);
-    await page.goto('checkout.html', { waitUntil: 'networkidle' });
+    await page.goto('checkout.html?qty5=2', { waitUntil: 'networkidle' });
 
     // passo 2: domínio novo — #btnCopyDomPix (escopado a #domPixBox .pix-copy, sem o bug do #btnCopyPix)
     await page.evaluate(() => goStep(2));
@@ -1240,7 +1240,7 @@ test.describe('CSP sem estilo inline', { tag: '@CIT-152' }, () => {
   });
 
   test('CA8 checkout: painéis ocultos na carga aparecem e somem como hoje', async ({ page, erros }) => {
-    await page.goto('checkout.html', { waitUntil: 'networkidle' });
+    await page.goto('checkout.html?qty5=2', { waitUntil: 'networkidle' });
     for (const id of ['step1Error', 'domainNewPanel', 'domainExistPanel', 'step2Error', 'extraDomPixPanel', 'addonsSubtotal', 'cnpjRow']) {
       await expect(page.locator(`#${id}`), `#${id} oculto na carga`).toBeHidden();
     }

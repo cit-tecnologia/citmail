@@ -211,3 +211,16 @@ test('Revisão: ErroDeDominio lançado numa rota vira o status e o corpo configu
   assert.equal(resposta.statusCode, 409);
   assert.deepEqual(resposta.json(), { erro: 'x' });
 });
+
+test('CIT-59 (D7): 400 de validação devolve no máximo 20 itens em campos', async (t) => {
+  const { app, fechar } = await construirAppTeste({ comBanco: false });
+  t.after(fechar);
+
+  const payload = Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`desconhecido${i}`, true]));
+  const resposta = await app.inject({ method: 'POST', url: '/api/exemplos', payload });
+
+  assert.equal(resposta.statusCode, 400);
+  const corpo = resposta.json();
+  assert.equal(corpo.erro, 'validacao');
+  assert.equal(corpo.campos.length, 20);
+});

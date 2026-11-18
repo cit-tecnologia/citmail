@@ -695,7 +695,7 @@ test.describe('checkout — add-ons: preços (não regressão)', { tag: '@CIT-21
   });
 
   test('mensal: subtotais por linha, painel de selecionados, resumo e total com todos os add-ons', async ({ page, erros }) => {
-    await page.goto('checkout.html?qty5=2');
+    await page.goto('checkout.html?qty5=4');
     await page.evaluate(() => goStep(3));
 
     await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 3);
@@ -727,14 +727,14 @@ test.describe('checkout — add-ons: preços (não regressão)', { tag: '@CIT-21
     ]);
 
     expect(await linhas(page, '#sumAccountLines .sum-line')).toEqual([
-      ['2× E-mail 5 GB', 'R$ 20,00'],
+      ['4× E-mail 5 GB', 'R$ 40,00'],
       ['Talk ×3', 'R$ 14,10'],
       ['Backup 90d ×2', 'R$ 12,00'],
       ['Backup 365d ×1', 'R$ 19,00'],
       ['Grupo E-mail ×4', 'R$ 8,00'],
       ['Skybox 100GB ×2', 'R$ 57,40'],
     ]);
-    await expect(page.locator('#sumTotal')).toHaveText('R$ 130,50');
+    await expect(page.locator('#sumTotal')).toHaveText('R$ 150,50');
     await expect(page.locator('#sumPeriod')).toHaveText('/mês');
   });
 
@@ -982,7 +982,7 @@ test.describe('checkout — add-ons: sanfona', { tag: '@CIT-21' }, () => {
   });
 
   test('indicador: subtotal da seção só quando fechada e com valor', async ({ page, erros }) => {
-    await page.goto('checkout.html?qty5=2');
+    await page.goto('checkout.html?qty5=4');
     await page.evaluate(() => goStep(3));
     // Valor visível do indicador (o prefixo "subtotal" é só para leitor de tela).
     const ind = (/** @type {string} */ nome) => botaoSecao(page, nome).locator('.addon-sec-ind-val');
@@ -1161,7 +1161,7 @@ test.describe('checkout — add-ons: sanfona', { tag: '@CIT-21' }, () => {
         expect(m.foraDoBotao, `${ctx}: conteúdo fora do botão`).toEqual([]);
         expect(m.indicadores, `${ctx}: indicadores`).toEqual(estado === 'abertas'
           ? ['', '', '', '']
-          : ['R$ 12.760,00/mês', 'R$ 188,00/mês', 'R$ 1.000,00/mês', 'R$ 3.160,00/ano']);
+          : ['R$ 12.760,00/mês', 'R$ 188,00/mês', 'R$ 1.000,00/mês', 'R$ 1.580,00/ano']);
       }
     });
   }
@@ -1492,20 +1492,20 @@ test.describe('checkout — CIT-22: cascata e economia no resumo (CA10)', { tag:
     await expect(page.locator('#sumEconomia')).toHaveText('Você economiza R$ 18,10/mês');
   });
 
-  test('2×5GB anual + Talk ×3', async ({ page, erros }) => {
-    await page.goto('checkout.html?qty5=2&cycle=annual');
+  test('3×5GB anual + Talk ×3', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty5=3&cycle=annual');
     await page.evaluate(() => goStep(3));
     await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 3);
 
     expect(await linhas(page, '#sumAccountLines .sum-line')).toEqual([
-      ['2× E-mail 5 GB', 'R$ 16,00'],
+      ['3× E-mail 5 GB', 'R$ 24,00'],
       ['Talk ×3', 'R$ 14,10'],
     ]);
     const discs = page.locator('#sumAccountLines .sum-disc');
     await expect(discs).toHaveCount(2);
-    await expect(discs.nth(0)).toHaveText('de R$ 23,52 · −15% contratação −R$ 3,52 · −20% anual −R$ 4,00');
+    await expect(discs.nth(0)).toHaveText('de R$ 35,28 · −15% contratação −R$ 5,28 · −20% anual −R$ 6,00');
     await expect(discs.nth(1)).toHaveText('de R$ 16,59 · −15% contratação −R$ 2,49');
-    await expect(page.locator('#sumEconomia')).toHaveText('Você economiza R$ 10,01/mês (R$ 120,12/ano)');
+    await expect(page.locator('#sumEconomia')).toHaveText('Você economiza R$ 13,77/mês (R$ 165,24/ano)');
   });
 
   test('caso do teste 664: 2×5GB anual + Talk ×1 + Backup 365 ×2 + Skybox 50 ×1', async ({ page, erros }) => {
@@ -1526,16 +1526,16 @@ test.describe('checkout — CIT-22: cascata e economia no resumo (CA10)', { tag:
     await expect(page.locator('#sumEconomia')).toHaveText('Você economiza R$ 18,17/mês (R$ 218,04/ano)');
   });
 
-  test('pedido só com add-ons: cada um tem sua cascata; #sumEconomia soma; sem itens fica oculto', async ({ page, erros }) => {
+  test('add-ons exigem ao menos uma conta: sem contas, Talk fica em 0 com max=0 e o resumo segue vazio', async ({ page, erros }) => {
     await page.goto('checkout.html');
     await expect(page.locator('#sumEconomia')).toBeHidden();
 
     await page.evaluate(() => goStep(3));
     await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 2);
-    expect(await linhas(page, '#sumAccountLines .sum-line')).toEqual([['Talk ×2', 'R$ 9,40']]);
-    await expect(page.locator('#sumAccountLines .sum-disc')).toHaveText('de R$ 11,06 · −15% contratação −R$ 1,66');
-    await expect(page.locator('#sumEconomia')).toBeVisible();
-    await expect(page.locator('#sumEconomia')).toHaveText('Você economiza R$ 1,66/mês');
+    await expect(page.locator('#aqTalk')).toHaveValue('0');
+    await expect(page.locator('#aqTalk')).toHaveAttribute('max', '0');
+    await expect(page.locator('#sumAccountLines')).toContainText('Nenhuma conta selecionada');
+    await expect(page.locator('#sumEconomia')).toBeHidden();
   });
 });
 
@@ -1684,11 +1684,11 @@ test.describe('checkout — CIT-22: altura do resumo com cascata e economia (CA1
   }
 
   for (const largura of [320, 412, 961, 1280]) {
-    test(`largura ${largura}px: sem transbordo horizontal com 1000 contas (tabela R$ 11.760,00)`, async ({ page, erros }) => {
-      await page.goto('checkout.html?qty5=1000');
+    test(`largura ${largura}px: sem transbordo horizontal com 1500 contas (tabela R$ 5.880,00)`, async ({ page, erros }) => {
+      await page.goto('checkout.html?qty5=500&qty25=500&qty50=500');
       await page.evaluate(() => document.fonts.ready);
       await page.setViewportSize({ width: largura, height: 900 });
-      await expect(page.locator('#sumAccountLines .sum-disc').first()).toContainText('R$ 11.760,00');
+      await expect(page.locator('#sumAccountLines .sum-disc').first()).toContainText('R$ 5.880,00');
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect(overflow, `largura ${largura}px: rolagem horizontal do documento`).toBeLessThanOrEqual(0);
     });
@@ -1785,7 +1785,7 @@ test.describe('checkout — domínio: preço de PRECOS.dominio', { tag: '@CIT-31
     const body = fonte.replace('dominio: 7900', 'dominio: 8900');
     expect(body).toContain('dominio: 8900');
     await page.route('**/assets/precos.js*', route => route.fulfill({ contentType: 'application/javascript', body }));
-    await page.goto('checkout.html');
+    await page.goto('checkout.html?qty5=2');
 
     await expect(page.locator('#ckUnit5'), 'controle: preço das contas não deveria mudar').toHaveText(/** @type {string} */ (ckUnit5Ref));
     await expect(page.locator('#doptBr .opt-price')).toHaveText('R$ 89,00');
@@ -1950,16 +1950,16 @@ test.describe('checkout — CIT-22: Pix e boleto em centavos inteiros (CA18)', {
     expect(boleto).not.toMatch(/000000000001/);
   });
 
-  test('caso complementar: mensal de R$ 34,10 (2×5GB + Talk ×3)', async ({ page, erros }) => {
-    await page.goto('checkout.html?qty5=2');
+  test('caso complementar: mensal de R$ 44,10 (3×5GB + Talk ×3)', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty5=3');
     await page.evaluate(() => goStep(3));
     await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 3);
-    await expect(page.locator('#sumTotal')).toHaveText('R$ 34,10');
+    await expect(page.locator('#sumTotal')).toHaveText('R$ 44,10');
 
     await page.evaluate(() => goStep(5));
-    await expect(page.locator('#pixCode')).toContainText('5400034.10');
+    await expect(page.locator('#pixCode')).toContainText('5400044.10');
     const boleto = /** @type {string} */ (await page.locator('#boletoCode').textContent());
-    expect(boleto).toMatch(/00000000003410$/);
+    expect(boleto).toMatch(/00000000004410$/);
   });
 
   test('genFakePix do domínio principal não muda: recebe reais inteiros', async ({ page, erros }) => {
@@ -2077,7 +2077,7 @@ test.describe('checkout — cópia: feedback e falha', { tag: '@CIT-163' }, () =
         };
       });
       await page.clock.install({ time: new Date('2026-01-01T10:00:00') });
-      await page.goto('checkout.html', { waitUntil: 'networkidle' });
+      await page.goto('checkout.html?qty5=2', { waitUntil: 'networkidle' });
       await preparos[/** @type {'domPix'|'extraDomPix'|'pix'} */ (b.preparo)](page);
 
       const agora = await page.evaluate(() => Date.now());
@@ -2121,7 +2121,7 @@ test.describe('checkout — cópia: feedback e falha', { tag: '@CIT-163' }, () =
       }
       let dialogs = 0;
       page.on('dialog', d => { dialogs++; d.dismiss(); });
-      await page.goto('checkout.html', { waitUntil: 'networkidle' });
+      await page.goto('checkout.html?qty5=2', { waitUntil: 'networkidle' });
       await preparos[/** @type {'domPix'|'extraDomPix'|'pix'|'boleto'} */ (b.preparo)](page);
 
       const codigo = ((await page.locator(b.codigo).textContent()) ?? '').trim();
@@ -2250,5 +2250,245 @@ test.describe('checkout — cópia: feedback e falha', { tag: '@CIT-163' }, () =
     // espera alguns frames: um rAF esquecido da falha reescreveria o aviso
     await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r)))));
     await expect(page.locator('#pixCopiaAviso')).toBeEmpty();
+  });
+});
+
+// CIT-59 CA5: tetos de quantidade (contas 500 por tipo; add-ons até o total de contas; skybox 50; extraDom 20)
+// e regra D6 (add-ons exigem ao menos uma conta). Os limites vêm de PRECOS.limites e tetoAddon (assets/precos.js).
+test.describe('checkout — CIT-59: tetos de quantidade (CA5)', { tag: '@CIT-59' }, () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route('https://viacep.com.br/**', route => route.abort());
+  });
+
+  test('CA5 contas: ?qty5=9999 na URL limita #ckQty5 a 500', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty5=9999');
+    await expect(page.locator('#ckQty5')).toHaveValue('500');
+  });
+
+  test('CA5 contas: digitar 600 em #ckQty25 limita a 500', async ({ page, erros }) => {
+    await page.goto('checkout.html');
+    const input = page.locator('#ckQty25');
+    await input.fill('600');
+    await input.press('Tab');
+    await expect(input).toHaveValue('500');
+  });
+
+  test('CA5 contas: o botão + com 500 contas mantém 500', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty25=500');
+    await expect(page.locator('#ckQty25')).toHaveValue('500');
+    await page.locator('button[data-qtd-conta="25gb"][data-qtd-delta="1"]').click();
+    await expect(page.locator('#ckQty25')).toHaveValue('500');
+  });
+
+  test('CA5 contas: o mínimo de 2 contas de 5 GB continua valendo (fill 1 vira 2)', async ({ page, erros }) => {
+    await page.goto('checkout.html');
+    const input = page.locator('#ckQty5');
+    await input.fill('1');
+    await input.press('Tab');
+    await expect(input).toHaveValue('2');
+  });
+
+  test('CA5 contas: os inputs de conta exibem max="500"', async ({ page, erros }) => {
+    await page.goto('checkout.html');
+    for (const id of ['ckQty5', 'ckQty25', 'ckQty50']) {
+      await expect(page.locator(`#${id}`), `#${id}`).toHaveAttribute('max', '500');
+    }
+  });
+
+  for (const [secao, id] of /** @type {const} */ ([
+    ['Talk – Videoconferência', 'aqTalk'],
+    ['Backup', 'aqBackup90'],
+    ['Backup', 'aqBackup365'],
+  ])) {
+    test(`CA5 add-ons: #${id} não passa do total de contas (5 com 3 contas vira 3, max="3")`, async ({ page, erros }) => {
+      await page.goto('checkout.html?qty25=3');
+      await page.evaluate(() => goStep(3));
+      await definirQtdAddon(page, secao, id, 5);
+      await expect(page.locator(`#${id}`)).toHaveValue('3');
+      await expect(page.locator(`#${id}`)).toHaveAttribute('max', '3');
+    });
+  }
+
+  test('CA5 add-ons: #aqGrupo não passa do total de contas (5 com 3 contas vira 3, max="3")', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty25=3');
+    await page.evaluate(() => goStep(3));
+    const grupo = page.locator('#aqGrupo');
+    await grupo.fill('5');
+    await grupo.press('Tab');
+    await expect(grupo).toHaveValue('3');
+    await expect(grupo).toHaveAttribute('max', '3');
+  });
+
+  test('CA5 add-ons: reduzir de 3 para 2 contas desce o Talk para 2, recalcula o resumo e avisa em #addonsAjusteAviso', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty25=3');
+    await page.evaluate(() => goStep(3));
+    await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 3);
+    await expect(page.locator('#aqTalk')).toHaveValue('3');
+
+    await page.evaluate(() => goStep(1));
+    await page.locator('button[data-qtd-conta="25gb"][data-qtd-delta="-1"]').click();
+    await expect(page.locator('#ckQty25')).toHaveValue('2');
+    await page.evaluate(() => goStep(3));
+
+    await expect(page.locator('#aqTalk')).toHaveValue('2');
+    await expect(page.locator('#aqTalk')).toHaveAttribute('max', '2');
+    await expect(page.locator('#asTalk')).toHaveText('R$ 9,40');
+    const aviso = page.locator('#addonsAjusteAviso');
+    await expect(aviso).toHaveAttribute('aria-live', 'polite');
+    await expect(aviso).toHaveText(/\S/);
+    await expect(aviso).toBeVisible();
+  });
+
+  test('CA5 aviso: logo após reduzir contas no passo 1, #addonsAjusteAviso está visível com o texto novo e fora de qualquer .step-panel', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty25=3');
+    await page.evaluate(() => goStep(3));
+    await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 3);
+    await page.evaluate(() => goStep(1));
+    await page.locator('button[data-qtd-conta="25gb"][data-qtd-delta="-1"]').click();
+
+    const aviso = page.locator('#addonsAjusteAviso');
+    await expect(page.locator('#step1')).toBeVisible();
+    await expect(aviso).toBeVisible();
+    await expect(aviso).toHaveText('Os add-ons foram ajustados ao número de contas escolhido.');
+    await expect(page.locator('.step-panel #addonsAjusteAviso')).toHaveCount(0);
+  });
+
+  test('CA5 aviso: + num add-on já travado no teto não limpa o aviso; uma mudança real de quantidade limpa', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty25=3');
+    await page.evaluate(() => goStep(3));
+    await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 3);
+    await page.evaluate(() => goStep(1));
+    await page.locator('button[data-qtd-conta="25gb"][data-qtd-delta="-1"]').click();
+    await page.evaluate(() => goStep(3));
+    const aviso = page.locator('#addonsAjusteAviso');
+    await expect(aviso).toHaveText(/\S/);
+    await expect(page.locator('#aqTalk')).toHaveValue('2');
+
+    await abrirSecao(page, 'Talk – Videoconferência');
+    await page.getByRole('button', { name: 'Aumentar Talk', exact: true }).click();
+    await expect(page.locator('#aqTalk')).toHaveValue('2');
+    await expect(aviso, 'sem mudança de quantidade o aviso continua').toHaveText(/\S/);
+
+    await page.getByRole('button', { name: 'Diminuir Talk', exact: true }).click();
+    await expect(page.locator('#aqTalk')).toHaveValue('1');
+    await expect(aviso, 'mudança real limpa o aviso').toHaveText('');
+  });
+
+  test('CA5 add-ons: sem reajuste, #addonsAjusteAviso fica vazio', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty25=3');
+    await page.evaluate(() => goStep(3));
+    await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 2);
+    await expect(page.locator('#aqTalk')).toHaveValue('2');
+    await expect(page.locator('#addonsAjusteAviso')).toHaveText('');
+  });
+
+  test('CA5 skybox: 60 com plano de 50 GB vira 50', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty5=2');
+    await page.evaluate(() => goStep(3));
+    await abrirSecao(page, 'Armazenamento em nuvem');
+    await page.locator('#skyOpt50').click();
+    await definirQtdAddon(page, 'Armazenamento em nuvem', 'aqSkybox', 60);
+    await expect(page.locator('#aqSkybox')).toHaveValue('50');
+  });
+
+  test('CA5 domínio extra: 25 vira 20 e o Pix anual fica em R$ 1.580,00', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty5=2');
+    await page.evaluate(() => goStep(3));
+    await definirQtdAddon(page, 'Domínio secundário', 'aqExtraDom', 25);
+    await expect(page.locator('#aqExtraDom')).toHaveValue('20');
+    await expect(page.locator('#extraDomPixTotal')).toHaveText('R$ 1.580,00');
+  });
+
+  test('CA5 D6: sem contas, Talk, Skybox e domínio extra ficam em 0 com max="0"', async ({ page, erros }) => {
+    await page.goto('checkout.html');
+    await page.evaluate(() => goStep(3));
+    await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 2);
+    await definirQtdAddon(page, 'Domínio secundário', 'aqExtraDom', 2);
+    await definirQtdAddon(page, 'Armazenamento em nuvem', 'aqSkybox', 1);
+    for (const id of ['aqTalk', 'aqExtraDom', 'aqSkybox']) {
+      await expect(page.locator(`#${id}`), `#${id} valor`).toHaveValue('0');
+      await expect(page.locator(`#${id}`), `#${id} max`).toHaveAttribute('max', '0');
+    }
+  });
+
+  test('CA5 D6: sem contas, o resumo mostra "Nenhuma conta selecionada" e #sumEconomia fica oculto', async ({ page, erros }) => {
+    await page.goto('checkout.html');
+    await page.evaluate(() => goStep(3));
+    await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 2);
+    await expect(page.locator('#sumAccountLines')).toContainText('Nenhuma conta selecionada');
+    await expect(page.locator('#sumEconomia')).toBeHidden();
+  });
+
+  test('CA5 D6: zerar as contas leva o Talk a 0', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty25=1');
+    await page.evaluate(() => goStep(3));
+    await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 1);
+    await expect(page.locator('#aqTalk')).toHaveValue('1');
+
+    await page.evaluate(() => goStep(1));
+    await page.locator('button[data-qtd-conta="25gb"][data-qtd-delta="-1"]').click();
+    await expect(page.locator('#ckQty25')).toHaveValue('0');
+    await page.evaluate(() => goStep(3));
+    await expect(page.locator('#aqTalk')).toHaveValue('0');
+    await expect(page.locator('#aqTalk')).toHaveAttribute('max', '0');
+  });
+
+  // Viewport explícito: o perfil mobile do projeto é Pixel 7 (412 px), então 375 e 320 são definidos aqui.
+  for (const largura of [1280, 375, 320]) {
+    test(`CA5 largura ${largura}px: tetos de #ckQty5 e #aqTalk sem rolagem horizontal em cada passo visitado`, async ({ page, erros }) => {
+      await page.setViewportSize({ width: largura, height: largura === 1280 ? 900 : 800 });
+      const semRolagem = async (/** @type {string} */ onde) => {
+        const m = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
+        expect(m.sw, `${largura}px, ${onde}: rolagem horizontal do documento`).toBeLessThanOrEqual(m.cw);
+      };
+
+      await page.goto('checkout.html?qty5=9999');
+      await page.evaluate(() => document.fonts.ready);
+      await expect(page.locator('#ckQty5')).toHaveValue('500');
+      await semRolagem('passo 1');
+
+      await page.evaluate(() => goStep(3));
+      await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 600);
+      await expect(page.locator('#aqTalk')).toHaveValue('500');
+      await semRolagem('passo 3 com 500 contas');
+
+      await page.goto('checkout.html?qty25=3');
+      await page.evaluate(() => document.fonts.ready);
+      await page.evaluate(() => goStep(3));
+      await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 5);
+      await expect(page.locator('#aqTalk')).toHaveValue('3');
+      await semRolagem('passo 3 com 3 contas');
+
+      await page.evaluate(() => goStep(1));
+      await page.locator('button[data-qtd-conta="25gb"][data-qtd-delta="-1"]').click();
+      await page.evaluate(() => goStep(3));
+      await expect(page.locator('#addonsAjusteAviso')).toHaveText(/\S/);
+      await semRolagem('passo 3 com o aviso de ajuste');
+    });
+  }
+});
+
+// CIT-59 CA5: sem PRECOS.limites (precos.js antigo ou adulterado) o checkout mostra o aviso de preços indisponíveis.
+// O `throw` da guarda (checkout.js) é proposital: exatamente 1 pageerror, por isso `test` puro (testSemErros).
+testSemErros.describe('checkout — CIT-59: guarda sem PRECOS.limites (CA5)', { tag: '@CIT-59' }, () => {
+  testSemErros('CA5 guarda: sem PRECOS.limites mostra o aviso de preços e dá exatamente 1 pageerror', async ({ page }) => {
+    const pageerrors = /** @type {string[]} */ ([]);
+    page.on('pageerror', err => pageerrors.push(err.message));
+    const fonte = readFileSync(new URL('../assets/precos.js', import.meta.url), 'utf8');
+    const body = fonte + '\ndelete PRECOS.limites;';
+    await page.route('**/assets/precos.js*', route => route.fulfill({ contentType: 'application/javascript', body }));
+    await page.goto('checkout.html');
+
+    await expect(page.locator('#step1 .sum-empty[role="alert"]')).toHaveText(
+      'Não foi possível carregar os preços. Recarregue a página.'
+    );
+    await expect(page.locator('#sumAccountLines .sum-empty[role="alert"]')).toHaveText(
+      'Não foi possível carregar os preços. Recarregue a página.'
+    );
+    await expect(page.locator('.summary-total')).toBeHidden();
+    await expect(page.locator('body')).not.toContainText('NaN');
+    expect(pageerrors, 'o throw da guarda é o único pageerror esperado').toEqual([
+      'assets/precos.js não carregou: checkout interrompido.',
+    ]);
   });
 });

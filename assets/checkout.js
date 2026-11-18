@@ -1,5 +1,5 @@
-// Guarda de carga: sem assets/precos.js (ou com uma versão antiga, sem PRECOS.dominio) não há preço a exibir; avisa no lugar dos preços e do resumo e para aqui.
-if (typeof PRECOS === 'undefined' || !Number.isInteger(PRECOS.dominio)) {
+// Guarda de carga: sem assets/precos.js (ou com uma versão antiga, sem PRECOS.dominio ou PRECOS.limites) não há preço a exibir; avisa no lugar dos preços e do resumo e para aqui.
+if (typeof PRECOS === 'undefined' || !Number.isInteger(PRECOS.dominio) || !PRECOS.limites) {
   const avisoPrecos = '<div class="sum-empty" role="alert">Não foi possível carregar os preços. Recarregue a página.</div>';
   document.getElementById('step1').innerHTML = avisoPrecos;
   document.getElementById('sumAccountLines').innerHTML = avisoPrecos;
@@ -180,9 +180,14 @@ function atualizarIndicadoresSecoes() {
   });
 }
 
+// Quantidade do add-on entre 0 e o teto (tetoAddon, assets/precos.js: depende do total de contas; sem contas, 0).
+function limitarAddon(key, q) {
+  return Math.min(Math.max(0, q), tetoAddon(key, totalAccounts()));
+}
+
 function addonChange(key, delta) {
-  let q = (addonQtys[key] || 0) + delta;
-  if (q < 0) q = 0;
+  const q = limitarAddon(key, (addonQtys[key] || 0) + delta);
+  if (q !== (addonQtys[key] || 0)) document.getElementById('addonsAjusteAviso').textContent = '';
   addonQtys[key] = q;
   const inp = document.getElementById(ADDONS[key].qtd);
   if (inp) inp.value = q;
@@ -190,9 +195,10 @@ function addonChange(key, delta) {
 }
 
 function addonInput(key, raw) {
-  const q = Math.max(0, parseInt(raw) || 0);
+  const q = limitarAddon(key, parseInt(raw) || 0);
+  if (q !== (addonQtys[key] || 0)) document.getElementById('addonsAjusteAviso').textContent = '';
   addonQtys[key] = q;
-  // O campo mostra o que é cobrado (ex.: -3 → 0, 2.7 → 2).
+  // O campo mostra o que é cobrado (ex.: -3 → 0, 2.7 → 2, acima do teto → teto).
   const inp = document.getElementById(ADDONS[key].qtd);
   if (inp) inp.value = q;
   refreshAddons();
@@ -207,6 +213,22 @@ function selectSkybox(plan) {
     if (radio) radio.checked = p === plan;
   });
   refreshAddons();
+}
+
+// Leva cada add-on ao teto do total de contas atual e atualiza o max dos campos. Chamado quando as contas mudam
+// (e na carga): se algum add-on desceu, avisa em #addonsAjusteAviso; senão, limpa o aviso.
+// Não renderiza: quem chama renderiza em seguida (refreshAddons).
+function ajustarAddonsAoTeto() {
+  let ajustou = false;
+  Object.entries(ADDONS).forEach(([key, cfg]) => {
+    const teto = tetoAddon(key, totalAccounts());
+    if (addonQtys[key] > teto) { addonQtys[key] = teto; ajustou = true; }
+    const inp = document.getElementById(cfg.qtd);
+    if (inp) { inp.max = teto; inp.value = addonQtys[key]; }
+  });
+  document.getElementById('addonsAjusteAviso').textContent = ajustou
+    ? 'Os add-ons foram ajustados ao número de contas escolhido.'
+    : '';
 }
 
 function refreshAddons() {
@@ -259,10 +281,11 @@ function refreshAddons() {
 /* ================================================================
    ACCOUNT TYPES DATA
 ================================================================ */
+// Mínimo por tipo vem de PRECOS.limites (assets/precos.js); o teto é PRECOS.limites.contasPorTipo.
 const ACCOUNT_DEFS = {
-  '5gb':  { min: 2, label: 'E-mail 5 GB', unitId:'ckUnit5',  qtyId:'ckQty5',  subId:'ckSub5',  discId:'ckDisc5',  cardId:'ckCard5'  },
-  '25gb': { min: 1, label: 'E-mail 25 GB', unitId:'ckUnit25', qtyId:'ckQty25', subId:'ckSub25', discId:'ckDisc25', cardId:'ckCard25' },
-  '50gb': { min: 1, label: 'E-mail 50 GB', unitId:'ckUnit50', qtyId:'ckQty50', subId:'ckSub50', discId:'ckDisc50', cardId:'ckCard50' },
+  '5gb':  { min: PRECOS.limites.minimoPorTipo['5gb'], label: 'E-mail 5 GB', unitId:'ckUnit5',  qtyId:'ckQty5',  subId:'ckSub5',  discId:'ckDisc5',  cardId:'ckCard5'  },
+  '25gb': { min: PRECOS.limites.minimoPorTipo['25gb'], label: 'E-mail 25 GB', unitId:'ckUnit25', qtyId:'ckQty25', subId:'ckSub25', discId:'ckDisc25', cardId:'ckCard25' },
+  '50gb': { min: PRECOS.limites.minimoPorTipo['50gb'], label: 'E-mail 50 GB', unitId:'ckUnit50', qtyId:'ckQty50', subId:'ckSub50', discId:'ckDisc50', cardId:'ckCard50' },
 };
 const ckQtys      = { '5gb': 0, '25gb': 0, '50gb': 0 };
 let annualBilling = false;
@@ -279,11 +302,11 @@ function addonsMonthly()     { return linhasAddonsMensais().reduce((s, l) => s +
 function grandTotalCentavos() { return Object.keys(ACCOUNT_DEFS).reduce((s,t) => s + ckQtys[t]*unitPriceCentavos(t), 0) + addonsMonthly(); }
 function totalAccounts()     { return Object.values(ckQtys).reduce((a,b) => a+b, 0); }
 
-// quantidade inteira ≥ 0; abaixo do mínimo do tipo sobe ao mínimo, ou zera ao diminuir
-// regra duplicada em normalizeQty (index.html): manter as duas iguais
+// quantidade inteira entre 0 e o teto do tipo; abaixo do mínimo do tipo sobe ao mínimo, ou zera ao diminuir
+// regra duplicada em normalizeQty (landing.js): manter as duas iguais
 function ckNormalizeQty(type, raw, delta = 0) {
   const min = ACCOUNT_DEFS[type].min;
-  const q   = Math.max(0, parseInt(raw)||0);
+  const q   = Math.min(Math.max(0, parseInt(raw)||0), PRECOS.limites.contasPorTipo);
   if (q > 0 && q < min) return delta < 0 ? 0 : min;
   return q;
 }
@@ -292,17 +315,27 @@ function ckChangeQty(type, delta) {
   const q = ckNormalizeQty(type, ckQtys[type] + delta, delta);
   ckQtys[type] = q;
   document.getElementById(d.qtyId).value = q;
-  ckRefresh();
+  ajustarAddonsAoTeto();
+  renderContas();
+  refreshAddons();
 }
 function ckUpdateQty(type, raw) {
   const d = ACCOUNT_DEFS[type];
   const q = ckNormalizeQty(type, raw);
   ckQtys[type] = q;
   document.getElementById(d.qtyId).value = q;
-  ckRefresh();
+  ajustarAddonsAoTeto();
+  renderContas();
+  refreshAddons();
 }
 
 function ckRefresh() {
+  renderContas();
+  updateSummary();
+  updateInstallments();
+}
+
+function renderContas() {
   Object.entries(ACCOUNT_DEFS).forEach(([type, d]) => {
     const qty  = ckQtys[type];
     const unit = unitPriceCentavos(type);
@@ -332,8 +365,6 @@ function ckRefresh() {
       discEl.textContent = '';
     }
   });
-  updateSummary();
-  updateInstallments();
 }
 
 function toggleCycle() {
@@ -868,6 +899,8 @@ document.getElementById('btnPagar').addEventListener('click', () => processPayme
   preencherTextosAddons();
   document.getElementById('doptBrPreco').textContent = `R$ ${fmtCentavos(PRECOS.dominio)}`;
   abrirSecoesIniciais();
-  ckRefresh();
+  ajustarAddonsAoTeto();
+  renderContas();
+  refreshAddons();
   updateStepBar(1);
 })();

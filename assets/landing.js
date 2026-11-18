@@ -1,6 +1,6 @@
-// Guarda de carga: sem assets/precos.js não há preço a exibir; avisa no lugar da calculadora.
+// Guarda de carga: sem assets/precos.js (ou com uma versão antiga, sem PRECOS.limites) não há preço a exibir; avisa no lugar da calculadora.
 // Só as funções da calculadora saem cedo (precosOk); header, menu, FAQ, busca e fade-in seguem.
-const precosOk = typeof PRECOS !== 'undefined';
+const precosOk = typeof PRECOS !== 'undefined' && !!PRECOS.limites;
 if (!precosOk) {
   document.querySelector('#pricing .calc-wrapper').innerHTML =
     '<p class="discount-info" role="alert">Não foi possível carregar os preços. Recarregue a página.</p>';
@@ -45,17 +45,18 @@ function setBilling(mode) {
 // ---- CALCULADORA DE CONTAS ----
 // Preços e descontos vêm de assets/precos.js (fonte única, mesma regra do checkout).
 const ACCOUNT_TYPES = {
-  '5gb':  { min:2, inputId:'qty5', subId:'sub5',  discTagId:'discTag5',  cardId:'card5',  unitId:'unitPrice5',  bdId:'breakdown5',  origId:'origPrice5',  finalId:'finalPrice5',  savId:'saving5'  },
-  '25gb': { min:1, inputId:'qty25', subId:'sub25', discTagId:'discTag25', cardId:'card25', unitId:'unitPrice25', bdId:'breakdown25', origId:'origPrice25', finalId:'finalPrice25', savId:'saving25' },
-  '50gb': { min:1, inputId:'qty50', subId:'sub50', discTagId:'discTag50', cardId:'card50', unitId:'unitPrice50', bdId:'breakdown50', origId:'origPrice50', finalId:'finalPrice50', savId:'saving50' },
+  '5gb':  { inputId:'qty5', subId:'sub5',  discTagId:'discTag5',  cardId:'card5',  unitId:'unitPrice5',  bdId:'breakdown5',  origId:'origPrice5',  finalId:'finalPrice5',  savId:'saving5'  },
+  '25gb': { inputId:'qty25', subId:'sub25', discTagId:'discTag25', cardId:'card25', unitId:'unitPrice25', bdId:'breakdown25', origId:'origPrice25', finalId:'finalPrice25', savId:'saving25' },
+  '50gb': { inputId:'qty50', subId:'sub50', discTagId:'discTag50', cardId:'card50', unitId:'unitPrice50', bdId:'breakdown50', origId:'origPrice50', finalId:'finalPrice50', savId:'saving50' },
 };
 const quantities = { '5gb': 0, '25gb': 0, '50gb': 0 };
 
-// quantidade inteira ≥ 0; abaixo do mínimo do tipo sobe ao mínimo, ou zera ao diminuir
-// regra duplicada em ckNormalizeQty (checkout.html): manter as duas iguais
+// quantidade inteira entre 0 e o teto do tipo; abaixo do mínimo do tipo sobe ao mínimo, ou zera ao diminuir
+// regra duplicada em ckNormalizeQty (checkout.js): manter as duas iguais. Mínimo e teto vêm de PRECOS.limites,
+// lidos aqui (e não no ACCOUNT_TYPES) para a página não quebrar sem assets/precos.js.
 function normalizeQty(type, raw, delta = 0) {
-  const min = ACCOUNT_TYPES[type].min;
-  const q   = Math.max(0, parseInt(raw) || 0);
+  const min = PRECOS.limites.minimoPorTipo[type];
+  const q   = Math.min(Math.max(0, parseInt(raw) || 0), PRECOS.limites.contasPorTipo);
   if (q > 0 && q < min) return delta < 0 ? 0 : min;
   return q;
 }
