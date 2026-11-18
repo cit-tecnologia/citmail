@@ -33,6 +33,7 @@ api/
     alertas/telegram.js envio do alerta ao Telegram (só ids, token fora de log e erro)
     cli/reprocessar.js  npm run reprocessar -- <jobId>: devolve um job falhado à fila
     asaas/resumo.js     resumoEventoAsaas: o que do webhook do Asaas pode ir para o log
+    auditoria/          trilha de auditoria (só serviço e repositório, sem rota): servico.js (registrarAuditoria), repositorio.js (INSERT), vocabulario.js (ações, autores, alvos, resultados e chaves proibidas)
   test/                suíte node:test (uma spec por critério de aceite)
 ```
 
@@ -141,6 +142,60 @@ JSON do `pino` na saída padrão (ADR 0013, item 8; código em `src/log.js`). Li
 
 **Retenção:** até 30 dias, em journald, com um namespace por ambiente: `citmail` (produção) e `citmail-homolog` (homologação). O arquivo `deploy/journald-namespace.conf` (`MaxRetentionSec=29day` + `MaxFileSec=1day`, porque o journald apaga arquivo inteiro; `SystemMaxUse=1G` por namespace; `ForwardToSyslog=no`, para o log não cair na retenção do logrotate) é instalado como `/etc/systemd/journald@<namespace>.conf`, e as unidades systemd da API e do worker usam `LogNamespace=<namespace>`. Consulta: `journalctl --namespace=<namespace>`. Premissa: systemd ≥ 245. A aplicação e a verificação na VPS ficam com a #57/#93.
 
+## Auditoria
+
+Trilha das ações críticas (ADR 0013, item 7; código em `src/auditoria/`, tabela criada pela migração `auditoria`). Só há serviço e repositório: nenhuma rota. Quem implementa uma ação da lista chama `registrarAuditoria`.
+
+```js
+import { registrarAuditoria } from './auditoria/servico.js'
+
+const id = await registrarAuditoria(executor, {
+  autor: { tipo: 'cliente', id: contaId },   // tipo: cliente | sistema | equipe
+  acao: 'caixa_criada',
+  alvo: { tipo: 'caixa', id: caixaId },      // tipo: conta | caixa | cliente | pedido | assinatura | dominio
+  resultado: 'sucesso',                      // sucesso | falha
+  ip: request.ip,                            // IPv4 ou IPv6 sem zona; nulo só com autor sistema
+  requestId: request.id,                     // opcional, até 128 caracteres
+  detalhes: { plano: '5gb' }                 // opcional, objeto sem chave sensível
+})
+```
+
+- **Retorno:** o `id` do registro, como **string** (o `pg` devolve `bigint` como texto). `ocorrido_em` nunca vem do chamador: o banco grava `clock_timestamp()` (o instante do registro, não o início da transação do chamador). A ordem confiável é o `id`.
+- **`executor`:** um `Pool` ou um `Client` (qualquer objeto com `query`). Com um `Client` dentro de transação, o registro é atômico com a ação: o rollback do chamador apaga o registro. O INSERT tem 9 parâmetros e devolve o `id` por `RETURNING`.
+- **Falha vai pelo pool.** Registro de **falha** (de qualquer ação, inclusive login e bloqueio) é gravado pelo pool, fora da transação que vai sofrer rollback; no `Client` da transação, o registro sumiria junto com ela.
+- **Ações (12):** `login`, `login_falhou`, `conta_bloqueada`, `caixa_criada`, `caixa_excluida`, `senha_trocada`, `cadastro_alterado`, `assinatura_cancelada`, `dados_excluidos`, `conta_suspensa`, `conta_reativada`, `dominio_registrado_manualmente`. O vocabulário é fechado em `src/auditoria/vocabulario.js` e repetido nos `CHECK` da tabela: mudou num, muda no outro (nova migração) no mesmo PR.
+- **Entrada inválida** lança `TypeError` antes de qualquer consulta, com mensagem `auditoria: <motivo>` que cita o campo e nunca o valor. Limites: `autor.id` e `alvo.id` com até 64 caracteres; `requestId` com até 128; `ip` válido por `net.isIP` e sem `%` (o `inet` recusa zona, como `fe80::1%eth0`); `detalhes` objeto (não array nem escalar), serializável, com até 2048 bytes, 4 níveis (a raiz conta 1; objeto e array contam) e sem `\u0000`. O banco repete o essencial em `CHECK` (`detalhes` até 4096 bytes em `jsonb::text`).
+- **Falha de login com e-mail inexistente:** `autor { tipo: 'cliente', id: null }` e `alvo { tipo: 'conta', id: null }`, sem o e-mail (evita enumerar contas e dado pessoal na trilha). `autor.id` nulo só vale com autor `sistema` ou ação `login_falhou`; `alvo.id` nulo só com `login_falhou`; `ip` nulo só com autor `sistema`. O banco confere o mesmo por `CHECK`.
+- **A garantia é por chave, não por valor.** Em `detalhes`, chave proibida é **recusada** (não mascarada), em qualquer nível, inclusive dentro de array: as 41 chaves de `camposSensiveis` do log (`CHAVES_PROIBIDAS`, igualdade sem diferenciar maiúsculas; inclui dado pessoal como `nome`, `email` e `numero`) e qualquer chave que contenha `senha`, `password`, `token`, `secret`, `authorization`, `cookie`, `apikey` ou `api_key` (`TRECHOS_PROIBIDOS`: pega `novaSenha`, `refresh_token`, `x-api-key`). O erro é `auditoria: chave proibida em detalhes: <chave>`. **Valores livres não são inspecionados**: senha ou dado pessoal sob uma chave permitida passa. Quem chama escolhe chaves distintas (ex.: `plano_nome`, não `nome`). Um teste confere que toda chave de `camposSensiveis` é recusada; quando a lista do log crescer, ele falha na CI e a chave entra também no vocabulário da auditoria.
+
+**Só inclusão (duas camadas).** O papel da aplicação é **por banco**: `<banco>_aplicacao` (NOLOGIN), criado pela migração se ainda não existir, com `SELECT` e `INSERT` em `auditoria` e nada mais (o `REVOKE ALL ... FROM PUBLIC` e do papel anula também um `ALTER DEFAULT PRIVILEGES` futuro). Papéis do PostgreSQL são do cluster; com o nome derivado do banco, homologação e produção na mesma VPS (ADR 0006) não compartilham permissões. O nome do banco pode ter no máximo 53 bytes (`octet_length`): acima disso a migração falha, para o sufixo não ser truncado em silêncio. Um trigger (`auditoria_bloquear_alteracao`, `BEFORE UPDATE OR DELETE` por linha e `BEFORE TRUNCATE`) lança `P0001` (`auditoria só de inclusão: <operação> bloqueado`) até para o dono da tabela. Única exceção: o papel `<banco>_retencao` pode alterar **só** a coluna `ip` (pseudonimização aos 6 meses, ADR 0013 item 9); `DELETE` e `TRUNCATE` ficam bloqueados para todos. Esse papel e a rotina de retenção ainda não existem: até lá o IP fica em claro além dos 6 meses propostos.
+
+Limites aceitos:
+
+- Superusuário ou dono da tabela pode contornar o trigger (`DISABLE TRIGGER`, `DROP TABLE`).
+- Enquanto a API conectar como superusuário (`postgres`), o `GRANT` é inócuo e só o trigger protege a tabela. A garantia contra a aplicação só fica completa depois da #57, que troca o login da app para um usuário membro de `<banco>_aplicacao`. A #57 também cria o papel antes da primeira migração (ou o migrador ganha `CREATEROLE`) e documenta a versão do PostgreSQL da VPS.
+- O `down` da migração é recusado (`P0001`, `auditoria com registros: down recusado`) se a tabela tiver registros, porque `DROP TABLE` não dispara trigger. O papel não é apagado no `down`.
+
+**Convenção de `GRANT` para tabelas futuras.** Toda migração que cria tabela concede, explicitamente, ao papel da aplicação só os privilégios de que a app precisa. Não usar `ALTER DEFAULT PRIVILEGES`. Sem o `GRANT`, a tabela nova falha com `42501` assim que a #57 trocar o login, o que é desejado: falha visível, não privilégio a mais.
+
+```sql
+DO $$
+BEGIN
+  EXECUTE format('GRANT SELECT, INSERT, UPDATE ON minha_tabela TO %I', current_database() || '_aplicacao');
+END
+$$;
+```
+
+**Consulta de exemplo** (no mvp a consulta é por SQL, sem tela). Lido sem cast, o `ip` vem como texto sem `/32` (`203.0.113.7`); com `ip::text` o PostgreSQL acrescenta `/32`.
+
+```sql
+SELECT id, ocorrido_em, autor_tipo, autor_id, acao, resultado, ip, request_id, detalhes
+FROM auditoria
+WHERE alvo_tipo = 'conta' AND alvo_id = '<id da conta>'
+  AND ocorrido_em >= '2026-11-01' AND ocorrido_em < '2026-12-01'
+ORDER BY id;
+```
+
 ## Como rodar os testes
 
 Suíte `node:test` (nativa do Node.js) em `api/test/`, uma spec por critério de aceite. Nunca usa Playwright (isso é do site, na raiz).
@@ -169,7 +224,7 @@ Definition of Done (DoD: lista do que precisa ser verdade antes de considerar um
 1. **Todo endpoint declara `schema`** (tipos, tamanhos e limites; corpo com `additionalProperties: false`). Como cumprir: seguir o padrão de `src/saude/rotas.js` e `src/exemplo/rotas.js` — toda rota nova define `schema.body`/`schema.response` com limites explícitos (`minLength`, `maxLength`, `minimum`, `maximum` etc.). Rota `POST`/`PUT`/`PATCH` sem `schema.body` impede a API de subir.
 2. **O banco só é acessado por consulta parametrizada** (`$1`, `$2`; nunca concatenar valor em SQL). Como cumprir: usar sempre `pool.query(texto, valores)`, como em `src/banco.js`; nunca montar SQL com template string a partir de entrada do usuário.
 3. **Os testes automatizados rodam sem internet** (guarda `sem-rede`, serviços externos mockados). Como cumprir: manter `--import ./test/sem-rede.js` no script `test` e mockar qualquer serviço externo novo em vez de chamá-lo de verdade.
-4. **As ações críticas chamam a auditoria** (E6-H7; lista no [ADR 0013](../docs/adr/0013-seguranca-transversal-e-observabilidade.md), item 7). Como cumprir: ao implementar uma ação da lista (login, falha de login, bloqueio, criação/exclusão de caixa, troca de senha, alteração cadastral, cancelamento etc.), gravar na tabela de auditoria antes de responder — a auditoria em si ainda não existe nesta história (CIT-53), fica para a E6-H7.
+4. **As ações críticas chamam a auditoria** (E6-H7; lista no [ADR 0013](../docs/adr/0013-seguranca-transversal-e-observabilidade.md), item 7). Como cumprir: ao implementar uma ação da lista (login, falha de login, bloqueio, criação/exclusão de caixa, troca de senha, alteração cadastral, cancelamento etc.), chamar `registrarAuditoria` (seção [Auditoria](#auditoria)) antes de responder, com o `Client` da transação no sucesso e o pool na falha.
 5. **Nenhum segredo, senha ou dado pessoal em log** (`redact` do [ADR 0013](../docs/adr/0013-seguranca-transversal-e-observabilidade.md); segredos só por variável de ambiente). Como cumprir: adicionar todo campo sensível novo, com o nome exato (o `redact` diferencia maiúsculas), à lista `camposSensiveis` de `src/log.js` (mascarada na raiz e em até 3 níveis de aninhamento; os campos `err.*` do `pg` já estão cobertos); não logar objeto com dado pessoal abaixo do 4º nível; logar o webhook do Asaas só por `resumoEventoAsaas`; e nunca logar `config.databaseUrl` nem outra variável de ambiente sensível.
 
 ## Próximos passos
@@ -178,9 +233,9 @@ Fora do escopo desta história (CIT-53), documentados aqui como referência:
 
 - Eventos de domínio pelo outbox, com consumidores idempotentes ([ADR 0005](../docs/adr/0005-fila-e-eventos-de-dominio.md); a fila de jobs já existe, CIT-56).
 - Sessão do painel, com cookie ([ADR 0008](../docs/adr/0008-sessao-do-painel-e-senhas.md)).
-- Auditoria efetiva das ações críticas (E6-H7).
+- Chamar a auditoria nas ações críticas reais (as histórias de cada ação); papel `<banco>_retencao` e rotina de pseudonimização do IP (ADR 0013, item 9).
 - Webhooks (ex.: Asaas).
-- Deploy da API na VPS, com `systemd`, Caddy e HTTPS (#57 e #93).
+- Deploy da API na VPS, com `systemd`, Caddy e HTTPS (#57 e #93); a #57 também troca o login da app para membro de `<banco>_aplicacao`.
 
 ## ADRs relacionados
 
