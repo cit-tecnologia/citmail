@@ -2582,7 +2582,9 @@ test.describe('checkout — CIT-181: novo domínio, normalização e limites (CA
     for (const valor of ['a'.repeat(27), '123', 'ab--cd', 'www.com.br', '.com.br']) {
       await digitarEContinuar(page, '#fDomNew', valor);
       await expect(page.locator('#step2'), `"${valor}" deve manter o passo 2`).toHaveClass(/active/);
+      await expect(page.locator('#err-dom-new'), `"${valor}" deve mostrar o erro`).toBeVisible();
       await expect(page.locator('#err-dom-new'), `"${valor}" deve mostrar a mensagem de formato`).toHaveText(MSG_FORMATO_NOVO);
+      await expect(page.locator('#fDomNew'), `"${valor}" deve marcar aria-invalid`).toHaveAttribute('aria-invalid', 'true');
     }
   });
 });
@@ -2663,6 +2665,23 @@ test.describe('checkout — CIT-181: acessibilidade (CA5)', { tag: '@CIT-181' },
     await expect(page.locator('#fDomExist')).toHaveAttribute('aria-describedby', /err-dom-exist/);
     await expect(page.getByLabel('Nome do domínio desejado')).toHaveAttribute('id', 'fDomNew');
     await expect(page.getByLabel('Seu domínio atual')).toHaveAttribute('id', 'fDomExist');
+  });
+
+  test('CA5 em repouso os spans de erro estão vazios e voltam a ficar vazios depois de erro seguido de digitação', async ({ page, erros }) => {
+    await irParaPasso2Novo(page);
+    await expect(page.locator('#err-dom-new')).toHaveText('');
+    await expect(page.locator('#err-dom-exist')).toHaveText('');
+
+    await digitarEContinuar(page, '#fDomNew', 'cit flow');
+    await expect(page.locator('#err-dom-new')).toHaveText(MSG_FORMATO_NOVO);
+    await page.locator('#fDomNew').pressSequentially('x');
+    await expect(page.locator('#err-dom-new')).toHaveText('');
+
+    await page.locator('#doptExist').click();
+    await digitarEContinuar(page, '#fDomExist', 'qualquer coisa');
+    await expect(page.locator('#err-dom-exist')).toHaveText(MSG_FORMATO_EXISTENTE);
+    await page.locator('#fDomExist').pressSequentially('x');
+    await expect(page.locator('#err-dom-exist')).toHaveText('');
   });
 
   test('CA5 após o erro o campo do novo domínio recebe o foco', async ({ page, erros }) => {
