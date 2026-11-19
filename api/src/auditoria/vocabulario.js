@@ -17,16 +17,20 @@ export const RESULTADOS = Object.freeze(['sucesso', 'falha'])
 // Chaves recusadas em `detalhes` por igualdade, sem diferenciar maiúsculas. Cópia em
 // minúsculas de `camposSensiveis` (`log.js`), sem importá-la: chave nova lá não pode
 // virar erro aqui em produção. Um teste confere que toda chave do log é recusada.
+// `ip` e `ip_origem` a mais: IP fora da coluna escaparia da pseudonimização.
 export const CHAVES_PROIBIDAS = Object.freeze([
   'senha', 'token', 'email', 'telefone', 'nome', 'cpf', 'cnpj', 'cpfcnpj', 'documento', 'razaosocial',
   'nascimento', 'datanascimento', 'cep', 'endereco', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade',
   'localidade',
   'password', 'authorization', 'accesstoken', 'access_token', 'refreshtoken', 'apikey',
   'name', 'phone', 'mobilephone', 'company', 'postalcode', 'address', 'addressnumber', 'complement', 'province',
-  'cityname', 'additionalemails', 'municipalinscription', 'stateinscription', 'creditcard', 'creditcardtoken'
+  'cityname', 'additionalemails', 'municipalinscription', 'stateinscription', 'creditcard', 'creditcardtoken',
+  'ip', 'ip_origem'
 ])
 
-// Trechos recusados em qualquer posição da chave (pega novaSenha, refresh_token, x-api-key...).
+// Trechos recusados em qualquer posição da chave (pega novaSenha, refresh_token, x-api-key,
+// email_contato, cpf_titular...).
 export const TRECHOS_PROIBIDOS = Object.freeze([
-  'senha', 'password', 'token', 'secret', 'authorization', 'cookie', 'apikey', 'api_key'
+  'senha', 'password', 'token', 'secret', 'authorization', 'cookie', 'apikey', 'api_key',
+  'email', 'cpf', 'cnpj', 'telefone'
 ])

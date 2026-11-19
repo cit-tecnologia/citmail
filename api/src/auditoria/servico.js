@@ -9,6 +9,11 @@ const DETALHES_MAX_BYTES = 2048
 const DETALHES_MAX_PROFUNDIDADE = 4
 const ID_MAX = 64
 const REQUEST_ID_MAX = 128
+const CHAVE_NA_MENSAGEM_MAX = 64
+// Faixa de número aceita em detalhes: o jsonb::text escreve 1e300 com 301 dígitos
+// e estouraria o CHECK de 4096 bytes no banco.
+const NUMERO_MAX = 1e15
+const NUMERO_MIN = 1e-6
 
 function invalido(motivo) {
   return new TypeError(`auditoria: ${motivo}`)
@@ -22,13 +27,20 @@ function exigirNoVocabulario(valor, lista, campo) {
   if (!lista.includes(valor)) throw invalido(`${campo} fora do vocabulário`)
 }
 
-// id string de até 64 caracteres, ou null quando `nuloPermitido`.
+// O text recusa \0 (22021) e o jsonb, surrogate solitário (22P05).
+function textoAceito(texto) {
+  return !texto.includes('\0') && texto.isWellFormed()
+}
+
+// id string de 1 a 64 caracteres, ou null quando `nuloPermitido`.
 function validarId(id, campo, nuloPermitido) {
   if (id === null || id === undefined) {
     if (nuloPermitido) return null
     throw invalido(`${campo} obrigatório`)
   }
-  if (typeof id !== 'string' || id.length > ID_MAX) throw invalido(`${campo} inválido`)
+  if (typeof id !== 'string' || id.length === 0 || id.length > ID_MAX || !textoAceito(id)) {
+    throw invalido(`${campo} inválido`)
+  }
   return id
 }
 
@@ -48,7 +60,17 @@ function chaveProibida(chave) {
 }
 
 // Profundidade = contêineres aninhados (objeto ou array), com a raiz contando 1.
+// Confere o caractere real em chaves e valores, não o texto `\u0000` serializado.
 function inspecionar(valor, profundidade) {
+  if (typeof valor === 'string') {
+    if (!textoAceito(valor)) throw invalido('detalhes com caractere inválido')
+    return
+  }
+  if (typeof valor === 'number') {
+    const absoluto = Math.abs(valor)
+    if (absoluto >= NUMERO_MAX || (absoluto > 0 && absoluto < NUMERO_MIN)) throw invalido('detalhes com número fora da faixa')
+    return
+  }
   if (typeof valor !== 'object' || valor === null) return
   if (profundidade > DETALHES_MAX_PROFUNDIDADE) throw invalido('detalhes aninhados demais')
   if (Array.isArray(valor)) {
@@ -56,7 +78,8 @@ function inspecionar(valor, profundidade) {
     return
   }
   for (const [chave, item] of Object.entries(valor)) {
-    if (chaveProibida(chave)) throw invalido(`chave proibida em detalhes: ${chave}`)
+    if (!textoAceito(chave)) throw invalido('detalhes com caractere inválido')
+    if (chaveProibida(chave)) throw invalido(`chave proibida em detalhes: ${chave.slice(0, CHAVE_NA_MENSAGEM_MAX)}`)
     inspecionar(item, profundidade + 1)
   }
 }
@@ -74,8 +97,6 @@ function normalizarDetalhes(detalhes) {
   if (!ehObjeto(normalizado)) throw invalido('detalhes deve ser objeto')
   inspecionar(normalizado, 1)
   const texto = JSON.stringify(normalizado)
-  // O jsonb recusa \u0000 (22P05).
-  if (texto.includes('\\u0000')) throw invalido('detalhes com caractere nulo')
   if (Buffer.byteLength(texto) > DETALHES_MAX_BYTES) throw invalido('detalhes grandes demais')
   return texto
 }
@@ -102,7 +123,9 @@ export async function registrarAuditoria(executor, dados) {
 
   let requestIdValido = null
   if (requestId !== undefined && requestId !== null) {
-    if (typeof requestId !== 'string' || requestId.length > REQUEST_ID_MAX) throw invalido('requestId inválido')
+    if (typeof requestId !== 'string' || requestId.length > REQUEST_ID_MAX || !textoAceito(requestId)) {
+      throw invalido('requestId inválido')
+    }
     requestIdValido = requestId
   }
 

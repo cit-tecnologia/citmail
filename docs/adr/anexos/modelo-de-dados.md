@@ -116,12 +116,12 @@ Evento de domínio gravado na mesma transação da mudança de estado e publicad
 
 ## Entidade: auditoria
 
-Trilha das ações críticas (E6-H7, ADR 0013). Tabela só de inclusão: o papel da aplicação (`<banco>_aplicacao`) tem só `INSERT` e `SELECT`, e um trigger bloqueia `UPDATE`, `DELETE` e `TRUNCATE` (exceção: o papel `<banco>_retencao` altera só `ip`).
+Trilha das ações críticas (E6-H7, ADR 0013). Tabela só de inclusão: o papel da aplicação (`<banco>_aplicacao`) tem só `INSERT` (sem `id` e `ocorrido_em`) e `SELECT`, e um trigger bloqueia `UPDATE`, `DELETE` e `TRUNCATE` (exceção: o papel `<banco>_retencao` altera só `ip`).
 
 - **Chave:** `id` sequencial (ordem de gravação).
-- **Atributos:** `ocorrido_em` (`clock_timestamp()`, instante do registro), `autor_tipo` (`cliente`, `sistema`, `equipe`), `autor_id`, `acao` (`login`, `login_falhou`, `conta_bloqueada`, `caixa_criada`, `caixa_excluida`, `senha_trocada`, `cadastro_alterado`, `assinatura_cancelada`, `dados_excluidos`, `conta_suspensa`, `conta_reativada`, `dominio_registrado_manualmente`), `alvo_tipo` (`conta`, `caixa`, `cliente`, `pedido`, `assinatura`, `dominio`), `alvo_id`, `ip` (`inet`), `resultado` (`sucesso` ou `falha`), `request_id`, `detalhes` (JSON objeto, até 2048 bytes, sem senha nem token; chave proibida é recusada).
+- **Atributos:** `ocorrido_em` (`clock_timestamp()`, instante do registro), `autor_tipo` (`cliente`, `sistema`, `equipe`), `autor_id` (chave interna, nunca e-mail), `acao` (`login`, `login_falhou`, `conta_bloqueada`, `caixa_criada`, `caixa_excluida`, `senha_trocada`, `cadastro_alterado`, `assinatura_cancelada`, `dados_excluidos`, `conta_suspensa`, `conta_reativada`, `dominio_registrado_manualmente`), `alvo_tipo` (`conta`, `caixa`, `cliente`, `pedido`, `assinatura`, `dominio`), `alvo_id`, `ip` (`inet`), `resultado` (`sucesso` ou `falha`), `request_id`, `detalhes` (JSON objeto, até 2048 bytes, sem senha nem token; chave proibida é recusada).
 - **Relações:** referencia conta do titular, caixa, cliente, pedido, assinatura ou domínio por `alvo_tipo` + `alvo_id`, sem chave estrangeira (o registro sobrevive à anonimização).
-- **Retenção (proposta, a confirmar):** `ip` em claro por 6 meses, depois pseudonimizado ou apagado; registro por 5 anos (ADR 0013). A exclusão de dados (E6-H3) não apaga a auditoria.
+- **Retenção (proposta, a confirmar):** `ip` em claro por 6 meses, depois pseudonimizado por truncamento (ex.: `/24`), não apagado; registro por 5 anos (ADR 0013). A exclusão de dados (E6-H3) não apaga a auditoria.
 - **Ação a mais:** registro manual de domínio pela equipe (E4-H4), `dominio_registrado_manualmente`.
 - **Nulos:** `autor_id` nulo só com autor `sistema` ou ação `login_falhou`; `alvo_id` nulo só em `login_falhou` (e-mail inexistente, sem identificar a conta); `ip` nulo só com autor `sistema`. Conferido por `CHECK` no banco.
 

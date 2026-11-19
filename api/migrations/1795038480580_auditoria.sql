@@ -5,12 +5,20 @@
 
 -- Papel da aplicação. Se o admin já o criou (#57), nada é criado e o migrador
 -- não precisa de CREATEROLE. Nome acima de 63 bytes seria truncado em silêncio.
+-- Papel pré-existente com login ou poder de admin é recusado: os grants abaixo
+-- iriam para quem não deveria recebê-los.
 DO $$
 DECLARE
   papel text := current_database() || '_aplicacao';
 BEGIN
   IF octet_length(current_database()) > 53 THEN
     RAISE EXCEPTION 'nome do banco longo demais para o papel %', papel;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_roles
+     WHERE rolname = papel AND (rolcanlogin OR rolsuper OR rolcreaterole)
+  ) THEN
+    RAISE EXCEPTION 'papel % já existe com LOGIN, SUPERUSER ou CREATEROLE', papel;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = papel) THEN
     BEGIN
@@ -30,14 +38,14 @@ CREATE TABLE auditoria (
   -- clock_timestamp(): instante do registro, não o início da transação do chamador.
   ocorrido_em timestamptz NOT NULL DEFAULT clock_timestamp(),
   autor_tipo text NOT NULL CHECK (autor_tipo IN ('cliente', 'sistema', 'equipe')),
-  autor_id text CHECK (char_length(autor_id) <= 64),
+  autor_id text CHECK (char_length(autor_id) BETWEEN 1 AND 64),
   acao text NOT NULL CHECK (acao IN (
     'login', 'login_falhou', 'conta_bloqueada', 'caixa_criada', 'caixa_excluida', 'senha_trocada',
     'cadastro_alterado', 'assinatura_cancelada', 'dados_excluidos', 'conta_suspensa', 'conta_reativada',
     'dominio_registrado_manualmente'
   )),
   alvo_tipo text NOT NULL CHECK (alvo_tipo IN ('conta', 'caixa', 'cliente', 'pedido', 'assinatura', 'dominio')),
-  alvo_id text CHECK (char_length(alvo_id) <= 64),
+  alvo_id text CHECK (char_length(alvo_id) BETWEEN 1 AND 64),
   ip inet CHECK (ip IS NOT NULL OR autor_tipo = 'sistema'),
   resultado text NOT NULL CHECK (resultado IN ('sucesso', 'falha')),
   request_id text CHECK (char_length(request_id) <= 128),
@@ -54,13 +62,16 @@ CREATE INDEX auditoria_alvo_idx ON auditoria (alvo_tipo, alvo_id, ocorrido_em);
 -- Só inclusão, até para o dono. Única exceção: o papel `<banco>_retencao` pode
 -- alterar só a coluna ip (pseudonimização aos 6 meses; papel e rotina em outra
 -- história). SET de variável de sessão não serviria de chave: qualquer papel faz.
+-- current_user, não session_user: a rotina precisa de `SET ROLE <banco>_retencao`.
+-- search_path fixo: um `public.to_jsonb` não sombreia o do catálogo.
 CREATE FUNCTION auditoria_bloquear_alteracao() RETURNS trigger
 LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
 AS $$
 BEGIN
   IF TG_OP = 'UPDATE'
-     AND current_user = current_database() || '_retencao'
-     AND (to_jsonb(NEW) - 'ip') = (to_jsonb(OLD) - 'ip') THEN
+     AND current_user = pg_catalog.current_database() || '_retencao'
+     AND (pg_catalog.to_jsonb(NEW) - 'ip') = (pg_catalog.to_jsonb(OLD) - 'ip') THEN
     RETURN NEW;
   END IF;
   RAISE EXCEPTION 'auditoria só de inclusão: % bloqueado', TG_OP USING ERRCODE = 'P0001';
@@ -75,19 +86,49 @@ CREATE TRIGGER auditoria_bloquear_truncate
   BEFORE TRUNCATE ON auditoria
   FOR EACH STATEMENT EXECUTE FUNCTION auditoria_bloquear_alteracao();
 
--- O REVOKE explícito ao papel anula um ALTER DEFAULT PRIVILEGES futuro.
+-- O instante é sempre o do banco, até para o dono ou superusuário que informe a coluna.
+CREATE FUNCTION auditoria_definir_ocorrido_em() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+  NEW.ocorrido_em := pg_catalog.clock_timestamp();
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER auditoria_definir_ocorrido_em_linha
+  BEFORE INSERT ON auditoria
+  FOR EACH ROW EXECUTE FUNCTION auditoria_definir_ocorrido_em();
+
+-- ALWAYS: os triggers valem também com `session_replication_role = replica`.
+ALTER TABLE auditoria ENABLE ALWAYS TRIGGER auditoria_bloquear_alteracao_linha;
+ALTER TABLE auditoria ENABLE ALWAYS TRIGGER auditoria_bloquear_truncate;
+ALTER TABLE auditoria ENABLE ALWAYS TRIGGER auditoria_definir_ocorrido_em_linha;
+
+-- O REVOKE explícito ao papel anula um ALTER DEFAULT PRIVILEGES futuro. INSERT
+-- só nas 9 colunas do serviço: `id` e `ocorrido_em` (inclusive por OVERRIDING
+-- SYSTEM VALUE) ficam fora do alcance da aplicação (42501).
 DO $$
 DECLARE
   papel text := current_database() || '_aplicacao';
 BEGIN
   EXECUTE format('REVOKE ALL ON auditoria FROM PUBLIC, %I', papel);
-  EXECUTE format('GRANT SELECT, INSERT ON auditoria TO %I', papel);
+  EXECUTE format('GRANT SELECT ON auditoria TO %I', papel);
+  EXECUTE format(
+    'GRANT INSERT (autor_tipo, autor_id, acao, alvo_tipo, alvo_id, resultado, ip, request_id, detalhes) '
+    'ON auditoria TO %I',
+    papel
+  );
 END
 $$;
 
 -- Down Migration
 -- Guarda: com registros, o down é recusado (DROP TABLE não dispara trigger).
 -- O papel fica: ele terá o login da app como membro e grants de outras tabelas.
+-- O LOCK impede um INSERT entre a conferência e o DROP.
+LOCK TABLE auditoria IN ACCESS EXCLUSIVE MODE;
+
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM auditoria) THEN
@@ -98,3 +139,4 @@ $$;
 
 DROP TABLE auditoria;
 DROP FUNCTION auditoria_bloquear_alteracao();
+DROP FUNCTION auditoria_definir_ocorrido_em();

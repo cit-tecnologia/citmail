@@ -198,12 +198,12 @@ test('CA4: papel da aplicação recebe 42501 em UPDATE, DELETE e TRUNCATE e a li
   assert.deepStrictEqual(await lerTudo(pool), [original]);
 });
 
-test('CA4: has_table_privilege do papel da aplicação é true só para INSERT e SELECT', async (t) => {
+test('CA4: has_table_privilege do papel da aplicação é true só para SELECT (INSERT é por coluna)', async (t) => {
   const { pool, banco, fechar } = await criarBancoMigrado();
   t.after(fechar);
   const papel = `${banco}_aplicacao`;
 
-  const esperado = { INSERT: true, SELECT: true, UPDATE: false, DELETE: false, TRUNCATE: false };
+  const esperado = { INSERT: false, SELECT: true, UPDATE: false, DELETE: false, TRUNCATE: false };
   for (const [privilegio, valor] of Object.entries(esperado)) {
     const { rows } = await pool.query('SELECT has_table_privilege($1, $2, $3) AS tem', [
       papel,
@@ -255,7 +255,11 @@ test('CA9: migração cria um papel por banco, tem down com guarda e é reaplic�
   assert.equal(await papelExiste(papelA), true, 'papel de A');
   assert.equal(await papelExiste(papelB), true, 'papel de B');
 
-  const privilegioCruzado = await consultar(b.url, "SELECT has_table_privilege($1, 'auditoria', 'INSERT') AS tem", [papelA]);
+  const privilegioCruzado = await consultar(
+    b.url,
+    "SELECT has_column_privilege($1, 'auditoria', 'acao', 'INSERT') AS tem",
+    [papelA],
+  );
   assert.equal(privilegioCruzado.rows[0].tem, false, 'papel de A não deveria inserir no banco B');
 
   // down com registros é recusado e nada se perde.
@@ -278,7 +282,7 @@ test('CA9: migração cria um papel por banco, tem down com guarda e é reaplic�
   const aposDown = await consultar(
     b.url,
     `SELECT to_regclass('public.auditoria') IS NULL AS sem_tabela,
-            (SELECT count(*)::int FROM pg_proc WHERE proname = 'auditoria_bloquear_alteracao') AS funcoes,
+            (SELECT count(*)::int FROM pg_proc WHERE proname IN ('auditoria_bloquear_alteracao', 'auditoria_definir_ocorrido_em')) AS funcoes,
             (SELECT count(*)::int FROM pg_proc WHERE proname = 'definir_atualizado_em') AS base,
             (SELECT count(*)::int FROM pgmigrations) AS migracoes`,
   );
@@ -289,7 +293,7 @@ test('CA9: migração cria um papel por banco, tem down com guarda e é reaplic�
   await assert.doesNotReject(aplicarMigracoes(b.url));
   const aposUp = await consultar(
     b.url,
-    `SELECT has_table_privilege($1, 'auditoria', 'INSERT') AS inserir,
+    `SELECT has_column_privilege($1, 'auditoria', 'acao', 'INSERT') AS inserir,
             has_table_privilege($1, 'auditoria', 'UPDATE') AS atualizar`,
     [papelB],
   );
