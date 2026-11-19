@@ -437,13 +437,8 @@ test('CA2: INSERT por SQL com autor_id ou alvo_id vazio viola o CHECK (23514)', 
 // B3: o down espera INSERT em andamento e depois recusa ----------------------------------------------
 
 test('CA9: down que concorre com um INSERT ainda não confirmado espera e recusa, sem perder o registro', async (t) => {
-  const { nomeBanco, url } = await criarBancoTemporario();
-  await aplicarMigracoes(url);
-  const pool = new Pool({ connectionString: url, max: 2 });
-  t.after(async () => {
-    await pool.end();
-    await removerBancoTemporario(nomeBanco);
-  });
+  const { pool, url, fechar } = await criarBancoMigrado();
+  t.after(fechar);
 
   const client = await pool.connect();
   let down;
@@ -456,7 +451,7 @@ test('CA9: down que concorre com um INSERT ainda não confirmado espera e recusa
     await observador.connect();
     try {
       let esperando = false;
-      for (let i = 0; i < 100 && !esperando; i++) {
+      for (let i = 0; i < 400 && !esperando; i++) {
         const { rowCount } = await observador.query(
           "SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query ILIKE '%LOCK TABLE auditoria%'",
         );
@@ -475,4 +470,31 @@ test('CA9: down que concorre com um INSERT ainda não confirmado espera e recusa
   const erro = await down;
   assert.match(String(erro?.message), /auditoria com registros/);
   assert.equal(await contar(pool), 1);
+});
+
+// L2: papel pré-existente com atributos ou herança além do permitido ----------------------------------
+
+const PAPEIS_AMPLOS = {
+  'NOLOGIN com CREATEDB': (papel) => `CREATE ROLE "${papel}" NOLOGIN CREATEDB`,
+  'NOLOGIN com BYPASSRLS': (papel) => `CREATE ROLE "${papel}" NOLOGIN BYPASSRLS`,
+};
+
+for (const [caso, criar] of Object.entries(PAPEIS_AMPLOS)) {
+  test(`CA9: up falha se o papel da aplicação já existe ${caso}`, async (t) => {
+    const { nomeBanco, url } = await criarBancoTemporario();
+    t.after(() => removerBancoTemporario(nomeBanco));
+    await consultar(urlAdminTeste(), criar(`${nomeBanco}_aplicacao`));
+
+    await assert.rejects(aplicarMigracoes(url), /já existe com atributos ou herança não permitidos/);
+  });
+}
+
+test('CA9: up falha se o papel da aplicação já existe como membro de outro papel', async (t) => {
+  const { nomeBanco, url } = await criarBancoTemporario();
+  t.after(() => removerBancoTemporario(nomeBanco));
+  const papel = `${nomeBanco}_aplicacao`;
+  await consultar(urlAdminTeste(), `CREATE ROLE "${papel}" NOLOGIN`);
+  await consultar(urlAdminTeste(), `GRANT pg_read_all_data TO "${papel}"`);
+
+  await assert.rejects(aplicarMigracoes(url), /já existe com atributos ou herança não permitidos/);
 });

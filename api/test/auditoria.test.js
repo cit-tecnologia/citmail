@@ -414,10 +414,10 @@ test('CA5: chave proibida longa sai truncada a 64 caracteres na mensagem', async
 
 // L6: chaves novas ----------------------------------------------------------------------
 
-test('CA5: emailNovo, cpf_cnpj, telefoneAnterior, ip e ip_origem são recusados em detalhes', async (t) => {
+test('CA5: chaves de e-mail, documento, telefone e IP (ip_origem, remoteAddress, X-Forwarded-For) são recusadas em detalhes', async (t) => {
   const pool = await bancoDoTeste(t);
 
-  for (const chave of ['emailNovo', 'cpf_cnpj', 'telefoneAnterior', 'ip', 'ip_origem']) {
+  for (const chave of ['emailNovo', 'cpf_cnpj', 'telefoneAnterior', 'ip', 'ip_origem', 'ipOrigem', 'remoteAddress', 'X-Forwarded-For']) {
     await assert.rejects(
       registrarAuditoria(pool, dadosValidos({ detalhes: { [chave]: 'x' } })),
       /chave proibida em detalhes/,
