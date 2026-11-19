@@ -39,7 +39,9 @@ function selectDomainOpt(choice) {
 }
 
 function limparErroDominio(campoId, erroId) {
-  document.getElementById(erroId).classList.remove('visible');
+  const erro = document.getElementById(erroId);
+  erro.classList.remove('visible');
+  erro.textContent = '';
   document.getElementById(campoId).removeAttribute('aria-invalid');
 }
 
@@ -58,7 +60,7 @@ function normalizarDominioNovo(v) {
 function normalizarDominioExistente(v) {
   return v.trim().toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
 }
-// .com.br: 2 a 26 caracteres a-z/0-9/hífen, sem hífen nas pontas, não só números, sem "--" nas posições 3-4.
+// .com.br: 2 a 26 caracteres a-z/0-9/hífen, sem hífen nas pontas, não só números, sem "--" nas posições 3-4 (posições contadas a partir de 1; no código, slice(2, 4) = índices 2-3).
 function dominioNovoValido(n) {
   return /^[a-z0-9][a-z0-9-]{0,24}[a-z0-9]$/.test(n) && !/^[0-9]+$/.test(n) && n.slice(2, 4) !== '--';
 }
@@ -87,9 +89,8 @@ function startDomPixTimer() {
 function goStep2Next() {
   const errEl = document.getElementById('step2Error');
   if (!Object.keys(DOMAIN_OPTS).includes(domainChoice)) { errEl.style.display = 'flex'; return; }
-  const campoInvalido = (campoId, erroId, msg) => {
+  const campoInvalido = (campo, erroId, msg) => {
     showErr(erroId, msg);
-    const campo = document.getElementById(campoId);
     campo.setAttribute('aria-invalid', 'true');
     campo.focus();
   };
@@ -97,8 +98,8 @@ function goStep2Next() {
     const campo = document.getElementById('fDomNew');
     const bruto = campo.value.trim();
     const name = normalizarDominioNovo(bruto);
-    if (!bruto) { campoInvalido('fDomNew', 'err-dom-new', 'Informe o nome do domínio.'); return; }
-    if (!dominioNovoValido(name)) { campoInvalido('fDomNew', 'err-dom-new', 'Use de 2 a 26 letras, números ou hífen, sem hífen no início ou no fim e não só números.'); return; }
+    if (!bruto) { campoInvalido(campo, 'err-dom-new', 'Informe o nome do domínio.'); return; }
+    if (!dominioNovoValido(name)) { campoInvalido(campo, 'err-dom-new', 'Use de 2 a 26 letras, números ou hífen, sem hífen no início ou no fim e não só números.'); return; }
     campo.value = name;
     document.getElementById('successWebmail').textContent = 'webmail.' + name + '.com.br';
   }
@@ -106,8 +107,8 @@ function goStep2Next() {
     const campo = document.getElementById('fDomExist');
     const bruto = campo.value.trim();
     const d = normalizarDominioExistente(bruto);
-    if (!bruto) { campoInvalido('fDomExist', 'err-dom-exist', 'Informe seu domínio.'); return; }
-    if (!dominioExistenteValido(d)) { campoInvalido('fDomExist', 'err-dom-exist', 'Domínio inválido. Ex.: minhaempresa.com.br'); return; }
+    if (!bruto) { campoInvalido(campo, 'err-dom-exist', 'Informe seu domínio.'); return; }
+    if (!dominioExistenteValido(d)) { campoInvalido(campo, 'err-dom-exist', 'Domínio inválido. Ex.: minhaempresa.com.br'); return; }
     campo.value = d;
     document.getElementById('successWebmail').textContent = 'webmail.' + d;
   }
