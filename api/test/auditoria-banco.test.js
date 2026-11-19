@@ -11,7 +11,12 @@ import { registrarAuditoria } from '../src/auditoria/servico.js';
 
 async function criarBancoMigrado() {
   const { nomeBanco, url } = await criarBancoTemporario();
-  await aplicarMigracoes(url);
+  try {
+    await aplicarMigracoes(url);
+  } catch (erro) {
+    await removerBancoTemporario(nomeBanco);
+    throw erro;
+  }
   const pool = new Pool({ connectionString: url, max: 2 });
   return {
     pool,
@@ -303,4 +308,171 @@ test('CA9: migração cria um papel por banco, tem down com guarda e é reaplic�
   await removerBancoTemporario(b.nomeBanco);
   assert.equal(await papelExiste(papelA), false, 'papel de A deveria sumir com o banco');
   assert.equal(await papelExiste(papelB), false, 'papel de B deveria sumir com o banco');
+});
+
+// B1: horário e id fora do alcance da aplicação ----------------------------------------------
+
+const COLUNAS_DA_APLICACAO = [
+  'autor_tipo', 'autor_id', 'acao', 'alvo_tipo', 'alvo_id', 'resultado', 'ip', 'request_id', 'detalhes',
+];
+
+test('CA4: papel da aplicação recebe 42501 ao informar ocorrido_em ou id (inclusive OVERRIDING SYSTEM VALUE)', async (t) => {
+  const { pool, banco, fechar } = await criarBancoMigrado();
+  t.after(fechar);
+  await exigirSuperusuario(pool);
+  const papel = `${banco}_aplicacao`;
+
+  const tentativas = [
+    `INSERT INTO auditoria (ocorrido_em, autor_tipo, autor_id, acao, alvo_tipo, alvo_id, resultado, ip)
+     VALUES ('2000-01-01', 'cliente','1','senha_trocada','conta','1','sucesso','203.0.113.5')`,
+    `INSERT INTO auditoria (id, autor_tipo, autor_id, acao, alvo_tipo, alvo_id, resultado, ip)
+     OVERRIDING SYSTEM VALUE VALUES (999, 'cliente','1','senha_trocada','conta','1','sucesso','203.0.113.5')`,
+  ];
+  for (const sql of tentativas) {
+    await assert.rejects(comPapel(pool, papel, (client) => client.query(sql)), { code: '42501' }, sql);
+  }
+
+  assert.equal(await contar(pool), 0);
+});
+
+test('CA4: has_column_privilege de INSERT é true nas 9 colunas do serviço e false em id e ocorrido_em', async (t) => {
+  const { pool, banco, fechar } = await criarBancoMigrado();
+  t.after(fechar);
+  const papel = `${banco}_aplicacao`;
+
+  const esperado = { ...Object.fromEntries(COLUNAS_DA_APLICACAO.map((c) => [c, true])), id: false, ocorrido_em: false };
+  for (const [coluna, valor] of Object.entries(esperado)) {
+    const { rows } = await pool.query("SELECT has_column_privilege($1, 'auditoria', $2, 'INSERT') AS tem", [papel, coluna]);
+    assert.equal(rows[0].tem, valor, coluna);
+  }
+});
+
+test('CA1: dono que informa ocorrido_em grava o horário do banco, não o informado', async (t) => {
+  const { pool, fechar } = await criarBancoMigrado();
+  t.after(fechar);
+
+  const antes = new Date();
+  const { rows } = await pool.query(
+    `INSERT INTO auditoria (ocorrido_em, autor_tipo, autor_id, acao, alvo_tipo, alvo_id, resultado, ip)
+     VALUES ('2000-01-01', 'cliente','1','senha_trocada','conta','1','sucesso','203.0.113.5')
+     RETURNING ocorrido_em`,
+  );
+  const depois = new Date();
+
+  assert.ok(rows[0].ocorrido_em >= antes && rows[0].ocorrido_em <= depois, 'ocorrido_em deveria ser o instante do banco');
+});
+
+// B2: search_path fixo ------------------------------------------------------------------------
+
+test('CA3: as funções da migração fixam search_path em pg_catalog, pg_temp', async (t) => {
+  const { pool, fechar } = await criarBancoMigrado();
+  t.after(fechar);
+
+  const { rows } = await pool.query(
+    `SELECT proname, proconfig FROM pg_proc
+      WHERE proname IN ('auditoria_bloquear_alteracao', 'auditoria_definir_ocorrido_em') ORDER BY proname`,
+  );
+
+  assert.equal(rows.length, 2);
+  for (const linha of rows) {
+    assert.deepEqual(linha.proconfig, ['search_path=pg_catalog, pg_temp'], linha.proname);
+  }
+});
+
+// L1: triggers valem com session_replication_role = replica ---------------------------------------
+
+test('CA3: com session_replication_role = replica, UPDATE e DELETE do dono seguem bloqueados', async (t) => {
+  const { pool, fechar } = await criarBancoMigrado();
+  t.after(fechar);
+  await exigirSuperusuario(pool);
+  await registrarAuditoria(pool, dadosValidos());
+
+  const { rows } = await pool.query(
+    "SELECT tgname, tgenabled FROM pg_trigger WHERE tgrelid = 'auditoria'::regclass AND NOT tgisinternal ORDER BY tgname",
+  );
+  assert.equal(rows.length, 3);
+  for (const linha of rows) assert.equal(linha.tgenabled, 'A', linha.tgname);
+
+  const client = await pool.connect();
+  try {
+    await client.query('SET session_replication_role = replica');
+    await assert.rejects(client.query("UPDATE auditoria SET resultado = 'falha'"), { code: 'P0001' });
+    await assert.rejects(client.query('DELETE FROM auditoria'), { code: 'P0001' });
+  } finally {
+    await client.query('RESET session_replication_role');
+    client.release();
+  }
+  assert.equal(await contar(pool), 1);
+});
+
+// L2: papel pré-existente com poder demais -----------------------------------------------------------
+
+test('CA9: up falha se o papel da aplicação já existe com LOGIN', async (t) => {
+  const { nomeBanco, url } = await criarBancoTemporario();
+  t.after(() => removerBancoTemporario(nomeBanco));
+  await consultar(urlAdminTeste(), `CREATE ROLE "${nomeBanco}_aplicacao" LOGIN`);
+
+  await assert.rejects(aplicarMigracoes(url), /já existe com LOGIN, SUPERUSER ou CREATEROLE/);
+
+  const { rows } = await consultar(url, "SELECT to_regclass('public.auditoria') IS NULL AS sem_tabela");
+  assert.equal(rows[0].sem_tabela, true);
+});
+
+// L3 (SQL): id vazio ----------------------------------------------------------------------------------
+
+test('CA2: INSERT por SQL com autor_id ou alvo_id vazio viola o CHECK (23514)', async (t) => {
+  const { pool, fechar } = await criarBancoMigrado();
+  t.after(fechar);
+
+  const base = (autor, alvo) => pool.query(
+    `INSERT INTO auditoria (autor_tipo, autor_id, acao, alvo_tipo, alvo_id, resultado, ip)
+     VALUES ('cliente', $1, 'senha_trocada', 'conta', $2, 'sucesso', '203.0.113.5')`,
+    [autor, alvo],
+  );
+  await assert.rejects(base('', '1'), { code: '23514' });
+  await assert.rejects(base('1', ''), { code: '23514' });
+  assert.equal(await contar(pool), 0);
+});
+
+// B3: o down espera INSERT em andamento e depois recusa ----------------------------------------------
+
+test('CA9: down que concorre com um INSERT ainda não confirmado espera e recusa, sem perder o registro', async (t) => {
+  const { nomeBanco, url } = await criarBancoTemporario();
+  await aplicarMigracoes(url);
+  const pool = new Pool({ connectionString: url, max: 2 });
+  t.after(async () => {
+    await pool.end();
+    await removerBancoTemporario(nomeBanco);
+  });
+
+  const client = await pool.connect();
+  let down;
+  try {
+    await client.query('BEGIN');
+    await registrarAuditoria(client, dadosValidos());
+
+    down = aplicarMigracoes(url, 'down', 1).then(() => null, (erro) => erro);
+    const observador = new Client({ connectionString: url });
+    await observador.connect();
+    try {
+      let esperando = false;
+      for (let i = 0; i < 100 && !esperando; i++) {
+        const { rowCount } = await observador.query(
+          "SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query ILIKE '%LOCK TABLE auditoria%'",
+        );
+        esperando = rowCount > 0;
+        if (!esperando) await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      assert.ok(esperando, 'o down deveria esperar o lock da tabela enquanto o INSERT não é confirmado');
+    } finally {
+      await observador.end();
+    }
+    await client.query('COMMIT');
+  } finally {
+    client.release();
+  }
+
+  const erro = await down;
+  assert.match(String(erro?.message), /auditoria com registros/);
+  assert.equal(await contar(pool), 1);
 });

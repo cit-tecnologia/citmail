@@ -3,14 +3,19 @@ import assert from 'node:assert/strict';
 import { Pool } from 'pg';
 import { criarBancoTemporario, removerBancoTemporario, aplicarMigracoes } from './auxiliares.js';
 import { registrarAuditoria } from '../src/auditoria/servico.js';
-import { ACOES } from '../src/auditoria/vocabulario.js';
+import { ACOES, ALVOS, AUTORES, RESULTADOS } from '../src/auditoria/vocabulario.js';
 import { camposSensiveis } from '../src/log.js';
 
 const VALOR_SECRETO = 'valor-secreto-de-teste';
 
 async function criarBancoMigrado() {
   const { nomeBanco, url } = await criarBancoTemporario();
-  await aplicarMigracoes(url);
+  try {
+    await aplicarMigracoes(url);
+  } catch (erro) {
+    await removerBancoTemporario(nomeBanco);
+    throw erro;
+  }
   const pool = new Pool({ connectionString: url, max: 2 });
   return {
     pool,
@@ -332,4 +337,118 @@ test('CA8: sem detalhes grava objeto vazio', async (t) => {
   const id = await registrarAuditoria(pool, dados);
 
   assert.deepEqual((await lerLinha(pool, id)).detalhes, {});
+});
+
+// L3: ids vazios ----------------------------------------------------------------
+
+test('CA1: autor.id ou alvo.id vazio lança TypeError sem gravar', async (t) => {
+  const pool = await bancoDoTeste(t);
+
+  await assert.rejects(registrarAuditoria(pool, dadosValidos({ autor: { tipo: 'cliente', id: '' } })), /inválido/);
+  await assert.rejects(registrarAuditoria(pool, dadosValidos({ alvo: { tipo: 'conta', id: '' } })), /inválido/);
+
+  assert.equal(await contar(pool), 0);
+});
+
+// L9: vocabulário JS e CHECK do banco ---------------------------------------------
+
+test('CA2: grava no banco cada valor de ALVOS, AUTORES e RESULTADOS (vocabulário JS igual ao CHECK)', async (t) => {
+  const pool = await bancoDoTeste(t);
+
+  for (const tipo of ALVOS) {
+    await registrarAuditoria(pool, dadosValidos({ alvo: { tipo, id: '1' } }));
+  }
+  for (const tipo of AUTORES) {
+    await registrarAuditoria(pool, dadosValidos({ autor: { tipo, id: '1' } }));
+  }
+  for (const resultado of RESULTADOS) {
+    await registrarAuditoria(pool, dadosValidos({ resultado }));
+  }
+
+  assert.equal(await contar(pool), ALVOS.length + AUTORES.length + RESULTADOS.length);
+});
+
+// L4/L5: caracteres que o banco recusa ----------------------------------------------
+
+test('CA8: caractere nulo em autor.id, alvo.id ou requestId lança TypeError sem gravar', async (t) => {
+  const pool = await bancoDoTeste(t);
+
+  await assert.rejects(registrarAuditoria(pool, dadosValidos({ autor: { tipo: 'cliente', id: 'a\0b' } })), TypeError);
+  await assert.rejects(registrarAuditoria(pool, dadosValidos({ alvo: { tipo: 'conta', id: 'a\0b' } })), TypeError);
+  await assert.rejects(registrarAuditoria(pool, dadosValidos({ requestId: 'a\0b' })), TypeError);
+
+  assert.equal(await contar(pool), 0);
+});
+
+test('CA8: caractere nulo e surrogate solitário em chave ou valor de detalhes lançam TypeError', async (t) => {
+  const pool = await bancoDoTeste(t);
+
+  const invalidos = [{ texto: 'a\0b' }, { 'a\0b': 1 }, { texto: '\ud800' }, { '\ud800': 1 }, { lista: ['x\0'] }];
+  for (const detalhes of invalidos) {
+    await assert.rejects(
+      registrarAuditoria(pool, dadosValidos({ detalhes })),
+      { name: 'TypeError', message: 'auditoria: detalhes com caractere inválido' },
+    );
+  }
+
+  assert.equal(await contar(pool), 0);
+});
+
+test('CA8: o texto literal contrabarra-u0000 em detalhes é gravado', async (t) => {
+  const pool = await bancoDoTeste(t);
+  const detalhes = { texto: '\\u0000' };
+
+  const id = await registrarAuditoria(pool, dadosValidos({ detalhes }));
+
+  assert.deepEqual((await lerLinha(pool, id)).detalhes, detalhes);
+});
+
+test('CA5: chave proibida longa sai truncada a 64 caracteres na mensagem', async (t) => {
+  const pool = await bancoDoTeste(t);
+  const chave = `senha${'x'.repeat(100)}`;
+
+  await assert.rejects(registrarAuditoria(pool, dadosValidos({ detalhes: { [chave]: 1 } })), {
+    message: `auditoria: chave proibida em detalhes: ${chave.slice(0, 64)}`,
+  });
+});
+
+// L6: chaves novas ----------------------------------------------------------------------
+
+test('CA5: emailNovo, cpf_cnpj, telefoneAnterior, ip e ip_origem são recusados em detalhes', async (t) => {
+  const pool = await bancoDoTeste(t);
+
+  for (const chave of ['emailNovo', 'cpf_cnpj', 'telefoneAnterior', 'ip', 'ip_origem']) {
+    await assert.rejects(
+      registrarAuditoria(pool, dadosValidos({ detalhes: { [chave]: 'x' } })),
+      /chave proibida em detalhes/,
+      chave,
+    );
+  }
+
+  assert.equal(await contar(pool), 0);
+});
+
+// L7: faixa numérica -------------------------------------------------------------------
+
+test('CA8: número fora da faixa em detalhes lança TypeError', async (t) => {
+  const pool = await bancoDoTeste(t);
+
+  for (const numero of [1e15, 1e300, 1e-7, -1e15]) {
+    await assert.rejects(
+      registrarAuditoria(pool, dadosValidos({ detalhes: { valor: numero } })),
+      { name: 'TypeError', message: 'auditoria: detalhes com número fora da faixa' },
+      String(numero),
+    );
+  }
+
+  assert.equal(await contar(pool), 0);
+});
+
+test('CA8: números dentro da faixa em detalhes são gravados', async (t) => {
+  const pool = await bancoDoTeste(t);
+  const detalhes = { inteiro: 999999999999999, fracao: 0.5, zero: 0 };
+
+  const id = await registrarAuditoria(pool, dadosValidos({ detalhes }));
+
+  assert.deepEqual((await lerLinha(pool, id)).detalhes, detalhes);
 });
