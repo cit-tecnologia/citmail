@@ -2492,3 +2492,42 @@ testSemErros.describe('checkout — CIT-59: guarda sem PRECOS.limites (CA5)', { 
     ]);
   });
 });
+
+// CIT-181: validação do nome do domínio no passo 2 (checkout.html).
+const MSG_FORMATO_NOVO = /^Use de 2 a 26 letras, números ou hífen/;
+
+/**
+ * CIT-181: chega ao passo 2 com 1 conta de 25 GB e escolhe "Registrar .com.br".
+ * @param {import('@playwright/test').Page} page
+ */
+async function irParaPasso2Novo(page) {
+  await page.goto('checkout.html');
+  await page.locator('button[data-qtd-conta="25gb"][data-qtd-delta="1"]').click();
+  await page.locator('#btnStep1Next').click();
+  await page.locator('#doptBr').click();
+}
+
+test.describe('checkout — CIT-181: nome do domínio novo (CA1)', { tag: '@CIT-181' }, () => {
+  test('CA1 citflow.com.br avança, vira citflow no campo e o webmail não duplica .com.br', async ({ page, erros }) => {
+    await irParaPasso2Novo(page);
+    await page.locator('#fDomNew').fill('citflow.com.br');
+    await page.locator('#btnStep2Next').click();
+
+    await expect(page.locator('#step3')).toHaveClass(/active/);
+    await expect(page.locator('#successWebmail')).toHaveText('webmail.citflow.com.br');
+    await expect(page.locator('#fDomNew')).toHaveValue('citflow');
+  });
+
+  test('CA1 nomes inválidos não avançam e mostram o erro de formato no campo', async ({ page, erros }) => {
+    await irParaPasso2Novo(page);
+    for (const valor of ['cit flow', 'citflów', 'cit_flow', '-citflow', 'citflow-', 'a']) {
+      await page.locator('#fDomNew').fill(valor);
+      await page.locator('#btnStep2Next').click();
+
+      await expect(page.locator('#step2'), `"${valor}" deve manter o passo 2`).toHaveClass(/active/);
+      await expect(page.locator('#err-dom-new'), `"${valor}" deve mostrar o erro`).toBeVisible();
+      await expect(page.locator('#err-dom-new'), `"${valor}" deve usar a mensagem de formato`).toHaveText(MSG_FORMATO_NOVO);
+      await expect(page.locator('#fDomNew'), `"${valor}" deve marcar aria-invalid`).toHaveAttribute('aria-invalid', 'true');
+    }
+  });
+});
