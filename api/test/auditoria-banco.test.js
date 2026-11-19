@@ -412,7 +412,7 @@ test('CA9: up falha se o papel da aplicação já existe com LOGIN', async (t) =
   t.after(() => removerBancoTemporario(nomeBanco));
   await consultar(urlAdminTeste(), `CREATE ROLE "${nomeBanco}_aplicacao" LOGIN`);
 
-  await assert.rejects(aplicarMigracoes(url), /já existe com LOGIN, SUPERUSER ou CREATEROLE/);
+  await assert.rejects(aplicarMigracoes(url), /já existe com atributos ou herança não permitidos/);
 
   const { rows } = await consultar(url, "SELECT to_regclass('public.auditoria') IS NULL AS sem_tabela");
   assert.equal(rows[0].sem_tabela, true);

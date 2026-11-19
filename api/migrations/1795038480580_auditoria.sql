@@ -5,7 +5,7 @@
 
 -- Papel da aplicação. Se o admin já o criou (#57), nada é criado e o migrador
 -- não precisa de CREATEROLE. Nome acima de 63 bytes seria truncado em silêncio.
--- Papel pré-existente com login ou poder de admin é recusado: os grants abaixo
+-- Papel pré-existente com login, poder de admin ou membro de outro papel é recusado: os grants abaixo
 -- iriam para quem não deveria recebê-los.
 DO $$
 DECLARE
@@ -16,9 +16,11 @@ BEGIN
   END IF;
   IF EXISTS (
     SELECT 1 FROM pg_roles
-     WHERE rolname = papel AND (rolcanlogin OR rolsuper OR rolcreaterole)
+     WHERE rolname = papel
+       AND (rolcanlogin OR rolsuper OR rolcreaterole OR rolbypassrls OR rolreplication OR rolcreatedb
+            OR EXISTS (SELECT 1 FROM pg_auth_members m WHERE m.member = pg_roles.oid))
   ) THEN
-    RAISE EXCEPTION 'papel % já existe com LOGIN, SUPERUSER ou CREATEROLE', papel;
+    RAISE EXCEPTION 'papel % já existe com atributos ou herança não permitidos', papel;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = papel) THEN
     BEGIN
