@@ -76,12 +76,15 @@ function comoItem({ tabela: t, atual, cobrado, segmentos }) {
 }
 
 // CIT-183: o item dominio_principal da API custa o mesmo que PRECOS.dominio do front.
-function compararDominioPrincipal(f) {
-  const { avulsos } = calcularOrcamento({ ciclo: 'mensal', contas: { '5gb': 2 }, dominio: { tipo: 'novo' } });
+const ENTRADA_DOMINIO_NOVO = { ciclo: 'mensal', contas: { '5gb': 2 }, dominio: { tipo: 'novo' } };
+
+function compararDominioPrincipal(f, api) {
+  const { avulsos } = calcularOrcamento(ENTRADA_DOMINIO_NOVO);
   const avulso = avulsos.find((a) => a.tipo === 'dominio_principal');
   assert.ok(avulso, 'dominio_principal ausente');
   assert.equal(avulso.unit_centavos, f.PRECOS.dominio, 'dominio_principal: unit_centavos');
   assert.equal(avulso.subtotal_centavos, f.PRECOS.dominio, 'dominio_principal: subtotal_centavos');
+  assert.equal(avulso.unit_centavos, api.DOMINIO, 'dominio_principal: DOMINIO da API');
 }
 
 // Lança na primeira divergência entre o front carregado e a tabela da API.
@@ -124,7 +127,7 @@ function comparar(front, api) {
     assert.equal(qtd * f.PRECOS.dominio, avulsos[0].subtotal_centavos, `domínio extra ×${qtd}`);
   }
 
-  compararDominioPrincipal(f);
+  compararDominioPrincipal(f, api);
 }
 
 test('CA4: assets/precos.js e o módulo precos da API têm a mesma tabela, limites e cascata', () => {
@@ -165,11 +168,11 @@ for (const [nome, de, para] of MUTACOES) {
 }
 
 test('CIT-183 CA5: o dominio_principal da API custa o PRECOS.dominio do front', () => {
-  compararDominioPrincipal(carregar(CODIGO));
+  compararDominioPrincipal(carregar(CODIGO), tabela);
 });
 
 test('CIT-183 CA5: mutação do preço do domínio no front quebra a comparação do dominio_principal', () => {
   const mutado = CODIGO.replace('dominio: 7900', 'dominio: 7901');
   assert.notEqual(mutado, CODIGO, 'a substituição precisa casar com o texto de precos.js');
-  assert.throws(() => compararDominioPrincipal(carregar(mutado)), assert.AssertionError);
+  assert.throws(() => compararDominioPrincipal(carregar(mutado), tabela), assert.AssertionError);
 });

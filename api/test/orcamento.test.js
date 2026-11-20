@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { construirAppTeste } from './auxiliares.js';
 import { VERSAO } from '../src/precos/tabela.js';
+import { respostaOrcamento } from '../src/precos/rotas.js';
 
 const ORIGEM_PERMITIDA = 'http://127.0.0.1:4200';
 
@@ -461,9 +462,7 @@ test('CIT-183 CA1: com ciclo anual o domínio principal continua 7900, sem desco
   assert.equal(corpo.avulsos[0].subtotal_centavos, 7900);
 });
 
-test('CIT-183 CA1: o schema de resposta exportado lista dominio_principal e dominio_extra no enum de avulsos.tipo', async () => {
-  const { respostaOrcamento } = await import('../src/precos/rotas.js');
-
+test('CIT-183 CA1: o schema de resposta exportado lista dominio_principal e dominio_extra no enum de avulsos.tipo', () => {
   assert.deepEqual(respostaOrcamento.properties.avulsos.items.properties.tipo.enum, ['dominio_principal', 'dominio_extra']);
 });
 
