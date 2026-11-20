@@ -5,6 +5,7 @@ import { calcularOrcamento, validarLimites } from './servico.js'
 
 const CICLOS = ['mensal', 'anual']
 const PLANOS_SKYBOX = Object.keys(ADDONS.skybox)
+const TIPOS_DOMINIO = ['novo', 'existente']
 
 function inteiro(maximo) {
   return { type: 'integer', minimum: 0, maximum: maximo }
@@ -24,7 +25,8 @@ const corpoOrcamento = objetoFechado({
       quantidade: inteiro(LIMITES.skybox)
     }, ['plano', 'quantidade']),
     extraDom: inteiro(LIMITES.extraDom)
-  })
+  }),
+  dominio: objetoFechado({ tipo: { type: 'string', enum: TIPOS_DOMINIO } }, ['tipo'])
 }, ['ciclo', 'contas'])
 
 const camposCentavos = [
@@ -49,7 +51,7 @@ const itemOrcamento = objetoFechado({
 }, ['tipo', 'chave', 'quantidade', ...camposCentavos, 'descontos'])
 
 const avulsoOrcamento = objetoFechado({
-  tipo: { type: 'string', enum: ['dominio_extra'] },
+  tipo: { type: 'string', enum: ['dominio_principal', 'dominio_extra'] },
   quantidade: { type: 'integer' },
   periodo: { type: 'string', enum: ['ano'] },
   unit_centavos: { type: 'integer' },
@@ -64,7 +66,7 @@ const camposTotais = [
   'avulso_centavos'
 ]
 
-const respostaOrcamento = objetoFechado({
+export const respostaOrcamento =objetoFechado({
   versao_tabela: { type: 'string' },
   ciclo: { type: 'string', enum: CICLOS },
   itens: { type: 'array', items: itemOrcamento },

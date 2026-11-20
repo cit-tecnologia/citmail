@@ -74,7 +74,7 @@ export function validarLimites({ contas, addons = {} }) {
 }
 
 // Orçamento de uma entrada já validada (schema e validarLimites).
-export function calcularOrcamento({ ciclo, contas, addons = {} }) {
+export function calcularOrcamento({ ciclo, contas, addons = {}, dominio }) {
   const anual = ciclo === 'anual'
   const itens = []
 
@@ -98,6 +98,9 @@ export function calcularOrcamento({ ciclo, contas, addons = {} }) {
   }
 
   const avulsos = []
+  if (dominio?.tipo === 'novo') {
+    avulsos.push({ tipo: 'dominio_principal', quantidade: 1, periodo: 'ano', unit_centavos: DOMINIO, subtotal_centavos: DOMINIO })
+  }
   const extraDom = addons.extraDom ?? 0
   if (extraDom > 0) {
     avulsos.push({ tipo: 'dominio_extra', quantidade: extraDom, periodo: 'ano', unit_centavos: DOMINIO, subtotal_centavos: extraDom * DOMINIO })
