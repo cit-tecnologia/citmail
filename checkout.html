@@ -203,14 +203,14 @@
         <!-- Panel: new domain name input + PIX -->
         <div id="domainNewPanel" class="is-hidden">
           <div class="field mb-16">
-            <label>Nome do domínio desejado <span class="req">*</span></label>
+            <label for="fDomNew">Nome do domínio desejado <span class="req">*</span></label>
             <div class="domain-row">
               <div class="domain-at"><svg class="icon mr-4" aria-hidden="true"><use href="assets/icons.svg#at-sign"></use></svg></div>
-              <input type="text" id="fDomNew" placeholder="minhaempresa" />
+              <input type="text" id="fDomNew" placeholder="minhaempresa" inputmode="text" autocapitalize="none" autocorrect="off" spellcheck="false" aria-describedby="domNewHint err-dom-new" />
               <div class="domain-tld" id="domNewTld">.com.br</div>
             </div>
             <span class="field-hint" id="domNewHint">Ex.: minhaempresa → minhaempresa.com.br</span>
-            <span class="field-error" id="err-dom-new">Informe o nome do domínio.</span>
+            <span class="field-error" id="err-dom-new"></span>
           </div>
 
           <!-- PIX for domain -->
@@ -240,9 +240,9 @@
         <!-- Panel: existing domain input -->
         <div id="domainExistPanel" class="is-hidden">
           <div class="field mb-10">
-            <label>Seu domínio atual <span class="req">*</span></label>
-            <input type="text" id="fDomExist" placeholder="minhaempresa.com.br" />
-            <span class="field-error" id="err-dom-exist">Informe seu domínio.</span>
+            <label for="fDomExist">Seu domínio atual <span class="req">*</span></label>
+            <input type="text" id="fDomExist" placeholder="minhaempresa.com.br" inputmode="url" autocapitalize="none" autocorrect="off" spellcheck="false" aria-describedby="err-dom-exist" />
+            <span class="field-error" id="err-dom-exist"></span>
           </div>
           <div class="alert-box alert-warn">
             <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#info"></use></svg>
@@ -912,7 +912,7 @@
   </div><!-- /checkout-wrapper -->
 
   <script src="assets/precos.js?v=26"></script>
-  <script src="assets/checkout.js?v=4"></script>
+  <script src="assets/checkout.js?v=6"></script>
 
 </body>
 </html>

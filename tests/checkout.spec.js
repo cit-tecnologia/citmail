@@ -2492,3 +2492,258 @@ testSemErros.describe('checkout — CIT-59: guarda sem PRECOS.limites (CA5)', { 
     ]);
   });
 });
+
+// CIT-181: validação do nome do domínio no passo 2 (checkout.html).
+const MSG_FORMATO_NOVO = /^Use de 2 a 26 letras, números ou hífen/;
+
+/**
+ * CIT-181: chega ao passo 2 com 1 conta de 25 GB e escolhe "Registrar .com.br".
+ * @param {import('@playwright/test').Page} page
+ */
+async function irParaPasso2Novo(page) {
+  await page.goto('checkout.html');
+  await page.locator('button[data-qtd-conta="25gb"][data-qtd-delta="1"]').click();
+  await page.locator('#btnStep1Next').click();
+  await page.locator('#doptBr').click();
+}
+
+test.describe('checkout — CIT-181: nome do domínio novo (CA1)', { tag: '@CIT-181' }, () => {
+  test('CA1 citflow.com.br avança, vira citflow no campo e o webmail não duplica .com.br', async ({ page, erros }) => {
+    await irParaPasso2Novo(page);
+    await page.locator('#fDomNew').fill('citflow.com.br');
+    await page.locator('#btnStep2Next').click();
+
+    await expect(page.locator('#step3')).toHaveClass(/active/);
+    await expect(page.locator('#successWebmail')).toHaveText('webmail.citflow.com.br');
+    await expect(page.locator('#fDomNew')).toHaveValue('citflow');
+  });
+
+  test('CA1 nomes inválidos não avançam e mostram o erro de formato no campo', async ({ page, erros }) => {
+    await irParaPasso2Novo(page);
+    for (const valor of ['cit flow', 'citflów', 'cit_flow', '-citflow', 'citflow-', 'a']) {
+      await page.locator('#fDomNew').fill(valor);
+      await page.locator('#btnStep2Next').click();
+
+      await expect(page.locator('#step2'), `"${valor}" deve manter o passo 2`).toHaveClass(/active/);
+      await expect(page.locator('#err-dom-new'), `"${valor}" deve mostrar o erro`).toBeVisible();
+      await expect(page.locator('#err-dom-new'), `"${valor}" deve usar a mensagem de formato`).toHaveText(MSG_FORMATO_NOVO);
+      await expect(page.locator('#fDomNew'), `"${valor}" deve marcar aria-invalid`).toHaveAttribute('aria-invalid', 'true');
+    }
+  });
+});
+
+const MSG_FORMATO_EXISTENTE = 'Domínio inválido. Ex.: minhaempresa.com.br';
+
+/**
+ * CIT-181: chega ao passo 2 e escolhe "Usar domínio existente".
+ * @param {import('@playwright/test').Page} page
+ */
+async function irParaPasso2Existente(page) {
+  await page.goto('checkout.html');
+  await page.locator('button[data-qtd-conta="25gb"][data-qtd-delta="1"]').click();
+  await page.locator('#btnStep1Next').click();
+  await page.locator('#doptExist').click();
+}
+
+/**
+ * CIT-181: volta ao passo 2 (se preciso), preenche o campo e clica Continuar.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} campo seletor do campo
+ * @param {string} valor
+ */
+async function digitarEContinuar(page, campo, valor) {
+  await page.evaluate(() => goStep(2));
+  await page.locator(campo).fill(valor);
+  await page.locator('#btnStep2Next').click();
+}
+
+test.describe('checkout — CIT-181: novo domínio, normalização e limites (CA2)', { tag: '@CIT-181' }, () => {
+  test('CA2 normaliza maiúsculas, espaços, www, .com.br e ponto final para o mesmo nome', async ({ page, erros }) => {
+    await irParaPasso2Novo(page);
+    for (const valor of [' CitFlow ', 'www.citflow.com.br', 'CITFLOW.COM.BR', 'citflow.com.br.']) {
+      await digitarEContinuar(page, '#fDomNew', valor);
+      await expect(page.locator('#step3'), `"${valor}" deve avançar`).toHaveClass(/active/);
+      await expect(page.locator('#fDomNew'), `"${valor}" deve virar citflow`).toHaveValue('citflow');
+      await expect(page.locator('#successWebmail'), `"${valor}" webmail`).toHaveText('webmail.citflow.com.br');
+    }
+  });
+
+  test('CA2 limites: ab, 26 letras, 1a e abc--d avançam', async ({ page, erros }) => {
+    await irParaPasso2Novo(page);
+    for (const valor of ['ab', 'a'.repeat(26), '1a', 'abc--d']) {
+      await digitarEContinuar(page, '#fDomNew', valor);
+      await expect(page.locator('#step3'), `"${valor}" deve avançar`).toHaveClass(/active/);
+      await expect(page.locator('#successWebmail'), `"${valor}" webmail`).toHaveText(`webmail.${valor}.com.br`);
+    }
+  });
+
+  test('CA2 recusa 27 letras, só números, -- nas posições 3-4 e entradas que esvaziam ao normalizar', async ({ page, erros }) => {
+    await irParaPasso2Novo(page);
+    for (const valor of ['a'.repeat(27), '123', 'ab--cd', 'www.com.br', '.com.br']) {
+      await digitarEContinuar(page, '#fDomNew', valor);
+      await expect(page.locator('#step2'), `"${valor}" deve manter o passo 2`).toHaveClass(/active/);
+      await expect(page.locator('#err-dom-new'), `"${valor}" deve mostrar o erro`).toBeVisible();
+      await expect(page.locator('#err-dom-new'), `"${valor}" deve mostrar a mensagem de formato`).toHaveText(MSG_FORMATO_NOVO);
+      await expect(page.locator('#fDomNew'), `"${valor}" deve marcar aria-invalid`).toHaveAttribute('aria-invalid', 'true');
+    }
+  });
+});
+
+test.describe('checkout — CIT-181: domínio existente (CA3)', { tag: '@CIT-181' }, () => {
+  test('CA3 domínios válidos avançam normalizados e viram o webmail', async ({ page, erros }) => {
+    await irParaPasso2Existente(page);
+    const casos = [
+      ['minhaempresa.com.br', 'minhaempresa.com.br'],
+      ['WWW.Minha-Empresa.com.br', 'minha-empresa.com.br'],
+      ['minhaempresa.com.br.', 'minhaempresa.com.br'],
+      ['empresa.io', 'empresa.io'],
+    ];
+    for (const [valor, esperado] of casos) {
+      await digitarEContinuar(page, '#fDomExist', valor);
+      await expect(page.locator('#step3'), `"${valor}" deve avançar`).toHaveClass(/active/);
+      await expect(page.locator('#successWebmail'), `"${valor}" webmail`).toHaveText(`webmail.${esperado}`);
+    }
+  });
+
+  test('CA3 domínios inválidos não avançam e mostram o erro de formato', async ({ page, erros }) => {
+    await irParaPasso2Existente(page);
+    const invalidos = ['qualquer coisa', 'citflow', '-empresa.com.br', 'empresa-.com.br', 'empresa.com.123', 'empresa..com.br', 'empresá.com.br'];
+    for (const valor of invalidos) {
+      await digitarEContinuar(page, '#fDomExist', valor);
+      await expect(page.locator('#step2'), `"${valor}" deve manter o passo 2`).toHaveClass(/active/);
+      await expect(page.locator('#err-dom-exist'), `"${valor}" deve mostrar o erro`).toBeVisible();
+      await expect(page.locator('#err-dom-exist'), `"${valor}" mensagem`).toHaveText(MSG_FORMATO_EXISTENTE);
+      await expect(page.locator('#fDomExist'), `"${valor}" aria-invalid`).toHaveAttribute('aria-invalid', 'true');
+    }
+  });
+});
+
+test.describe('checkout — CIT-181: vazio x formato e limpeza ao digitar (CA4)', { tag: '@CIT-181' }, () => {
+  test('CA4 campo vazio ou só espaços mostra a mensagem de vazio do novo domínio', async ({ page, erros }) => {
+    await irParaPasso2Novo(page);
+    for (const valor of ['', '   ']) {
+      await digitarEContinuar(page, '#fDomNew', valor);
+      await expect(page.locator('#step2'), `"${valor}" deve manter o passo 2`).toHaveClass(/active/);
+      await expect(page.locator('#err-dom-new'), `"${valor}"`).toBeVisible();
+      await expect(page.locator('#err-dom-new'), `"${valor}"`).toHaveText('Informe o nome do domínio.');
+    }
+  });
+
+  test('CA4 campo vazio ou só espaços mostra a mensagem de vazio do domínio existente', async ({ page, erros }) => {
+    await irParaPasso2Existente(page);
+    for (const valor of ['', '   ']) {
+      await digitarEContinuar(page, '#fDomExist', valor);
+      await expect(page.locator('#step2'), `"${valor}" deve manter o passo 2`).toHaveClass(/active/);
+      await expect(page.locator('#err-dom-exist'), `"${valor}"`).toBeVisible();
+      await expect(page.locator('#err-dom-exist'), `"${valor}"`).toHaveText('Informe seu domínio.');
+    }
+  });
+
+  test('CA4 digitar no campo do novo domínio esconde o erro e remove aria-invalid', async ({ page, erros }) => {
+    await irParaPasso2Novo(page);
+    await digitarEContinuar(page, '#fDomNew', 'cit flow');
+    await expect(page.locator('#err-dom-new')).toBeVisible();
+    await page.locator('#fDomNew').pressSequentially('x');
+    await expect(page.locator('#err-dom-new')).toBeHidden();
+    await expect(page.locator('#fDomNew')).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  test('CA4 digitar no campo do domínio existente esconde o erro e remove aria-invalid', async ({ page, erros }) => {
+    await irParaPasso2Existente(page);
+    await digitarEContinuar(page, '#fDomExist', 'qualquer coisa');
+    await expect(page.locator('#err-dom-exist')).toBeVisible();
+    await page.locator('#fDomExist').pressSequentially('x');
+    await expect(page.locator('#err-dom-exist')).toBeHidden();
+    await expect(page.locator('#fDomExist')).not.toHaveAttribute('aria-invalid', 'true');
+  });
+});
+
+test.describe('checkout — CIT-181: acessibilidade (CA5)', { tag: '@CIT-181' }, () => {
+  test('CA5 campos ligam o erro por aria-describedby e são achados pelo rótulo', async ({ page, erros }) => {
+    await irParaPasso2Novo(page);
+    await expect(page.locator('#fDomNew')).toHaveAttribute('aria-describedby', /err-dom-new/);
+    await expect(page.locator('#fDomExist')).toHaveAttribute('aria-describedby', /err-dom-exist/);
+    await expect(page.getByLabel('Nome do domínio desejado')).toHaveAttribute('id', 'fDomNew');
+    await expect(page.getByLabel('Seu domínio atual')).toHaveAttribute('id', 'fDomExist');
+  });
+
+  test('CA5 em repouso os spans de erro estão vazios e voltam a ficar vazios depois de erro seguido de digitação', async ({ page, erros }) => {
+    await irParaPasso2Novo(page);
+    await expect(page.locator('#err-dom-new')).toHaveText('');
+    await expect(page.locator('#err-dom-exist')).toHaveText('');
+
+    await digitarEContinuar(page, '#fDomNew', 'cit flow');
+    await expect(page.locator('#err-dom-new')).toHaveText(MSG_FORMATO_NOVO);
+    await page.locator('#fDomNew').pressSequentially('x');
+    await expect(page.locator('#err-dom-new')).toHaveText('');
+
+    await page.locator('#doptExist').click();
+    await digitarEContinuar(page, '#fDomExist', 'qualquer coisa');
+    await expect(page.locator('#err-dom-exist')).toHaveText(MSG_FORMATO_EXISTENTE);
+    await page.locator('#fDomExist').pressSequentially('x');
+    await expect(page.locator('#err-dom-exist')).toHaveText('');
+  });
+
+  test('CA5 após o erro o campo do novo domínio recebe o foco', async ({ page, erros }) => {
+    await irParaPasso2Novo(page);
+    await digitarEContinuar(page, '#fDomNew', 'cit flow');
+    await expect(page.locator('#fDomNew')).toBeFocused();
+  });
+
+  test('CA5 após o erro o campo do domínio existente recebe o foco', async ({ page, erros }) => {
+    await irParaPasso2Existente(page);
+    await digitarEContinuar(page, '#fDomExist', 'qualquer coisa');
+    await expect(page.locator('#fDomExist')).toBeFocused();
+  });
+});
+
+test.describe('checkout — CIT-181: mensagem de erro a 320 px (CA6)', { tag: '@CIT-181' }, () => {
+  /** @param {import('@playwright/test').Page} page @param {string} erroSel */
+  async function conferirSemTransbordo(page, erroSel) {
+    await expect(page.locator(erroSel)).toBeVisible();
+    const medidas = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth, iw: window.innerWidth }));
+    expect(medidas.sw, 'sem rolagem horizontal').toBeLessThanOrEqual(medidas.iw);
+    const caixa = await page.locator(erroSel).boundingBox();
+    expect(caixa).not.toBeNull();
+    expect(caixa.x, 'erro começa dentro da tela').toBeGreaterThanOrEqual(0);
+    expect(caixa.x + caixa.width, 'erro termina dentro de 320 px').toBeLessThanOrEqual(320);
+  }
+
+  test('CA6 painel novo: erro de formato cabe em 320 px sem rolagem horizontal', async ({ page, erros }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await irParaPasso2Novo(page);
+    await digitarEContinuar(page, '#fDomNew', 'cit flow');
+    await expect(page.locator('#err-dom-new')).toHaveText(MSG_FORMATO_NOVO);
+    await conferirSemTransbordo(page, '#err-dom-new');
+  });
+
+  test('CA6 painel existente: erro de formato cabe em 320 px sem rolagem horizontal', async ({ page, erros }) => {
+    await page.setViewportSize({ width: 320, height: 700 });
+    await irParaPasso2Existente(page);
+    await digitarEContinuar(page, '#fDomExist', 'qualquer coisa');
+    await expect(page.locator('#err-dom-exist')).toHaveText(MSG_FORMATO_EXISTENTE);
+    await conferirSemTransbordo(page, '#err-dom-exist');
+  });
+});
+
+test.describe('checkout — CIT-181: troca de opção limpa o erro (CA7)', { tag: '@CIT-181' }, () => {
+  test('CA7 erro do novo domínio some ao ir para domínio existente e voltar', async ({ page, erros }) => {
+    await irParaPasso2Novo(page);
+    await digitarEContinuar(page, '#fDomNew', 'cit flow');
+    await expect(page.locator('#err-dom-new')).toBeVisible();
+    await page.locator('#doptExist').click();
+    await page.locator('#doptBr').click();
+    await expect(page.locator('#err-dom-new')).toBeHidden();
+    await expect(page.locator('#fDomNew')).not.toHaveAttribute('aria-invalid', 'true');
+  });
+
+  test('CA7 erro do domínio existente some ao ir para novo domínio e voltar', async ({ page, erros }) => {
+    await irParaPasso2Existente(page);
+    await digitarEContinuar(page, '#fDomExist', 'qualquer coisa');
+    await expect(page.locator('#err-dom-exist')).toBeVisible();
+    await page.locator('#doptBr').click();
+    await page.locator('#doptExist').click();
+    await expect(page.locator('#err-dom-exist')).toBeHidden();
+    await expect(page.locator('#fDomExist')).not.toHaveAttribute('aria-invalid', 'true');
+  });
+});

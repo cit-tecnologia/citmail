@@ -26,6 +26,8 @@ function selectDomainOpt(choice) {
   document.getElementById('domainNewPanel').style.display  = choice === 'new-br' ? 'block' : 'none';
   document.getElementById('domainExistPanel').style.display = choice === 'existing' ? 'block' : 'none';
   document.getElementById('step2Error').style.display = 'none';
+  limparErroDominio('fDomNew', 'err-dom-new');
+  limparErroDominio('fDomExist', 'err-dom-exist');
   if (choice === 'new-br') {
     document.getElementById('domNewTld').textContent = '.com.br';
     document.getElementById('domPixDesc').textContent = `Registrar domínio .com.br — R$ ${fmtCentavos(PRECOS.dominio)}/ano`;
@@ -36,8 +38,34 @@ function selectDomainOpt(choice) {
   }
 }
 
+function limparErroDominio(campoId, erroId) {
+  const erro = document.getElementById(erroId);
+  erro.classList.remove('visible');
+  erro.textContent = '';
+  document.getElementById(campoId).removeAttribute('aria-invalid');
+}
+
 function onDomNewInput() {
-  document.getElementById('err-dom-new').classList.remove('visible');
+  limparErroDominio('fDomNew', 'err-dom-new');
+}
+
+function onDomExistInput() {
+  limparErroDominio('fDomExist', 'err-dom-exist');
+}
+
+// Normaliza o que o cliente digitou: minúsculas, sem "www." inicial e sem ponto final (e, no novo domínio, sem ".com.br").
+function normalizarDominioNovo(v) {
+  return v.trim().toLowerCase().replace(/^www\./, '').replace(/\.$/, '').replace(/\.com\.br$/, '');
+}
+function normalizarDominioExistente(v) {
+  return v.trim().toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
+}
+// .com.br: 2 a 26 caracteres a-z/0-9/hífen, sem hífen nas pontas, não só números, sem "--" nas posições 3-4 (posições contadas a partir de 1; no código, slice(2, 4) = índices 2-3).
+function dominioNovoValido(n) {
+  return /^[a-z0-9][a-z0-9-]{0,24}[a-z0-9]$/.test(n) && !/^[0-9]+$/.test(n) && n.slice(2, 4) !== '--';
+}
+function dominioExistenteValido(d) {
+  return /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(d);
 }
 
 function genFakePix(val) {
@@ -61,14 +89,27 @@ function startDomPixTimer() {
 function goStep2Next() {
   const errEl = document.getElementById('step2Error');
   if (!Object.keys(DOMAIN_OPTS).includes(domainChoice)) { errEl.style.display = 'flex'; return; }
+  const campoInvalido = (campo, erroId, msg) => {
+    showErr(erroId, msg);
+    campo.setAttribute('aria-invalid', 'true');
+    campo.focus();
+  };
   if (domainChoice === 'new-br') {
-    const name = document.getElementById('fDomNew').value.trim();
-    if (!name) { document.getElementById('err-dom-new').classList.add('visible'); return; }
+    const campo = document.getElementById('fDomNew');
+    const bruto = campo.value.trim();
+    const name = normalizarDominioNovo(bruto);
+    if (!bruto) { campoInvalido(campo, 'err-dom-new', 'Informe o nome do domínio.'); return; }
+    if (!dominioNovoValido(name)) { campoInvalido(campo, 'err-dom-new', 'Use de 2 a 26 letras, números ou hífen, sem hífen no início ou no fim e não só números.'); return; }
+    campo.value = name;
     document.getElementById('successWebmail').textContent = 'webmail.' + name + '.com.br';
   }
   if (domainChoice === 'existing') {
-    const d = document.getElementById('fDomExist').value.trim();
-    if (!d) { document.getElementById('err-dom-exist').classList.add('visible'); return; }
+    const campo = document.getElementById('fDomExist');
+    const bruto = campo.value.trim();
+    const d = normalizarDominioExistente(bruto);
+    if (!bruto) { campoInvalido(campo, 'err-dom-exist', 'Informe seu domínio.'); return; }
+    if (!dominioExistenteValido(d)) { campoInvalido(campo, 'err-dom-exist', 'Domínio inválido. Ex.: minhaempresa.com.br'); return; }
+    campo.value = d;
     document.getElementById('successWebmail').textContent = 'webmail.' + d;
   }
   errEl.style.display = 'none';
@@ -831,6 +872,7 @@ document.querySelectorAll('[data-dominio-opcao]').forEach(el => {
   el.addEventListener('click', e => selectDomainOpt(e.currentTarget.dataset.dominioOpcao));
 });
 document.getElementById('fDomNew').addEventListener('input', () => onDomNewInput());
+document.getElementById('fDomExist').addEventListener('input', () => onDomExistInput());
 document.getElementById('btnCopyDomPix').addEventListener('click', e =>
   copiarComFeedback(e.currentTarget, document.getElementById('domPixCode').textContent,
     { codigo: document.getElementById('domPixCode'), aviso: document.getElementById('domPixCopiaAviso') }));
