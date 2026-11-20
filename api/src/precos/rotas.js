@@ -66,7 +66,7 @@ const camposTotais = [
   'avulso_centavos'
 ]
 
-export const respostaOrcamento =objetoFechado({
+export const respostaOrcamento = objetoFechado({
   versao_tabela: { type: 'string' },
   ciclo: { type: 'string', enum: CICLOS },
   itens: { type: 'array', items: itemOrcamento },
