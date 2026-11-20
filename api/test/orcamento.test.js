@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { construirAppTeste } from './auxiliares.js';
 import { VERSAO } from '../src/precos/tabela.js';
+import { respostaOrcamento } from '../src/precos/rotas.js';
 
 const ORIGEM_PERMITIDA = 'http://127.0.0.1:4200';
 
@@ -415,3 +416,124 @@ test('CA7: corpo JSON de 70 000 bytes → 413 corpo_muito_grande, sem stack', as
     assert.ok(!resposta.body.includes(trecho), `corpo não deveria conter "${trecho}": ${resposta.body}`);
   }
 });
+
+// CIT-183 -------------------------------------------------------------------
+
+const B = { ciclo: 'mensal', contas: { '5gb': 2 } };
+const DOMINIO_PRINCIPAL = { tipo: 'dominio_principal', quantidade: 1, periodo: 'ano', unit_centavos: 7900, subtotal_centavos: 7900 };
+const DOMINIO_EXTRA_2 = { tipo: 'dominio_extra', quantidade: 2, periodo: 'ano', unit_centavos: 7900, subtotal_centavos: 15800 };
+
+test('CIT-183 CA1: domínio novo responde 200 com o avulso dominio_principal de 7900', async (t) => {
+  const resposta = await orcar(t, { ...B, dominio: { tipo: 'novo' } });
+
+  assert.equal(resposta.statusCode, 200);
+  const corpo = resposta.json();
+  assert.deepEqual(corpo.avulsos, [DOMINIO_PRINCIPAL]);
+  assert.equal(corpo.totais.avulso_centavos, 7900);
+});
+
+test('CIT-183 CA1: domínio novo com extraDom ×2 põe o principal antes do extra e soma 23700', async (t) => {
+  const resposta = await orcar(t, { ...B, addons: { extraDom: 2 }, dominio: { tipo: 'novo' } });
+
+  assert.equal(resposta.statusCode, 200);
+  const corpo = resposta.json();
+  assert.deepEqual(corpo.avulsos.map((a) => a.tipo), ['dominio_principal', 'dominio_extra']);
+  assert.deepEqual(corpo.avulsos, [DOMINIO_PRINCIPAL, DOMINIO_EXTRA_2]);
+  assert.equal(corpo.totais.avulso_centavos, 23700);
+});
+
+test('CIT-183 CA1: domínio novo só muda avulsos e avulso_centavos; itens e totais recorrentes ficam iguais', async (t) => {
+  const com = (await orcar(t, { ...B, dominio: { tipo: 'novo' } })).json();
+  const sem = (await orcar(t, B)).json();
+
+  assert.deepEqual(com.itens, sem.itens);
+  const { avulso_centavos: _a, ...totaisCom } = com.totais;
+  const { avulso_centavos: _b, ...totaisSem } = sem.totais;
+  assert.deepEqual(totaisCom, totaisSem);
+});
+
+test('CIT-183 CA1: com ciclo anual o domínio principal continua 7900, sem desconto anual', async (t) => {
+  const resposta = await orcar(t, { ciclo: 'anual', contas: { '5gb': 2 }, dominio: { tipo: 'novo' } });
+
+  assert.equal(resposta.statusCode, 200);
+  const corpo = resposta.json();
+  assert.equal(corpo.avulsos[0].tipo, 'dominio_principal');
+  assert.equal(corpo.avulsos[0].unit_centavos, 7900);
+  assert.equal(corpo.avulsos[0].subtotal_centavos, 7900);
+});
+
+test('CIT-183 CA1: o schema de resposta exportado lista dominio_principal e dominio_extra no enum de avulsos.tipo', () => {
+  assert.deepEqual(respostaOrcamento.properties.avulsos.items.properties.tipo.enum, ['dominio_principal', 'dominio_extra']);
+});
+
+test('CIT-183 CA2: domínio existente responde 200 sem avulsos e com avulso_centavos 0', async (t) => {
+  const resposta = await orcar(t, { ...B, dominio: { tipo: 'existente' } });
+
+  assert.equal(resposta.statusCode, 200);
+  const corpo = resposta.json();
+  assert.deepEqual(corpo.avulsos, []);
+  assert.equal(corpo.totais.avulso_centavos, 0);
+});
+
+test('CIT-183 CA2: domínio existente com extraDom ×1 cobra só o extra, sem dominio_principal', async (t) => {
+  const resposta = await orcar(t, { ...B, addons: { extraDom: 1 }, dominio: { tipo: 'existente' } });
+
+  assert.equal(resposta.statusCode, 200);
+  const corpo = resposta.json();
+  assert.equal(corpo.avulsos.length, 1);
+  assert.equal(corpo.avulsos[0].tipo, 'dominio_extra');
+  assert.equal(corpo.avulsos[0].subtotal_centavos, 7900);
+  assert.equal(corpo.avulsos.some((a) => a.tipo === 'dominio_principal'), false);
+});
+
+const CORPOS_COMPAT = [
+  ['B', B],
+  ['EXEMPLO_CONTRATO', EXEMPLO_CONTRATO],
+];
+
+for (const [nome, corpo] of CORPOS_COMPAT) {
+  test(`CIT-183 CA3: ${nome} sem dominio não tem dominio_principal e mantém a versão da tabela`, async (t) => {
+    const resposta = await orcar(t, corpo);
+
+    assert.equal(resposta.statusCode, 200);
+    const json = resposta.json();
+    assert.equal(json.avulsos.some((a) => a.tipo === 'dominio_principal'), false);
+    assert.equal(json.versao_tabela, '2026-11-07.1');
+  });
+
+  test(`CIT-183 CA3: ${nome} com dominio existente responde igual ao mesmo corpo sem dominio`, async (t) => {
+    const sem = await orcar(t, corpo);
+    const com = await orcar(t, { ...corpo, dominio: { tipo: 'existente' } });
+
+    assert.equal(com.statusCode, 200);
+    assert.deepEqual(com.json(), sem.json());
+  });
+}
+
+const CASOS_DOMINIO_400 = [
+  ['tipo fora do enum', { dominio: { tipo: 'transferencia' } }, [{ campo: 'dominio.tipo', mensagem: 'valor inválido' }]],
+  ['dominio vazio', { dominio: {} }, [{ campo: 'dominio.tipo', mensagem: 'obrigatório' }]],
+  ['campo nome extra', { dominio: { tipo: 'novo', nome: 'exemplo.com.br' } }, [{ campo: 'dominio.nome', mensagem: 'campo não permitido' }]],
+  ['campo unit_centavos extra', { dominio: { tipo: 'novo', unit_centavos: 1 } }, [{ campo: 'dominio.unit_centavos', mensagem: 'campo não permitido' }]],
+  [
+    'tipo numérico',
+    { dominio: { tipo: 1 } },
+    [
+      { campo: 'dominio.tipo', mensagem: 'tipo inválido' },
+      { campo: 'dominio.tipo', mensagem: 'valor inválido' },
+    ],
+  ],
+  ['dominio string', { dominio: 'novo' }, [{ campo: 'dominio', mensagem: 'tipo inválido' }]],
+  ['dominio null', { dominio: null }, [{ campo: 'dominio', mensagem: 'tipo inválido' }]],
+  ['dominio array', { dominio: [] }, [{ campo: 'dominio', mensagem: 'tipo inválido' }]],
+  ['zero contas com domínio novo', { contas: {}, dominio: { tipo: 'novo' } }, [{ campo: 'contas', mensagem: 'fora do limite' }]],
+];
+
+for (const [nome, entrada, campos] of CASOS_DOMINIO_400) {
+  test(`CIT-183 CA4: ${nome} → 400 validacao`, async (t) => {
+    const resposta = await orcar(t, { ciclo: 'mensal', contas: { '5gb': 2 }, ...entrada });
+
+    assert.equal(resposta.statusCode, 400);
+    assert.deepEqual(resposta.json(), { erro: 'validacao', campos });
+  });
+}
