@@ -154,19 +154,69 @@ test('CA5(b): carregarConfigFila é válida com só REDIS_URL (sem banco nem COR
   assert.equal(config.redisUrl, 'redis://127.0.0.1:56379');
 });
 
+// CIT-166 (CA6): o worker passa a ler o banco (outbox); DATABASE_URL é conferida
+// depois de REDIS_URL e OUTBOX_INTERVALO_MS tem faixa 100-60000.
+const AMBIENTE_WORKER = {
+  REDIS_URL: 'redis://127.0.0.1:56379',
+  DATABASE_URL: 'postgres://postgres:SENHA-FICTICIA@127.0.0.1:55433/postgres',
+};
+
+test('CA6: carregarConfigWorker sem DATABASE_URL lança erro citando o nome, sem o valor do segredo', () => {
+  const { DATABASE_URL: _descartado, ...semBanco } = AMBIENTE_WORKER;
+  assert.throws(
+    () => carregarConfigWorker({ ...semBanco, NODE_ENV: 'development' }),
+    (erro) => {
+      assert.match(erro.message, /DATABASE_URL não definida/);
+      assert.ok(!erro.message.includes('SENHA-FICTICIA'));
+      return true;
+    },
+  );
+});
+
+test('CA6: carregarConfigWorker confere REDIS_URL antes de DATABASE_URL', () => {
+  assert.throws(
+    () => carregarConfigWorker({ NODE_ENV: 'development' }),
+    (erro) => { assert.match(erro.message, /REDIS_URL/); return true; },
+  );
+});
+
+test('CA6: carregarConfigWorker lê DATABASE_URL e usa 2000 em OUTBOX_INTERVALO_MS ausente ou vazia', () => {
+  const ausente = carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development' });
+  assert.equal(ausente.databaseUrl, AMBIENTE_WORKER.DATABASE_URL);
+  assert.equal(ausente.outboxIntervaloMs, 2000);
+  const vazia = carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development', OUTBOX_INTERVALO_MS: '' });
+  assert.equal(vazia.outboxIntervaloMs, 2000);
+});
+
+test('CA6: carregarConfigWorker aceita OUTBOX_INTERVALO_MS nos limites 100 e 60000', () => {
+  for (const valor of ['100', '60000']) {
+    const config = carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development', OUTBOX_INTERVALO_MS: valor });
+    assert.equal(config.outboxIntervaloMs, Number(valor));
+  }
+});
+
+for (const valor of ['99', '60001', '1e3', 'abc']) {
+  test(`CA6: carregarConfigWorker lança erro citando OUTBOX_INTERVALO_MS com ${JSON.stringify(valor)}`, () => {
+    assert.throws(
+      () => carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development', OUTBOX_INTERVALO_MS: valor }),
+      (erro) => { assert.match(erro.message, /OUTBOX_INTERVALO_MS/); return true; },
+    );
+  });
+}
+
 test('CA5(c): carregarConfigWorker em produção exige TELEGRAM_BOT_TOKEN e TELEGRAM_CHAT_ID', () => {
   assert.throws(
-    () => carregarConfigWorker({ NODE_ENV: 'production', REDIS_URL: 'redis://127.0.0.1:56379', TELEGRAM_CHAT_ID: 'CHAT-FICTICIO' }),
+    () => carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'production', TELEGRAM_CHAT_ID: 'CHAT-FICTICIO' }),
     (erro) => { assert.match(erro.message, /TELEGRAM_BOT_TOKEN/); return true; },
   );
   assert.throws(
-    () => carregarConfigWorker({ NODE_ENV: 'production', REDIS_URL: 'redis://127.0.0.1:56379', TELEGRAM_BOT_TOKEN: 'TOKEN-FICTICIO' }),
+    () => carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'production', TELEGRAM_BOT_TOKEN: 'TOKEN-FICTICIO' }),
     (erro) => { assert.match(erro.message, /TELEGRAM_CHAT_ID/); return true; },
   );
 });
 
 test('CA5(c): carregarConfigWorker fora de produção é válida sem Telegram', () => {
-  const config = carregarConfigWorker({ NODE_ENV: 'development', REDIS_URL: 'redis://127.0.0.1:56379' });
+  const config = carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development' });
   assert.equal(config.telegramBotToken, undefined);
   assert.equal(config.telegramChatId, undefined);
 });
