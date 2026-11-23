@@ -302,11 +302,14 @@ export function criarServicoPedidos({
   }
 
   // Devolve o id do cliente no Asaas e se o contato do pedido diverge do cadastro do
-  // documento: o da tabela `cliente` e, quando achado ou criado agora, o do Asaas.
+  // documento: o da tabela `cliente` e o do Asaas. Com o id já gravado, o do Asaas vale
+  // pelo `asaas_contato_confere` (gravado junto com o id; cobre também a retomada).
   async function obterClienteAsaas(pedidoId, dados, sinal, log) {
     const contato = { nome: dados.contato_nome, email: dados.contato_email }
     const divergeDoBanco = !contatoConfere(contato, dados)
-    if (dados.asaas_cliente_id) return { asaasClienteId: dados.asaas_cliente_id, divergente: divergeDoBanco }
+    if (dados.asaas_cliente_id) {
+      return { asaasClienteId: dados.asaas_cliente_id, divergente: divergeDoBanco || !dados.asaas_contato_confere }
+    }
     const buscar = (signal) => asaas.buscarClientePorDocumento(dados.documento, { signal })
     let cadastro = await chamar('buscar_cliente', () => buscar(sinal))
     if (!cadastro) {
@@ -322,10 +325,14 @@ export function criarServicoPedidos({
         email: dados.email
       }), () => buscar(AbortSignal.timeout(asaasTimeoutMs)), { pedidoId, log })
     }
-    const asaasClienteId = await noBanco(() => repositorio.gravarAsaasClienteId(pool, dados.cliente_id, cadastro.id))
-    // Outro pedido gravou outro id antes: o cadastro do Asaas desse id não foi lido aqui.
-    const divergeDoAsaas = asaasClienteId !== cadastro.id || !contatoConfere(contato, cadastro)
-    return { asaasClienteId, divergente: divergeDoBanco || divergeDoAsaas }
+    // Confere se o cadastro do Asaas (achado, ou criado agora com os dados da linha) tem o
+    // contato da linha `cliente`: é o que vale para os pedidos seguintes do documento.
+    const confere = contatoConfere(dados, cadastro)
+    const gravado = await noBanco(() => repositorio.gravarAsaasClienteId(pool, dados.cliente_id, cadastro.id, confere))
+    // Outro pedido gravou outro id antes: vale o `asaas_contato_confere` gravado com ele.
+    const divergeDoAsaas = !gravado.contatoConfere ||
+      (gravado.asaasClienteId === cadastro.id && !contatoConfere(contato, cadastro))
+    return { asaasClienteId: gravado.asaasClienteId, divergente: divergeDoBanco || divergeDoAsaas }
   }
 
   // Fica a mais antiga; as demais (POST em voo efetivado depois de uma retomada) são

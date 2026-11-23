@@ -6,6 +6,9 @@
 -- Nenhuma coluna guarda cartão: a forma de pagamento é escolhida na fatura do Asaas.
 
 -- O cliente reaproveitado não muda (ADR 0014): o contato de cada compra fica no pedido.
+-- `asaas_contato_confere`: o cadastro do Asaas de `asaas_cliente_id` tem o mesmo nome e
+-- e-mail desta linha (criado por este sistema com eles, ou achado e conferido); falso
+-- retém a fatura de todo pedido do documento (ADR 0014, decisão 10).
 CREATE TABLE cliente (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   tipo_pessoa text NOT NULL CHECK (tipo_pessoa IN ('fisica', 'juridica')),
@@ -15,6 +18,7 @@ CREATE TABLE cliente (
   email text NOT NULL CHECK (char_length(email) BETWEEN 3 AND 254),
   telefone text NOT NULL CHECK (telefone ~ '^[0-9]{10,11}$'),
   asaas_cliente_id text UNIQUE CHECK (asaas_cliente_id ~ '^[A-Za-z0-9_]{1,64}$'),
+  asaas_contato_confere boolean NOT NULL DEFAULT false,
   anonimizado_em timestamptz,
   criado_em timestamptz NOT NULL DEFAULT now(),
   atualizado_em timestamptz NOT NULL DEFAULT now(),
@@ -112,7 +116,7 @@ BEGIN
     'GRANT INSERT (tipo_pessoa, documento, nome, email, telefone) ON cliente TO %I',
     papel
   );
-  EXECUTE format('GRANT UPDATE (asaas_cliente_id) ON cliente TO %I', papel);
+  EXECUTE format('GRANT UPDATE (asaas_cliente_id, asaas_contato_confere) ON cliente TO %I', papel);
   EXECUTE format(
     'GRANT INSERT (cliente_id, chave_idempotencia, corpo_hash, estado, criando_desde, ciclo, itens, '
     'total_centavos, versao_tabela_precos, contato_nome, contato_email, contato_telefone, request_id) '

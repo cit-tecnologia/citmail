@@ -36,7 +36,9 @@ function primeiroAtivo(corpo) {
   return ativos(corpo)[0] ?? null
 }
 
-// Ordem determinística: `dateCreated` crescente e, no empate, id crescente.
+// Ordem determinística: `dateCreated` crescente e, no empate, id crescente. O
+// `dateCreated` pode vir só com a data (`AAAA-MM-DD`): no mesmo dia, decide o id, que
+// não é necessariamente a ordem de criação.
 function maisAntigaPrimeiro(a, b) {
   const dataA = typeof a?.dateCreated === 'string' ? a.dateCreated : ''
   const dataB = typeof b?.dateCreated === 'string' ? b.dateCreated : ''

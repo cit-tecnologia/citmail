@@ -58,7 +58,7 @@ export async function inserirDominios(executor, pedidoId, dominios) {
 export async function buscarDadosDoFluxo(executor, pedidoId) {
   const resultado = await executor.query(
     `SELECT p.ciclo, p.itens, p.total_centavos, p.contato_nome, p.contato_email,
-            c.id AS cliente_id, c.documento, c.nome, c.email, c.telefone, c.asaas_cliente_id
+            c.id AS cliente_id, c.documento, c.nome, c.email, c.telefone, c.asaas_cliente_id, c.asaas_contato_confere
        FROM pedido p JOIN cliente c ON c.id = p.cliente_id
       WHERE p.id = $1`,
     [pedidoId]
@@ -66,17 +66,18 @@ export async function buscarDadosDoFluxo(executor, pedidoId) {
   return resultado.rows[0]
 }
 
-// Grava o id do Asaas só se ainda não houver um; senão devolve o gravado por outro pedido.
-export async function gravarAsaasClienteId(executor, clienteId, asaasClienteId) {
+// Grava o id do Asaas e se o cadastro dele confere com a linha, só se ainda não houver
+// um id; senão devolve o gravado por outro pedido. `{ asaasClienteId, contatoConfere }`.
+export async function gravarAsaasClienteId(executor, clienteId, asaasClienteId, contatoConfere) {
   const resultado = await executor.query(
-    `UPDATE cliente SET asaas_cliente_id = $1
+    `UPDATE cliente SET asaas_cliente_id = $1, asaas_contato_confere = $3
       WHERE id = $2 AND asaas_cliente_id IS NULL
-      RETURNING asaas_cliente_id`,
-    [asaasClienteId, clienteId]
+      RETURNING asaas_cliente_id, asaas_contato_confere`,
+    [asaasClienteId, clienteId, contatoConfere]
   )
-  if (resultado.rows.length > 0) return resultado.rows[0].asaas_cliente_id
-  const gravado = await executor.query('SELECT asaas_cliente_id FROM cliente WHERE id = $1', [clienteId])
-  return gravado.rows[0].asaas_cliente_id
+  const linha = resultado.rows[0] ??
+    (await executor.query('SELECT asaas_cliente_id, asaas_contato_confere FROM cliente WHERE id = $1', [clienteId])).rows[0]
+  return { asaasClienteId: linha.asaas_cliente_id, contatoConfere: linha.asaas_contato_confere }
 }
 
 export async function temPosse(executor, pedidoId, posse) {
