@@ -5,8 +5,8 @@
 //  4. assinaturas (contas; domínios se houver avulso), idem, e a URL da 1ª fatura;
 //  5. transação final guardada pela posse.
 // Nenhuma transação fica aberta durante chamada ao Asaas. Falha nos passos 3 e 4 remove
-// as assinaturas já obtidas (compensação) e grava `falhou_na_criacao`. Logs só com ids e
-// códigos (D7); erro de banco só com `code` e `routine`.
+// as assinaturas do pedido achadas pelo `externalReference` (compensação) e grava
+// `falhou_na_criacao`. Logs só com ids e códigos (D7); erro de banco só com `code` e `routine`.
 import { createHash } from 'node:crypto'
 import { ErroAsaas } from '../asaas/cliente.js'
 import { calcularOrcamento, validarLimites } from '../precos/servico.js'
@@ -25,6 +25,7 @@ export const PRAZO_PEDIDO_MS = 45000
 const FUSO = 'America/Sao_Paulo'
 const DIAS_ATE_VENCIMENTO = 3
 const INVALIDO = 'valor inválido'
+const TIPOS_ASSINATURA = ['contas', 'dominios']
 export const MENSAGEM_ASAAS_INDISPONIVEL = 'Não foi possível gerar a cobrança agora. Tente de novo em alguns minutos.'
 
 class ErroBanco extends Error {
@@ -158,9 +159,10 @@ async function chamar(operacao, chamada) {
   }
 }
 
-// Timeout ou erro no POST: consulta de novo antes de declarar falha (decisão 5). Se a
+// Timeout ou erro no POST: consulta de novo antes de declarar falha (decisão 5), com
+// sinal próprio (`confirmar` não usa o prazo global, que pode já ter vencido). Se a
 // consulta também falhar, vale o erro do POST.
-async function criarComConfirmacao(operacao, criar, confirmar) {
+async function criarComConfirmacao(operacao, criar, confirmar, { pedidoId, log }) {
   try {
     return await chamar(operacao, criar)
   } catch (erro) {
@@ -168,8 +170,11 @@ async function criarComConfirmacao(operacao, criar, confirmar) {
     let achado = null
     try {
       achado = await confirmar()
-    } catch {
-      achado = null
+    } catch (erroConfirmacao) {
+      log.warn(
+        { pedidoId, operacao, tipo: erroConfirmacao?.tipo, erro: erroConfirmacao?.name },
+        'confirmação falhou'
+      )
     }
     if (achado) return achado
     throw erro
@@ -185,9 +190,10 @@ export function criarServicoPedidos({
   prazoPedidoMs = PRAZO_PEDIDO_MS,
   prazoCriandoMs
 }) {
-  // Maior que o prazo global mais a compensação: o fluxo original sempre termina ou
-  // desiste antes de uma retomada começar (95 s com o padrão).
-  const prazoRetomadaMs = prazoCriandoMs ?? prazoPedidoMs + 2 * asaasTimeoutMs + 30000
+  // Maior que o prazo global mais a confirmação (1 × timeout) e a compensação (até 2 ×
+  // timeout), ambas fora dele: o fluxo original sempre termina ou desiste antes de uma
+  // retomada começar (105 s com o padrão).
+  const prazoRetomadaMs = prazoCriandoMs ?? prazoPedidoMs + 3 * asaasTimeoutMs + 30000
 
   async function emTransacao(operacao) {
     const conexao = await pool.connect()
@@ -221,10 +227,22 @@ export function criarServicoPedidos({
     return { status: 201, corpo: { pedidoId, estado, faturas } }
   }
 
-  // Compensação best-effort, fora do prazo global (até 2 × ASAAS_TIMEOUT_MS no total).
-  async function compensar(pedidoId, obtidas, log) {
+  // Compensação best-effort, com sinal próprio fora do prazo global (até 2 ×
+  // ASAAS_TIMEOUT_MS no total; cada chamada, até 1 ×). Busca pelo `externalReference`
+  // todas as assinaturas do pedido, inclusive as de um POST que deu timeout e foi
+  // efetivado, e remove as achadas e as já obtidas.
+  async function compensar(pedidoId, tipos, obtidas, log) {
     const sinal = AbortSignal.timeout(2 * asaasTimeoutMs)
-    for (const { asaasAssinaturaId } of obtidas) {
+    const ids = new Set(obtidas.map(({ asaasAssinaturaId }) => asaasAssinaturaId))
+    for (const tipo of tipos) {
+      try {
+        const achadas = await asaas.listarAssinaturasPorReferencia(`pedido:${pedidoId}:${tipo}`, { signal: sinal })
+        for (const id of achadas) ids.add(id)
+      } catch (erro) {
+        log.warn({ pedidoId, operacao: 'buscar_assinatura', tipo: erro?.tipo, erro: erro?.name }, 'compensação sem consulta')
+      }
+    }
+    for (const asaasAssinaturaId of ids) {
       try {
         await asaas.removerAssinatura(asaasAssinaturaId, { signal: sinal })
       } catch {
@@ -233,7 +251,7 @@ export function criarServicoPedidos({
     }
   }
 
-  async function falhar({ pedidoId, posse, motivo, obtidas, erro, log, requestId }) {
+  async function falhar({ pedidoId, posse, motivo, tipos = TIPOS_ASSINATURA, obtidas, erro, log, requestId }) {
     if (erro instanceof ErroBanco) logarErroBanco(log, pedidoId, erro)
     log.warn(
       { pedidoId, falhaMotivo: motivo, operacao: erro?.operacao, statusAsaas: erro?.status },
@@ -249,7 +267,7 @@ export function criarServicoPedidos({
       return respostaFalha('banco', requestId)
     }
     if (!comPosse) return possePerdida(pedidoId, log)
-    await compensar(pedidoId, obtidas, log)
+    await compensar(pedidoId, tipos, obtidas, log)
     try {
       if (!(await repositorio.marcarFalha(pool, pedidoId, posse, motivo))) return possePerdida(pedidoId, log)
     } catch (erroBanco) {
@@ -258,10 +276,10 @@ export function criarServicoPedidos({
     return respostaFalha(motivo, requestId)
   }
 
-  async function obterClienteAsaas(dados, sinal) {
+  async function obterClienteAsaas(pedidoId, dados, sinal, log) {
     if (dados.asaas_cliente_id) return dados.asaas_cliente_id
-    const buscar = () => asaas.buscarClientePorDocumento(dados.documento, { signal: sinal })
-    let asaasClienteId = await chamar('buscar_cliente', buscar)
+    const buscar = (signal) => asaas.buscarClientePorDocumento(dados.documento, { signal })
+    let asaasClienteId = await chamar('buscar_cliente', () => buscar(sinal))
     if (!asaasClienteId) {
       asaasClienteId = await criarComConfirmacao('criar_cliente', () => asaas.criarCliente({
         nome: dados.nome,
@@ -269,15 +287,35 @@ export function criarServicoPedidos({
         telefone: dados.telefone,
         documento: dados.documento,
         referencia: `cliente:${dados.cliente_id}`
-      }, { signal: sinal }), buscar)
+      }, { signal: sinal }), () => buscar(AbortSignal.timeout(asaasTimeoutMs)), { pedidoId, log })
     }
     return noBanco(() => repositorio.gravarAsaasClienteId(pool, dados.cliente_id, asaasClienteId))
   }
 
-  async function obterAssinatura(pedidoId, plano, asaasClienteId, vencimento, sinal) {
+  // Fica a mais antiga; as demais (POST em voo efetivado depois de uma retomada) são
+  // removidas, best-effort, com o mesmo sinal da consulta.
+  async function manterUma(pedidoId, ids, sinal, log) {
+    const [mantida = null, ...duplicadas] = ids
+    for (const asaasAssinaturaId of duplicadas) {
+      log.warn({ pedidoId, asaasAssinaturaId }, 'assinatura duplicada')
+      try {
+        await asaas.removerAssinatura(asaasAssinaturaId, { signal: sinal })
+      } catch {
+        log.error({ pedidoId, asaasAssinaturaId }, 'assinatura órfã')
+      }
+    }
+    return mantida
+  }
+
+  async function obterAssinatura(pedidoId, plano, asaasClienteId, vencimento, sinal, log) {
     const referencia = `pedido:${pedidoId}:${plano.tipo}`
-    const buscar = () => asaas.buscarAssinaturaPorReferencia(referencia, { signal: sinal })
-    const achada = await chamar('buscar_assinatura', buscar)
+    const buscar = async (signal) => manterUma(
+      pedidoId,
+      await asaas.listarAssinaturasPorReferencia(referencia, { signal }),
+      signal,
+      log
+    )
+    const achada = await chamar('buscar_assinatura', () => buscar(sinal))
     if (achada) return achada
     return criarComConfirmacao('criar_assinatura', () => asaas.criarAssinatura({
       cliente: asaasClienteId,
@@ -285,7 +323,7 @@ export function criarServicoPedidos({
       vencimento,
       ciclo: plano.cycle,
       referencia
-    }, { signal: sinal }), buscar)
+    }, { signal: sinal }), () => buscar(AbortSignal.timeout(asaasTimeoutMs)), { pedidoId, log })
   }
 
   // Lista vazia, erro ou timeout: `url: null`, sem falhar o pedido (decisão 6).
@@ -304,21 +342,24 @@ export function criarServicoPedidos({
     const vencimento = calcularVencimento(agora())
     const obtidas = []
     let asaasClienteId
+    let tipos
     try {
       const dados = await noBanco(() => repositorio.buscarDadosDoFluxo(pool, pedidoId))
-      asaasClienteId = await obterClienteAsaas(dados, sinal)
-      for (const plano of planosDeAssinatura(dados)) {
-        const asaasAssinaturaId = await obterAssinatura(pedidoId, plano, asaasClienteId, vencimento, sinal)
+      const planos = planosDeAssinatura(dados)
+      tipos = planos.map(({ tipo }) => tipo)
+      asaasClienteId = await obterClienteAsaas(pedidoId, dados, sinal, log)
+      for (const plano of planos) {
+        const asaasAssinaturaId = await obterAssinatura(pedidoId, plano, asaasClienteId, vencimento, sinal, log)
         const assinatura = { ...plano, clienteId: dados.cliente_id, asaasAssinaturaId, url: null }
         obtidas.push(assinatura)
         assinatura.url = await urlDaFatura(pedidoId, asaasAssinaturaId, sinal, log)
       }
     } catch (erro) {
       if (erro instanceof ErroAsaas) {
-        return falhar({ pedidoId, posse, motivo: `asaas_${erro.tipo}`, obtidas, erro, log, requestId })
+        return falhar({ pedidoId, posse, motivo: `asaas_${erro.tipo}`, tipos, obtidas, erro, log, requestId })
       }
       if (erro instanceof ErroBanco) {
-        return falhar({ pedidoId, posse, motivo: 'banco', obtidas, erro, log, requestId })
+        return falhar({ pedidoId, posse, motivo: 'banco', tipos, obtidas, erro, log, requestId })
       }
       throw erro
     }
@@ -341,7 +382,7 @@ export function criarServicoPedidos({
         return true
       })
     } catch (erro) {
-      return falhar({ pedidoId, posse, motivo: 'banco', obtidas, erro: new ErroBanco(erro), log, requestId })
+      return falhar({ pedidoId, posse, motivo: 'banco', tipos, obtidas, erro: new ErroBanco(erro), log, requestId })
     }
     if (!concluido) return possePerdida(pedidoId, log)
 

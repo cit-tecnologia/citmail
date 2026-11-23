@@ -137,7 +137,7 @@ Pedido no Asaas ([ADR 0014](../docs/adr/0014-criacao-do-pedido-no-asaas.md)). S�
 | Variável | Uso | Padrão |
 |---|---|---|
 | `PEDIDOS_HABILITADO` | `true` ou `false` (outro valor impede a subida). Desligada, `POST /api/pedidos` não é registrada (404). **Só ligar em produção depois do aceite dos termos (#62) e do limite de taxa da rota (E6-H4)** (ADR 0014). | `false` em produção; `true` fora dela |
-| `ASAAS_BASE_URL` | URL base da API v3 do Asaas (sandbox ou produção). Em produção, só `https://`. Obrigatória com `ASAAS_API_KEY`, em qualquer ambiente: não há URL padrão. | sem padrão |
+| `ASAAS_BASE_URL` | URL base da API v3 do Asaas (sandbox ou produção). Em produção, só `https://` com o host `api.asaas.com` ou `api-sandbox.asaas.com` (sem porta nem credencial). Obrigatória com `ASAAS_API_KEY`, em qualquer ambiente: não há URL padrão. | sem padrão |
 | `ASAAS_API_KEY` | Chave da API do Asaas, enviada no cabeçalho `access_token`. Segredo: só no ambiente da API. Com a rota ligada em produção, obrigatória; fora de produção, sem ela (e sem adaptador injetado nos testes), a rota responde 503 `asaas_nao_configurado`. | sem padrão |
 | `ASAAS_TIMEOUT_MS` | Limite de cada chamada ao Asaas, em ms (inteiro de 1000 a 30000). O pedido inteiro tem ainda um prazo global de 45 s nas chamadas de criação. | `10000` |
 
@@ -262,15 +262,15 @@ Logs: `publicador iniciado` (`intervaloMs`), `evento sem consumidor` (`eventoId`
 
 ## Pedidos
 
-`POST /api/pedidos` ([ADR 0014](../docs/adr/0014-criacao-do-pedido-no-asaas.md); código em `src/pedidos/`, tabelas `cliente`, `pedido`, `pedido_dominio` e `assinatura` da migração `pedidos`). Corpo: o do orçamento com `dominio: { tipo, nome }` obrigatório, mais `dominios_extras` (tantos quantos `addons.extraDom`), `cliente { nome, email, telefone, documento }`, `chave_idempotencia` (UUID gerado pelo checkout), `versao_tabela` e `total_exibido_centavos`. Todo objeto é fechado: campo de cartão responde 400.
+`POST /api/pedidos` ([ADR 0014](../docs/adr/0014-criacao-do-pedido-no-asaas.md); código em `src/pedidos/`, tabelas `cliente`, `pedido`, `pedido_dominio` e `assinatura` da migração `pedidos`). Corpo: o do orçamento com `dominio: { tipo, nome }` obrigatório, mais `dominios_extras` (tantos quantos `addons.extraDom`), `cliente { nome, email, telefone, documento }`, `chave_idempotencia` (UUID gerado pelo checkout), `versao_tabela` e `total_exibido_centavos`. Todo objeto é fechado: campo de cartão responde 400. Nome, e-mail, telefone e documento com caractere de controle ou invisível (`\p{C}`) respondem 400 `requisicao_invalida`.
 
 Respostas: 201 `{ pedidoId, estado: 'aguardando_pagamento', faturas: [{ tipo: 'contas' | 'dominios', url }] }` (`url` pode ser `null`); 400 validação; 404 com a rota desligada; 409 `total_divergente` (com `total_centavos` e `versao_tabela`) ou `pedido_em_criacao`; 422 `chave_reutilizada`; 500 `interno`; 502/504 `asaas_indisponivel` com `mensagem`; 503 `asaas_nao_configurado` (fora de produção).
 
 - O pedido é gravado em `criando` (com `criando_desde`, a posse do fluxo) **antes** de qualquer chamada ao Asaas; nenhuma transação fica aberta durante uma chamada.
-- Antes de cada criação e antes de declarar falha, a API consulta o Asaas pelo documento (cliente) ou pelo `externalReference` `pedido:<id>:<tipo>` (assinatura) e reaproveita o que achar.
-- A mesma chave com o mesmo corpo devolve a resposta gravada (201 ou a mesma falha); com outro corpo, 422. Pedido em `criando` responde 409 até o prazo de retomada (95 s com o padrão) e depois é retomado pela mesma chave.
-- Falha do Asaas depois de criar uma assinatura: `DELETE` de todas as assinaturas do pedido (compensação) e `falhou_na_criacao` com `falha_motivo` em código. `DELETE` que falha sai no log `error` `assinatura órfã` (só `pedidoId` e `asaasAssinaturaId`).
-- Logs só com ids e códigos: `pedido criado`, `pedido retomado`, `pedido falhou na criação` (`pedidoId`, `falhaMotivo`, `operacao`, `statusAsaas`), `fatura sem url`, `posse perdida`, `assinatura órfã` e `erro de banco no pedido` (`code` e `routine`).
+- Antes de cada criação e antes de declarar falha, a API consulta o Asaas pelo documento (cliente) ou pelo `externalReference` `pedido:<id>:<tipo>` (assinatura) e reaproveita o que achar. A consulta de confirmação (depois de erro no `POST`) tem timeout próprio, fora do prazo global. Mais de uma assinatura ativa com a mesma referência: fica a mais antiga e as demais são removidas (log `warn` `assinatura duplicada`, só ids).
+- A mesma chave com o mesmo corpo devolve a resposta gravada (201 ou a mesma falha); com outro corpo, 422. Pedido em `criando` responde 409 até o prazo de retomada (105 s com o padrão) e depois é retomado pela mesma chave. A retomada não impede de todo a duplicata (um `POST` em voo do fluxo anterior pode ser efetivado depois dela): a próxima consulta remove a sobra, e o fechamento definitivo fica para a reconciliação por job (ADR 0014).
+- Falha do Asaas depois de criar uma assinatura: `DELETE` de todas as assinaturas ativas achadas pelo `externalReference` de cada tipo do pedido, mais as já obtidas (compensação, com timeout próprio fora do prazo global) e `falhou_na_criacao` com `falha_motivo` em código. `DELETE` que falha sai no log `error` `assinatura órfã` (só `pedidoId` e `asaasAssinaturaId`).
+- Logs só com ids e códigos: `pedido criado`, `pedido retomado`, `pedido falhou na criação` (`pedidoId`, `falhaMotivo`, `operacao`, `statusAsaas`), `fatura sem url`, `posse perdida`, `assinatura órfã`, `assinatura duplicada`, `confirmação falhou` e `compensação sem consulta` (`operacao`, `tipo` do erro e `erro` com o nome do erro) e `erro de banco no pedido` (`code` e `routine`).
 - Nos testes, `construirApp(config, { asaas, pedidos })` recebe o adaptador (stub local) e as opções do serviço (`agora`, `versaoTabela`, `prazoPedidoMs`, `prazoCriandoMs`); `construirAppTeste` repassa as duas.
 
 ## Como rodar os testes

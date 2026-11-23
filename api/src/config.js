@@ -60,8 +60,11 @@ function lerBooleano(env, nome, padrao) {
 }
 
 // Pedido no Asaas (ADR 0014; CIT-61). A rota nasce desligada em produção até o aceite
-// (#62) e o limite de taxa (E6-H4). Ligada em produção, chave e URL `https://` são
-// obrigatórias; fora dela, chave sem URL é erro (sem URL padrão que aponte para produção).
+// (#62) e o limite de taxa (E6-H4). Ligada em produção, chave e URL são obrigatórias, e
+// a URL só pode ser `https://` num dos hosts do Asaas; fora dela, chave sem URL é erro
+// (sem URL padrão que aponte para produção).
+const HOSTS_ASAAS = ['api.asaas.com', 'api-sandbox.asaas.com']
+
 function lerAsaas(env, nodeEnv) {
   const producao = nodeEnv === 'production'
   const pedidosHabilitado = lerBooleano(env, 'PEDIDOS_HABILITADO', !producao)
@@ -77,14 +80,18 @@ function lerAsaas(env, nodeEnv) {
     throw new Error('ASAAS_BASE_URL não definida: obrigatória com ASAAS_API_KEY')
   }
   if (asaasBaseUrl) {
-    let protocolo
+    let url
     try {
-      protocolo = new URL(asaasBaseUrl).protocol
+      url = new URL(asaasBaseUrl)
     } catch {
       throw new Error('ASAAS_BASE_URL inválida: informe uma URL')
     }
-    if (producao ? protocolo !== 'https:' : !['https:', 'http:'].includes(protocolo)) {
+    if (producao ? url.protocol !== 'https:' : !['https:', 'http:'].includes(url.protocol)) {
       throw new Error(producao ? 'ASAAS_BASE_URL inválida: use https://' : 'ASAAS_BASE_URL inválida: use http:// ou https://')
+    }
+    // `url.host` inclui a porta: porta explícita ou credencial na URL também são recusadas.
+    if (producao && (!HOSTS_ASAAS.includes(url.host) || url.username || url.password)) {
+      throw new Error(`ASAAS_BASE_URL inválida: em produção, use o host ${HOSTS_ASAAS.join(' ou ')}`)
     }
   }
   return { pedidosHabilitado, asaasApiKey, asaasBaseUrl, asaasTimeoutMs }

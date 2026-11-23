@@ -27,9 +27,21 @@ function idValido(valor) {
 }
 
 // Itens removidos (`deleted: true`) nunca são reaproveitados (P7).
-function primeiroAtivo(corpo) {
+function ativos(corpo) {
   if (!Array.isArray(corpo?.data)) throw new ErroAsaas('resposta_invalida')
-  return corpo.data.find((item) => item?.deleted !== true) ?? null
+  return corpo.data.filter((item) => item?.deleted !== true)
+}
+
+function primeiroAtivo(corpo) {
+  return ativos(corpo)[0] ?? null
+}
+
+// Ordem determinística: `dateCreated` crescente e, no empate, id crescente.
+function maisAntigaPrimeiro(a, b) {
+  const dataA = typeof a?.dateCreated === 'string' ? a.dateCreated : ''
+  const dataB = typeof b?.dateCreated === 'string' ? b.dateCreated : ''
+  if (dataA !== dataB) return dataA < dataB ? -1 : 1
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
 }
 
 function urlHttps(valor) {
@@ -118,11 +130,11 @@ export function criarClienteAsaas({ baseUrl, apiKey, timeoutMs, fetch = globalTh
       return idValido(corpo?.id)
     },
 
-    // GET /subscriptions?externalReference= → id da primeira não removida, ou null (P3).
-    async buscarAssinaturaPorReferencia(referencia, { signal } = {}) {
+    // GET /subscriptions?externalReference= → ids de todas as não removidas, da mais
+    // antiga para a mais nova (P3); lista vazia se não houver.
+    async listarAssinaturasPorReferencia(referencia, { signal } = {}) {
       const corpo = await chamar('GET', `/subscriptions?${new URLSearchParams({ externalReference: referencia })}`, { signal })
-      const item = primeiroAtivo(corpo)
-      return item ? idValido(item.id) : null
+      return ativos(corpo).map((item) => ({ ...item, id: idValido(item?.id) })).sort(maisAntigaPrimeiro).map((item) => item.id)
     },
 
     // POST /subscriptions; o comprador escolhe a forma de pagamento na fatura (P4).

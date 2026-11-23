@@ -11,6 +11,9 @@ function objetoFechado(properties, required = Object.keys(properties)) {
 }
 
 const texto = (minLength, maxLength) => ({ type: 'string', minLength, maxLength })
+// Texto livre do contato sem caracteres de controle nem invisíveis (`\p{C}`): vai ao
+// Asaas e ao banco. O Ajv compila `pattern` com a flag `u`.
+const textoContato = (minLength, maxLength) => ({ ...texto(minLength, maxLength), pattern: '^\\P{C}*$' })
 
 const baseOrcamento = criarCorpoOrcamento({ pedido: true })
 
@@ -27,10 +30,10 @@ export const corpoPedido = {
     total_exibido_centavos: { type: 'integer', minimum: 0, maximum: 1000000000 },
     dominios_extras: { type: 'array', maxItems: LIMITES.extraDom, items: texto(1, 253) },
     cliente: objetoFechado({
-      nome: texto(2, 100),
-      email: { type: 'string', format: 'email', maxLength: 254 },
-      telefone: texto(10, 20),
-      documento: texto(11, 20)
+      nome: textoContato(2, 100),
+      email: { type: 'string', format: 'email', maxLength: 254, pattern: '^\\P{C}*$' },
+      telefone: textoContato(10, 20),
+      documento: textoContato(11, 20)
     })
   }
 }
