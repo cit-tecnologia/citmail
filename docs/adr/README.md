@@ -63,6 +63,7 @@ Data: 2026-09-25
 | 0011 | [0011-alertas-da-equipe.md](0011-alertas-da-equipe.md) | Canal de alerta da equipe | aceito | 2026-09-25 |
 | 0012 | [0012-fonte-unica-de-precos.md](0012-fonte-unica-de-precos.md) | Fonte única de preços com o servidor como autoridade | aceito | 2026-09-25 |
 | 0013 | [0013-seguranca-transversal-e-observabilidade.md](0013-seguranca-transversal-e-observabilidade.md) | Segurança transversal e observabilidade | aceito | 2026-09-25 |
+| 0014 | [0014-criacao-do-pedido-no-asaas.md](0014-criacao-do-pedido-no-asaas.md) | Criação do pedido no Asaas | proposto | 2026-11-23 |
 
 Hoje nenhum ADR está `aceito`: todos têm alguma parte proposta. Passam a `aceito` quando o responsável confirmar o que falta.
 
@@ -108,7 +109,12 @@ Pendências que não foram fechadas dentro do timebox do spike (3 dias úteis, a
 | Painel de produção sem história: migrar a landing para `citmail.com.br` (criar a história; a E2-H6 a deixa fora do escopo) ou publicar o painel antes em `painel.citmail.com.br` (ADR 0007). | responsável | 2026-10-01 |
 | Confirmar o evento `cobranca_paga` (pagamentos seguintes ao 1º, para a reativação da E4-H5) e o critério novo na E3-H4 (anexo de eventos). | responsável | 2026-10-01 |
 | `fatura_criada` emitido pela E3-H4 para a E7-H4 (anexo de eventos, divergência 9). | responsável | quando a E7-H4 sair da pendência |
-| `falhou_na_criacao`: nova tentativa com a mesma chave de idempotência e tratamento de assinatura órfã no Asaas (anexo de modelo de dados). | planner da E3-H2 | no plano da E3-H2 |
+| ~~`falhou_na_criacao`: nova tentativa com a mesma chave de idempotência e tratamento de assinatura órfã no Asaas (anexo de modelo de dados).~~ Fechada pelo [ADR 0014](0014-criacao-do-pedido-no-asaas.md) (CIT-61): a mesma chave devolve a mesma falha; nova tentativa com chave nova; compensação das assinaturas e log `assinatura órfã`. | planner da E3-H2 | fechada em 2026-11-23 |
+| Limite de taxa do `POST /api/pedidos`; até lá a rota fica desligada em produção (`PEDIDOS_HABILITADO`, ADR 0014). | responsável | na E6-H4 |
+| Retomada automática de pedido em `criando` por job no worker, em vez de só por novo envio com a mesma chave (ADR 0014). | responsável | depois da E3-H4 |
+| Reconciliação de assinatura órfã no Asaas (`DELETE` de compensação que falhou ou `POST` com timeout sem confirmação), hoje só no log `assinatura órfã` (ADR 0014). | responsável | depois da E3-H4 |
+| Cliente do Asaas reaproveitado (achado pelo documento) com notificações do Asaas ligadas: a API não o altera (ADR 0014, decisão 8). | responsável | até a E7 |
+| Confirmar no sandbox do Asaas as premissas P1–P8 do ADR 0014 (sobretudo o filtro por `externalReference`, itens `deleted`, `phone`/`mobilePhone` e a cobrança disponível na criação). | responsável | na #57 |
 | Expiração de pedido `aguardando_pagamento` nunca pago (anexo de modelo de dados). | responsável | 2026-10-01 |
 | Retenções propostas: evento bruto do Asaas (90 dias, ADR 0005), auditoria (IP em claro por 6 meses, registro por 5 anos, ADR 0013) e sessão (até 8 h, ADR 0008). | responsável | 2026-10-01 |
 
@@ -120,8 +126,8 @@ Ajustes que os ADRs pedem em critérios de aceite de outras histórias, para o P
 |---|---|---|---|
 | E2-H5 | 1 | Trocar `https://novo.citmail.com.br/api/health` pela URL do subdomínio da API de homologação (a definir). | ADR 0007 |
 | E2-H5 | 3 | A API não fica no host do rsync do site: o critério passa a conferir que o rsync do site e o deploy da API não se afetam. | ADR 0007 |
-| E3-H2 | 1 | `POST /api/pedidos` recebe `total_exibido_centavos` e a versão da tabela; total divergente responde 409 `total_divergente` com o total correto. | ADR 0012 |
-| E3-H2 | 4 e 6 | Rever depois da decisão sobre `falhou_na_criacao` (nova tentativa com a mesma chave, assinatura órfã). | Anexo de modelo de dados |
+| E3-H2 | 1 | `POST /api/pedidos` recebe `total_exibido_centavos` e a versão da tabela; total divergente responde 409 `total_divergente` com o total correto. **Aplicado** (CIT-61). | ADR 0012 |
+| E3-H2 | 4 e 6 | Rever depois da decisão sobre `falhou_na_criacao` (nova tentativa com a mesma chave, assinatura órfã). **Aplicado** (CIT-61, ADR 0014). | Anexo de modelo de dados |
 | E3-H3 | novo | Com 409 `total_divergente`, o checkout mostra o novo total e pede nova confirmação. | ADR 0012 |
 | E3-H4 | 1 | Token do cabeçalho `asaas-access-token` comparado em tempo constante. | ADR 0005 |
 | E3-H4 | novo | Antes de mudar estado, a API consulta o pagamento no Asaas e confere pagamento, valor e pedido; divergência não muda estado e gera alerta. | ADR 0005 |

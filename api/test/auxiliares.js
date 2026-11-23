@@ -161,12 +161,15 @@ export function criarConfigTeste(sobrescritas = {}) {
  *   de `config.databaseUrl`) por um objeto fornecido pelo teste (mock).
  * - `sobrescritasConfig`: mescladas por cima da config padrão de teste
  *   (ex.: `databaseUrl` apontando para uma porta inacessível, no CA2).
+ * - `asaas` e `pedidos` (CIT-61): adaptador do Asaas injetado e opções do serviço
+ *   de pedidos (`agora`, `versaoTabela`, `prazoPedidoMs`, `prazoCriandoMs`),
+ *   repassados a `construirApp`.
  *
  * Devolve `{ app, pool, captura, fechar }`; `fechar()` encerra o app, o pool
  * (quando criado aqui) e remove o banco temporário (quando criado aqui).
  */
 export async function construirAppTeste(opcoes = {}) {
-  const { comBanco = true, sobrescritasConfig = {}, pool: poolFornecido, filas } = opcoes;
+  const { comBanco = true, sobrescritasConfig = {}, pool: poolFornecido, filas, asaas, pedidos } = opcoes;
 
   let nomeBanco;
   let url;
@@ -184,7 +187,7 @@ export async function construirAppTeste(opcoes = {}) {
     ...sobrescritasConfig,
   });
 
-  const app = construirApp(config, { pool, logStream: captura.stream, filas });
+  const app = construirApp(config, { pool, logStream: captura.stream, filas, asaas, pedidos });
 
   return {
     app,

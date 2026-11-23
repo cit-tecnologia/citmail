@@ -49,6 +49,7 @@ Quem compra. Espelha o cliente do Asaas.
 - **Atributos:** `tipo_pessoa` (física ou jurídica), `documento` (CPF ou CNPJ, validado), `nome`, `email`, `telefone`, `asaas_cliente_id`, `anonimizado_em` (E6-H3, nulo até a exclusão de dados).
 - **Relações:** tem N pedidos; tem 0 ou 1 conta do titular.
 - **Regras:** novo pedido com o mesmo documento reaproveita o cliente (E3-H2). Nome e telefone mudam pelo painel (E5-H9); e-mail e documento não. Dado pessoal: nunca vai para payload de evento nem para log.
+- **Implementado (CIT-61, [ADR 0014](../0014-criacao-do-pedido-no-asaas.md)):** `documento` normalizado (sem máscara, maiúsculas; CNPJ alfanumérico aceito) e `tipo_pessoa` derivado dele. O cliente reaproveitado (pelo banco ou pelo Asaas) **não é atualizado** pelo pedido: o contato de cada compra fica no pedido (`contato_*`). `asaas_cliente_id` só é gravado se ainda for nulo.
 
 ## Entidade: pedido
 
@@ -63,6 +64,14 @@ Uma compra feita no checkout. Guarda o total calculado pelo servidor (ADR 0012).
   - Domínios: cada domínio do pedido (principal e extras) é um item com `id` UUID próprio (o `dominioItemId` dos eventos), `nome`, `tipo` (`existente` ou `novo`) e `verificado_em` (E4-H3). Domínio não é entidade própria nem agregado de evento: eventos de domínio usam o pedido como agregado. Pode virar entidade depois da #48.
   - Domínio novo: `dominio_pago_em` (1º pagamento da assinatura de domínios) e `dominio_registrado_em` (equipe marca o registro, E4-H4).
   - `falha_motivo` (código, sem dado pessoal) quando o estado for de falha.
+- **Implementado (CIT-61, [ADR 0014](../0014-criacao-do-pedido-no-asaas.md)):**
+  - Domínios na tabela `pedido_dominio` (`id` UUID, `nome` normalizado, `tipo`, `papel` `principal` ou `extra`; único `(pedido_id, nome)`).
+  - Itens em `itens` (JSON: snapshot de `itens` e `avulsos` do orçamento); `total_centavos` = `recorrente_ciclo_centavos + avulso_centavos`.
+  - `contato_nome`, `contato_email`, `contato_telefone`: o contato informado nesta compra (a #64 tira dele o e-mail da conta do titular). Dado pessoal: entram na anonimização da E6-H3.
+  - `corpo_hash`: SHA-256 do corpo canônico sem a chave e sem o bloco `cliente` (sem dado pessoal), para recusar a chave repetida com outro corpo (422).
+  - `criando_desde`: preenchido só no estado `criando`; é a posse do fluxo de criação e o início do prazo de retomada.
+  - `falha_motivo` no formato `^[a-z][a-z0-9_]{0,47}$`, aceito em `falhou_na_criacao` (obrigatório) e `falha_no_provisionamento`. Códigos da E3-H2: `asaas_timeout`, `asaas_rede`, `asaas_http_4xx`, `asaas_http_5xx`, `asaas_resposta_invalida` e `banco`.
+  - `request_id` da requisição que criou o pedido.
 - **Relações:** pertence a 1 cliente; gera 1 ou 2 assinaturas; provisiona N caixas; origina N eventos.
 
 ## Entidade: assinatura
@@ -138,6 +147,7 @@ Trilha das ações críticas (E6-H7, ADR 0013). Tabela só de inclusão: o papel
 
 | Estado | Entra quando | História |
 |---|---|---|
+| `criando` | pedido gravado, antes de qualquer chamada ao Asaas (estado técnico) | E3-H2 |
 | `aguardando_pagamento` | pedido e assinaturas criados no Asaas | E3-H2 |
 | `falhou_na_criacao` | erro do Asaas ao criar cliente ou assinatura | E3-H2 |
 | `aguardando_pagamento_do_dominio` | contas pagas, domínio novo ainda sem pagamento; nada é provisionado | E3-H4, E3-H5 |
@@ -149,8 +159,9 @@ Trilha das ações críticas (E6-H7, ADR 0013). Tabela só de inclusão: o papel
 
 ```mermaid
 stateDiagram-v2
-  [*] --> aguardando_pagamento
-  [*] --> falhou_na_criacao
+  [*] --> criando
+  criando --> aguardando_pagamento: cliente e assinaturas criados
+  criando --> falhou_na_criacao: erro do Asaas ou do banco (com compensação)
   aguardando_pagamento --> pago: pedido_pago (sem domínio novo)
   aguardando_pagamento --> aguardando_pagamento_do_dominio: pedido_pago (domínio novo não pago)
   aguardando_pagamento --> aguardando_registro_de_dominio: pedido_pago (domínio novo pago, não registrado)
@@ -174,7 +185,9 @@ Transições:
 - `pago` → `ativo`: pelo job de E4-H2; emite `conta_ativada`.
 - `pago` → `falha_no_provisionamento` → `pago`: o reprocessamento (E2-H10) retoma de onde parou.
 - `ativo` → `cancelado`: a solicitação (E5-H10) não muda o estado; só a efetivação.
-- Em aberto (README, "Decisões em aberto"): expiração de pedido `aguardando_pagamento` nunca pago; se `falhou_na_criacao` permite nova tentativa com a mesma chave de idempotência, e o que fazer com assinatura órfã no Asaas.
+- `criando` → `aguardando_pagamento` ou `falhou_na_criacao` (CIT-61, ADR 0014): toda escrita do fluxo leva a posse (`criando_desde`). Pedido em `criando` além do prazo (95 s com o padrão) é retomado pela mesma chave de idempotência, com posse atômica.
+- `falhou_na_criacao` é final: a mesma chave devolve a mesma falha; a nova tentativa usa chave nova (novo pedido). As assinaturas criadas antes da falha são removidas no Asaas (compensação); a que não sai fica no log `assinatura órfã` (ADR 0014).
+- Em aberto (README, "Decisões em aberto"): expiração de pedido `aguardando_pagamento` nunca pago.
 
 ## Estados da conta do titular
 

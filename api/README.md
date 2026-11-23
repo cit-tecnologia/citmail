@@ -17,7 +17,7 @@ api/
   src/
     config.js         lê e valida as variáveis de ambiente por processo (carregarConfig da API, carregarConfigWorker, carregarConfigFila da CLI)
     banco.js           pool do PostgreSQL (pg) e checagem de saúde (verificarBanco)
-    app.js             fábrica construirApp(config, { pool, logStream, filas }): Fastify, CORS, log, validação e erros
+    app.js             fábrica construirApp(config, { pool, logStream, filas, asaas, pedidos }): Fastify, CORS, log, validação e erros
     log.js             log técnico: lista de campos mascarados, serializers, LogCitmail (linha única por requisição) e criarLogger (worker)
     erros.js           tratamento padronizado de erro (400 por campo, 404, 500) e ErroDeDominio
     servidor.js        ponto de entrada da API: carrega a config, sobe o Fastify, encerra em SIGTERM/SIGINT
@@ -33,6 +33,8 @@ api/
     alertas/telegram.js envio do alerta ao Telegram (só ids, token fora de log e erro)
     cli/reprocessar.js  npm run reprocessar -- <jobId>: devolve um job falhado à fila
     asaas/resumo.js     resumoEventoAsaas: o que do webhook do Asaas pode ir para o log
+    asaas/cliente.js    criarClienteAsaas: adaptador HTTP da API v3 do Asaas (cliente, assinaturas, URL da 1ª fatura, remoção), ErroAsaas e centavosParaReais
+    pedidos/            POST /api/pedidos (ADR 0014): rotas.js (schema a partir do orçamento), servico.js (fluxo de criação, idempotência, retomada e compensação), repositorio.js, documento.js (CPF e CNPJ, inclusive alfanumérico), dominio.js (mesmas regras de assets/checkout.js)
     eventos/            eventos de domínio pelo outbox (sem rota): servico.js (registrarEvento), publicador.js (publicarPendentes, iniciarPublicador), consumidores.js (registro, processarEvento, criarHandlersDeConsumidores), repositorio.js, vocabulario.js (12 nomes)
     auditoria/          trilha de auditoria (só serviço e repositório, sem rota): servico.js (registrarAuditoria), repositorio.js (INSERT), vocabulario.js (ações, autores, alvos, resultados e chaves proibidas)
   test/                suíte node:test (uma spec por critério de aceite)
@@ -129,6 +131,15 @@ Fila e alertas (ADRs 0005 e 0011). Cada processo exige só o que usa: a API (`np
 | `TELEGRAM_CHAT_ID` | não lê | obrigatória em produção | não lê | Id do grupo que recebe os alertas. Segredo: só no ambiente do worker. | sem padrão |
 
 Fora de produção, sem as duas variáveis do Telegram, o alerta sai só no log (`alerta sem telegram`).
+
+Pedido no Asaas ([ADR 0014](../docs/adr/0014-criacao-do-pedido-no-asaas.md)). Só a API lê; nenhuma das quatro vai para o log.
+
+| Variável | Uso | Padrão |
+|---|---|---|
+| `PEDIDOS_HABILITADO` | `true` ou `false` (outro valor impede a subida). Desligada, `POST /api/pedidos` não é registrada (404). **Só ligar em produção depois do aceite dos termos (#62) e do limite de taxa da rota (E6-H4)** (ADR 0014). | `false` em produção; `true` fora dela |
+| `ASAAS_BASE_URL` | URL base da API v3 do Asaas (sandbox ou produção). Em produção, só `https://` com o host `api.asaas.com` ou `api-sandbox.asaas.com` (sem porta nem credencial). Obrigatória com `ASAAS_API_KEY`, em qualquer ambiente: não há URL padrão. | sem padrão |
+| `ASAAS_API_KEY` | Chave da API do Asaas, enviada no cabeçalho `access_token`. Segredo: só no ambiente da API. Com a rota ligada em produção, obrigatória; fora de produção, sem ela (e sem adaptador injetado nos testes), a rota responde 503 `asaas_nao_configurado`. | sem padrão |
+| `ASAAS_TIMEOUT_MS` | Limite de cada chamada ao Asaas, em ms (inteiro de 1000 a 30000). O pedido inteiro tem ainda um prazo global de 45 s nas chamadas de criação. | `10000` |
 
 ## Logs
 
@@ -249,6 +260,20 @@ O backfill **não reentrega** a consumidor cujo job `<consumidor>-<eventoId>` ai
 
 Logs: `publicador iniciado` (`intervaloMs`), `evento sem consumidor` (`eventoId`, `evento` com o nome do evento; `nome` é chave mascarada pelo logger), `publicação falhou` (`warn`, `erro` com o nome do erro, `eventos` com a quantidade), `evento já processado` (`eventoId`, `consumidor`); erro de banco do ciclo sai com `erro` e `codigo`, sem mensagem. Sem retenção por enquanto: `evento` e `evento_processado` crescem até a história de limpeza.
 
+## Pedidos
+
+`POST /api/pedidos` ([ADR 0014](../docs/adr/0014-criacao-do-pedido-no-asaas.md); código em `src/pedidos/`, tabelas `cliente`, `pedido`, `pedido_dominio` e `assinatura` da migração `pedidos`). Corpo: o do orçamento com `dominio: { tipo, nome }` obrigatório, mais `dominios_extras` (tantos quantos `addons.extraDom`), `cliente { nome, email, telefone, documento }`, `chave_idempotencia` (UUID gerado pelo checkout), `versao_tabela` e `total_exibido_centavos`. Todo objeto é fechado: campo de cartão responde 400. Nome, e-mail, telefone e documento com caractere de controle ou invisível (`\p{C}`) respondem 400 `requisicao_invalida`.
+
+Respostas: 201 `{ pedidoId, estado: 'aguardando_pagamento', faturas: [{ tipo: 'contas' | 'dominios', url }], aviso? }` (`url` pode ser `null`; com `aviso: 'fatura_pendente'`, todas as `url` são `null`: ver abaixo); 400 validação; 404 com a rota desligada; 409 `total_divergente` (com `total_centavos` e `versao_tabela`) ou `pedido_em_criacao`; 422 `chave_reutilizada`; 500 `interno`; 502/504 `asaas_indisponivel` com `mensagem`; 503 `asaas_nao_configurado` (fora de produção).
+
+- O pedido é gravado em `criando` (com `criando_desde`, a posse do fluxo) **antes** de qualquer chamada ao Asaas; nenhuma transação fica aberta durante uma chamada.
+- Antes de cada criação e antes de declarar falha, a API consulta o Asaas pelo documento (cliente) ou pelo `externalReference` `pedido:<id>:<tipo>` (assinatura) e reaproveita o que achar. A consulta de confirmação (depois de erro no `POST`) tem timeout próprio, fora do prazo global. Mais de uma assinatura ativa com a mesma referência: fica a mais antiga e as demais são removidas (log `warn` `assinatura duplicada`, só ids).
+- Fatura retida (ADR 0014, decisão 10): nome normalizado ou e-mail do pedido diferente do cadastro do documento (tabela `cliente` e, se achado ou criado agora, o `GET /customers`) → o pedido segue normal, mas a URL da fatura não é buscada nem gravada, `pedido.fatura_retida = true` e o 201 traz `url: null` e `aviso: 'fatura_pendente'`, sem dado do cadastro. Log `fatura retida` com `codigo: 'contato_divergente'`. `cliente.asaas_contato_confere`, gravado com o `asaas_cliente_id`, diz se o cadastro do Asaas bate com a linha; falso retém a fatura de todo pedido do documento.
+- A mesma chave com o mesmo corpo devolve a resposta gravada (201 ou a mesma falha); com outro corpo, 422. Pedido em `criando` responde 409 até o prazo de retomada (105 s com o padrão) e depois é retomado pela mesma chave. A retomada não impede de todo a duplicata (um `POST` em voo do fluxo anterior pode ser efetivado depois dela): a próxima consulta remove a sobra, e o fechamento definitivo fica para a reconciliação por job (ADR 0014).
+- Falha do Asaas depois de criar uma assinatura: `DELETE` de todas as assinaturas ativas achadas pelo `externalReference` de cada tipo do pedido, mais as já obtidas (compensação, com timeout próprio fora do prazo global) e `falhou_na_criacao` com `falha_motivo` em código. `DELETE` que falha sai no log `error` `assinatura órfã` (só `pedidoId` e `asaasAssinaturaId`).
+- Logs só com ids e códigos: `pedido criado`, `pedido retomado`, `pedido falhou na criação` (`pedidoId`, `falhaMotivo`, `operacao`, `statusAsaas`), `fatura sem url`, `posse perdida`, `assinatura órfã`, `assinatura duplicada`, `confirmação falhou` e `compensação sem consulta` (`operacao`, `tipo` do erro e `erro` com o nome do erro) e `erro de banco no pedido` (`code` e `routine`).
+- Nos testes, `construirApp(config, { asaas, pedidos })` recebe o adaptador (stub local) e as opções do serviço (`agora`, `versaoTabela`, `prazoPedidoMs`, `prazoCriandoMs`); `construirAppTeste` repassa as duas.
+
 ## Como rodar os testes
 
 Suíte `node:test` (nativa do Node.js) em `api/test/`, uma spec por critério de aceite. Nunca usa Playwright (isso é do site, na raiz).
@@ -287,6 +312,7 @@ Fora do escopo desta história (CIT-53), documentados aqui como referência:
 - Sessão do painel, com cookie ([ADR 0008](../docs/adr/0008-sessao-do-painel-e-senhas.md)).
 - Chamar a auditoria nas ações críticas reais (as histórias de cada ação); papel `<banco>_retencao` e rotina de pseudonimização do IP (ADR 0013, item 9).
 - Webhooks (ex.: Asaas).
+- Pedidos (ADR 0014): ligar `PEDIDOS_HABILITADO` em produção só depois da #62 e do limite de taxa (E6-H4); confirmar as premissas do Asaas no sandbox (#57); retomada de `criando` e reconciliação de assinatura órfã por job no worker.
 - Deploy da API na VPS, com `systemd`, Caddy e HTTPS (#57 e #93); a #57 também troca o login da app para membro de `<banco>_aplicacao`.
 
 ## ADRs relacionados
@@ -299,3 +325,4 @@ Fora do escopo desta história (CIT-53), documentados aqui como referência:
 - [0007 — Domínios, CORS e cookies por ambiente](../docs/adr/0007-dominios-cors-e-cookies-por-ambiente.md)
 - [0011 — Canal de alerta da equipe](../docs/adr/0011-alertas-da-equipe.md)
 - [0013 — Segurança transversal e observabilidade](../docs/adr/0013-seguranca-transversal-e-observabilidade.md)
+- [0014 — Criação do pedido no Asaas](../docs/adr/0014-criacao-do-pedido-no-asaas.md)

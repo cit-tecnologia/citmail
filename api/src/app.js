@@ -7,6 +7,8 @@ import { registrarErros } from './erros.js'
 import rotasSaude from './saude/rotas.js'
 import rotasExemplo from './exemplo/rotas.js'
 import rotasPrecos from './precos/rotas.js'
+import rotasPedidos from './pedidos/rotas.js'
+import { criarClienteAsaas } from './asaas/cliente.js'
 import { caminhosMascarados, LogCitmail, serializadores } from './log.js'
 import { criarConexaoProdutor } from './fila/conexao.js'
 import { criarFilas } from './fila/filas.js'
@@ -28,7 +30,10 @@ function construirValidador(externos, opcoesAjv) {
   return (rota) => (rota.httpPart === 'body' ? semCoercao : comCoercao)(rota)
 }
 
-export function construirApp(config, { pool, logStream, filas } = {}) {
+// `asaas`: adaptador injetado (testes), com prioridade sobre o criado pela chave.
+// `pedidos`: opções do serviço de pedidos para os testes (`agora`, `versaoTabela`,
+// `prazoPedidoMs`, `prazoCriandoMs`).
+export function construirApp(config, { pool, logStream, filas, asaas, pedidos } = {}) {
   const origens = config?.corsOrigens
   if (!Array.isArray(origens) || origens.length === 0 || origens.some((o) => !o || o.includes('*'))) {
     throw new Error('CORS_ORIGENS inválida: informe a lista exata de origens permitidas')
@@ -87,6 +92,16 @@ export function construirApp(config, { pool, logStream, filas } = {}) {
   registrarErros(app)
   app.register(rotasSaude, { prefix: '/api' })
   app.register(rotasPrecos, { prefix: '/api' })
+  // ADR 0014: desligada, a rota nem é registrada (404). Sem `pedidosHabilitado` na
+  // config (montada à mão), vale o padrão de `carregarConfig`: desligada só em produção.
+  // Sem adaptador nem chave (fora de produção), a rota responde 503.
+  if (config.pedidosHabilitado ?? config.nodeEnv !== 'production') {
+    const asaasTimeoutMs = config.asaasTimeoutMs ?? 10000
+    const adaptador = asaas ?? (config.asaasApiKey
+      ? criarClienteAsaas({ baseUrl: config.asaasBaseUrl, apiKey: config.asaasApiKey, timeoutMs: asaasTimeoutMs })
+      : undefined)
+    app.register(rotasPedidos, { prefix: '/api', asaas: adaptador, asaasTimeoutMs, ...pedidos })
+  }
   // A guarda de produção vem antes de qualquer fila: lá a rota de exemplo não existe,
   // nem com `filas` injetado. Fora de produção, `filas` injetado é de quem o criou
   // (o app não fecha); sem ele e com `REDIS_URL`, o app cria e fecha as suas.
