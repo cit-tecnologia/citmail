@@ -44,7 +44,7 @@ A chave de idempotência é o valor gravado em `evento.chave_idempotencia` (rest
 - **Entrega pelo outbox (ADR 0005).** O evento é gravado na tabela `evento` na mesma transação da mudança de estado. O publicador envia à fila depois do commit e marca `publicado_em`. Se o Redis cair, o evento continua no banco e sai na próxima varredura.
 - **Um job por consumidor.** Cada consumidor recebe o evento num job próprio, com `jobId = <consumidor>-<eventoId>` (hífen: o BullMQ pode rejeitar `:` em `jobId` customizado). Falha de um consumidor não reprocessa os outros.
 - **Emissor idempotente.** A restrição única em `chave_idempotencia` impede gravar o mesmo fato duas vezes.
-- **Consumidor idempotente.** Antes do efeito (e-mail, chamada à Skymail, tarefa), o consumidor confere se já processou o `eventoId`. Efeito externo consulta antes de criar (E4-H1).
+- **Consumidor idempotente.** Antes do efeito (e-mail, chamada à Skymail, tarefa), o consumidor confere se já processou o `eventoId`: grava `(consumidor, evento_id)` em `evento_processado` na mesma transação do efeito no banco; a marca já existente significa evento já processado, e o efeito não se repete (CIT-166). Efeito externo não é transacional: consulta antes de criar (E4-H1).
 - **Webhook do Asaas autenticado.** Sem o cabeçalho `asaas-access-token` ou com valor diferente (comparação em tempo constante): 401, nada gravado (E3-H4, ADR 0005).
 - **Webhook duplicado.** O Asaas pode reenviar o mesmo evento. O webhook grava o evento bruto (único pelo id do evento do Asaas) e responde 200; a segunda entrega vira nada. Dois eventos diferentes do Asaas para o mesmo pagamento caem na mesma chave de idempotência da tabela acima.
 - **Conferência no Asaas.** Antes de mudar estado e emitir `pedido_pago`, `dominio_pago`, `cobranca_paga` ou `cobranca_vencida`, o job consulta o pagamento na API do Asaas e confere pagamento, valor e pedido. Divergência: não emite, gera alerta.
@@ -74,4 +74,5 @@ A chave de idempotência é o valor gravado em `evento.chave_idempotencia` (rest
 |---|---|---|
 | 2026-09-25 | Criação do anexo. | CIT-47 |
 | 2026-09-25 | Ajustes da revisão: chaves de idempotência por fato de negócio, `jobId` com hífen, autenticação e conferência do webhook, `conta_ativada` fechado. | CIT-47 |
+| 2026-11-23 | Consumidor idempotente pela tabela `evento_processado`. | CIT-166 |
 | a definir | Revisão prevista pela #48 (PoC Skymail): payloads marcados "provisório (#48)" (`conta_ativada`, `dominio_verificado`, `conta_suspensa`, `conta_reativada`). | #48 |

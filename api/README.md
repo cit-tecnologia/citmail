@@ -21,7 +21,7 @@ api/
     log.js             log técnico: lista de campos mascarados, serializers, LogCitmail (linha única por requisição) e criarLogger (worker)
     erros.js           tratamento padronizado de erro (400 por campo, 404, 500) e ErroDeDominio
     servidor.js        ponto de entrada da API: carrega a config, sobe o Fastify, encerra em SIGTERM/SIGINT
-    worker.js          ponto de entrada do worker da fila (npm run worker): sem banco nem CORS; encerra em SIGTERM/SIGINT esperando o job ativo e os alertas em curso
+    worker.js          ponto de entrada do worker da fila (npm run worker): pool do banco, publicador do outbox e workers, sem CORS; encerra em SIGTERM/SIGINT esperando o ciclo do publicador, o job ativo e os alertas em curso
     saude/rotas.js      GET /api/health
     precos/             POST /api/orcamento (público, sem banco): tabela.js (tabela do servidor, limites e tetoAddon; paridade com assets/precos.js), servico.js (validarLimites e calcularOrcamento), rotas.js (schemas gerados da tabela); o corpo aceita `dominio: { tipo: 'novo' | 'existente' }` (opcional) e, com `novo`, `avulsos` traz o item `dominio_principal` (1 por ano, mesmo preço do domínio extra)
     exemplo/rotas.js    POST /api/exemplos e POST /api/exemplos/job (só fora de produção; padrão de schema, erro e de rota que só enfileira)
@@ -33,6 +33,7 @@ api/
     alertas/telegram.js envio do alerta ao Telegram (só ids, token fora de log e erro)
     cli/reprocessar.js  npm run reprocessar -- <jobId>: devolve um job falhado à fila
     asaas/resumo.js     resumoEventoAsaas: o que do webhook do Asaas pode ir para o log
+    eventos/            eventos de domínio pelo outbox (sem rota): servico.js (registrarEvento), publicador.js (publicarPendentes, iniciarPublicador), consumidores.js (registro, processarEvento, criarHandlersDeConsumidores), repositorio.js, vocabulario.js (12 nomes)
     auditoria/          trilha de auditoria (só serviço e repositório, sem rota): servico.js (registrarAuditoria), repositorio.js (INSERT), vocabulario.js (ações, autores, alvos, resultados e chaves proibidas)
   test/                suíte node:test (uma spec por critério de aceite)
 ```
@@ -114,7 +115,7 @@ Nomes usados por `src/config.js` e por `compose.yaml`; nenhum valor secreto vai 
 | `LOG_LEVEL` | Nível do log `pino` (`fatal`, `error`, `warn`, `info`, `debug`, `trace`). | `info` |
 | `NODE_ENV` | Ambiente: só `production`, `development` ou `test` (outro valor impede a subida); em produção, `POST /api/exemplos` e `POST /api/exemplos/job` não são registrados. O `.env` de desenvolvimento deve definir `development`. | `production` (ausente = produção, falha fechada) |
 
-Fila e alertas (ADRs 0005 e 0011). Cada processo exige só o que usa: a API (`npm run dev`/`npm start`), o worker (`npm run worker`) e a CLI (`npm run reprocessar`). Worker e CLI não leem `DATABASE_URL` nem `CORS_ORIGENS`; `NODE_ENV` e `LOG_LEVEL` valem para os três.
+Fila e alertas (ADRs 0005 e 0011). Cada processo exige só o que usa: a API (`npm run dev`/`npm start`), o worker (`npm run worker`) e a CLI (`npm run reprocessar`). O worker lê `DATABASE_URL` (obrigatória: outbox de eventos, CIT-166); a CLI não a lê; nenhum dos dois lê `CORS_ORIGENS`; `NODE_ENV` e `LOG_LEVEL` valem para os três.
 
 | Variável | API | Worker | CLI | Uso | Padrão |
 |---|---|---|---|---|---|
@@ -122,6 +123,8 @@ Fila e alertas (ADRs 0005 e 0011). Cada processo exige só o que usa: a API (`np
 | `FILA_PREFIXO` | lida | lida | lida | Prefixo das chaves no Redis; separa ambientes no mesmo Redis (ADR 0006). Só letras minúsculas, dígitos e hífen. | `citmail` |
 | `FILA_TENTATIVAS` | lida | lida | lida | Tentativas por job (inteiro de 1 a 20). | `8` |
 | `FILA_BACKOFF_MS` | lida | lida | lida | Espera antes da 2ª tentativa, em ms (inteiro de 1 a 3600000); dobra a cada tentativa (exponencial: com os padrões, cerca de 2 h até esgotar). | `60000` |
+| `DATABASE_URL` | obrigatória | obrigatória | não lê | String de conexão do PostgreSQL (tabela acima). No worker, conferida depois de `REDIS_URL`. | sem padrão |
+| `OUTBOX_INTERVALO_MS` | não lê | lida | não lê | Intervalo entre ciclos do publicador do outbox, em ms (inteiro de 100 a 60000), contado do fim de um ciclo ao início do próximo. | `2000` |
 | `TELEGRAM_BOT_TOKEN` | não lê | obrigatória em produção | não lê | Token do bot do alerta. Segredo: só no ambiente do worker. | sem padrão |
 | `TELEGRAM_CHAT_ID` | não lê | obrigatória em produção | não lê | Id do grupo que recebe os alertas. Segredo: só no ambiente do worker. | sem padrão |
 
@@ -197,6 +200,53 @@ WHERE alvo_tipo = 'conta' AND alvo_id = '<id da conta>'
 ORDER BY id;
 ```
 
+## Eventos de domínio
+
+Outbox do [ADR 0005](../docs/adr/0005-fila-e-eventos-de-dominio.md) (código em `src/eventos/`, tabelas criadas pela migração `eventos`; lista de eventos no [anexo de eventos](../docs/adr/anexos/eventos-de-dominio.md)). Sem rota.
+
+**Emitir:** `registrarEvento` na **mesma transação** da mudança de estado, com o `pg.Client` dela (o `Pool` é recusado; a função não confere se há `BEGIN` aberto, isso é do chamador).
+
+```js
+import { registrarEvento } from './eventos/servico.js'
+
+await cliente.query('BEGIN')
+// ... mudança de estado ...
+const { id, criado } = await registrarEvento(cliente, {
+  nome: 'pedido_pago',                              // um dos 12 de src/eventos/vocabulario.js
+  agregado: { tipo: 'pedido', id: pedidoId },       // tipo: pedido | conta_titular | assinatura (CHECK no banco)
+  chaveIdempotencia: `pedido_pago-${pedidoId}`,     // <nome>-<id>[-<id>], até 200 caracteres
+  payload: { pedidoId, ciclo: 'mensal' },           // só ids e dados não pessoais, até 2048 bytes
+  requestId: request.id                             // obrigatório, até 128 caracteres
+})
+await cliente.query('COMMIT')
+```
+
+- A mesma `chaveIdempotencia` devolve o id já gravado com `criado: false` (nada novo gravado).
+- Entrada inválida lança `TypeError` antes de qualquer consulta, com mensagem `evento: <motivo>` sem o valor (`nome fora da lista`, `payload com campo sensível`, `chaveIdempotencia inválida`, `requestId obrigatório` etc.). Chave de `camposSensiveis` (`src/log.js`) em qualquer nível do payload, sem diferenciar maiúsculas, é recusada. **O filtro olha só os nomes de chave:** um valor pessoal sob chave neutra passa; o esquema de cada evento fica com o emissor.
+
+**Publicar:** o worker roda o publicador (`iniciarPublicador`) a cada `OUTBOX_INTERVALO_MS`. Cada ciclo lê até 50 eventos com `publicado_em` nulo e cria, num só `addBulk` com prazo de 2 s, um job por consumidor inscrito no nome do evento: `name = <consumidor>`, `data = { eventoId, requestId }`, `jobId = <consumidor>-<eventoId>`. Deu certo: `publicado_em` preenchido. Redis fora ou prazo estourado: `tentativas_publicacao + 1` e o evento fica para o ciclo seguinte (represado no banco, não perdido). Evento sem consumidor inscrito é marcado publicado sem job. Um só worker (ADR 0006).
+
+**Consumir:** registrar o consumidor em `consumidoresPadrao` de `src/eventos/consumidores.js` (vazio por enquanto):
+
+```js
+export const consumidoresPadrao = Object.freeze({
+  provisionar_conta: {                       // ^[a-z][a-z0-9_]{0,47}$, sem hífen; não pode repetir um job de handlersPadrao
+    eventos: ['pedido_pago'],
+    async tratar({ cliente, evento, log }) { /* efeito no banco pelo cliente recebido */ }
+  }
+})
+```
+
+`processarEvento` abre a transação, lê o evento, grava `(consumidor, evento_id)` em `evento_processado` e roda `tratar` no mesmo cliente: o evento entregue de novo cai em `evento já processado` e o efeito não se repete. `tratar` que lança desfaz a marca (`ROLLBACK`) e a fila tenta de novo. **Efeito externo (e-mail, Skymail) não é transacional:** a marca garante "uma vez só" apenas para o efeito no banco; o consumidor consulta antes de criar no serviço externo. O log do job tem `reqId` = `requestId` do evento.
+
+**Backfill** de um consumidor novo (republica para **todos** os inscritos; os que já processaram descartam pelo `evento_processado`):
+
+```sql
+UPDATE evento SET publicado_em = NULL WHERE nome = 'pedido_pago' AND ocorrido_em >= '2026-11-01';
+```
+
+Logs: `publicador iniciado` (`intervaloMs`), `evento sem consumidor` (`eventoId`, `nome`), `publicação falhou` (`warn`, `erro` com o nome do erro, `eventos` com a quantidade), `evento já processado` (`eventoId`, `consumidor`); erro de banco do ciclo sai com `erro` e `codigo`, sem mensagem. Sem retenção por enquanto: `evento` e `evento_processado` crescem até a história de limpeza.
+
 ## Como rodar os testes
 
 Suíte `node:test` (nativa do Node.js) em `api/test/`, uma spec por critério de aceite. Nunca usa Playwright (isso é do site, na raiz).
@@ -232,7 +282,6 @@ Definition of Done (DoD: lista do que precisa ser verdade antes de considerar um
 
 Fora do escopo desta história (CIT-53), documentados aqui como referência:
 
-- Eventos de domínio pelo outbox, com consumidores idempotentes ([ADR 0005](../docs/adr/0005-fila-e-eventos-de-dominio.md); a fila de jobs já existe, CIT-56).
 - Sessão do painel, com cookie ([ADR 0008](../docs/adr/0008-sessao-do-painel-e-senhas.md)).
 - Chamar a auditoria nas ações críticas reais (as histórias de cada ação); papel `<banco>_retencao` e rotina de pseudonimização do IP (ADR 0013, item 9).
 - Webhooks (ex.: Asaas).
