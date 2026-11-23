@@ -10,6 +10,8 @@ name: Testes E2E
 on:
   pull_request:
     branches: [develop, main]
+    # edited: a troca de base de um PR para main reexecuta o job (trava dos Termos)
+    types: [opened, synchronize, reopened, edited]
   # reaproveitado por publicar-homologacao.yml (os checks exigidos pelo ruleset continuam vindo do pull_request)
   workflow_call:
 
@@ -32,8 +34,8 @@ jobs:
       - name: Termos sem marcadores pendentes
         if: github.event_name == 'pull_request' && github.base_ref == 'main'
         run: |
-          if grep -nE '\[(PREENCHER|a definir)' termos.html; then
-            echo "::error file=termos.html::termos.html ainda tem marcadores [PREENCHER] ou [a definir]; complete o texto antes de publicar em produção"
+          if grep -niE '\[(preencher|a definir)|noindex|\(minuta\)|vers[aã]o preliminar' termos.html; then
+            echo "::error file=termos.html::termos.html ainda tem marcadores [PREENCHER] ou [a definir], noindex ou aviso de minuta; complete o texto, remova o noindex e o aviso antes de publicar em produção"
             exit 1
           fi
       - run: npm ci
