@@ -58,7 +58,7 @@ export async function publicarPendentes({ pool, filas, consumidores, log, lote =
   for (const evento of eventos) {
     const destinos = inscritos.get(evento.nome) ?? []
     if (destinos.length === 0) {
-      log.info({ eventoId: evento.id, nome: evento.nome }, 'evento sem consumidor')
+      log.info({ eventoId: evento.id, evento: evento.nome }, 'evento sem consumidor')
     }
     for (const consumidor of destinos) {
       jobs.push({
