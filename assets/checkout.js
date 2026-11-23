@@ -552,6 +552,8 @@ const ORIGENS_API = Object.freeze({ 'http://localhost:4200': 'http://localhost:4
 const ORCAMENTO_DEBOUNCE_MS = 300;
 const ORCAMENTO_TIMEOUT_MS  = 8000;
 const TIPOS_DOMINIO_API = { 'new-br': 'novo', 'existing': 'existente' };
+// Rótulos dos avulsos da resposta (cobrados à parte, por ano), com os nomes que o checkout já usa.
+const ROTULOS_AVULSOS = { dominio_principal: 'Domínio .com.br', dominio_extra: ADDONS.extraDom.rotuloCurto };
 const CAMPOS_TOTAIS = ['recorrente_mensal_centavos', 'recorrente_ciclo_centavos', 'tabela_mensal_centavos', 'economia_mensal_centavos', 'avulso_centavos'];
 
 // { corpo, versao_tabela, total_exibido_centavos, resposta } do último 200 válido; null desde a mudança até a nova confirmação.
@@ -593,18 +595,23 @@ function validarRespostaOrcamento(r, ciclo) {
     && (it.plano === undefined || (it.chave === 'skybox' && Object.prototype.hasOwnProperty.call(ADDONS.skybox.planos, it.plano)))
     && inteiroNaoNegativo(it.quantidade) && inteiroNaoNegativo(it.subtotal_centavos) && inteiroNaoNegativo(it.tabela_centavos)
     && Array.isArray(it.descontos)
-    && it.descontos.every(d => d && typeof d.rotulo === 'string' && inteiroNaoNegativo(d.valor_centavos)));
+    && it.descontos.every(d => d && typeof d.rotulo === 'string' && inteiroNaoNegativo(d.valor_centavos)))
+    && r.avulsos.every(av => av && Object.prototype.hasOwnProperty.call(ROTULOS_AVULSOS, av.tipo)
+      && inteiroNaoNegativo(av.quantidade) && inteiroNaoNegativo(av.subtotal_centavos));
 }
 
 function definirEstadoOrcamento(estado) {
   estadoOrcamento = estado;
-  const card = document.querySelector('#orderSummary > .card');
   const resumo = document.getElementById('orderSummary');
   document.getElementById('orcamentoEstado').hidden = estado !== 'pendente' && estado !== 'falha';
   document.getElementById('orcamentoStatus').textContent = estado === 'pendente' ? 'Confirmando o valor…' : '';
   document.getElementById('orcamentoAlerta').hidden = estado !== 'falha';
-  if (estado === 'pendente') card.setAttribute('aria-busy', 'true');
-  else card.removeAttribute('aria-busy');
+  // aria-busy só nos valores (não no card): o #orcamentoStatus (role=status) continua anunciável no pendente.
+  ['sumAccountLines', 'summaryTotal'].forEach(id => {
+    const el = document.getElementById(id);
+    if (estado === 'pendente') el.setAttribute('aria-busy', 'true');
+    else el.removeAttribute('aria-busy');
+  });
   if (estado === 'confirmado') {
     resumo.dataset.totalConfirmado = String(ultimoOrcamentoConfirmado.total_exibido_centavos);
     resumo.dataset.versaoTabela = ultimoOrcamentoConfirmado.versao_tabela;
@@ -704,16 +711,20 @@ function tratarValidacaoOrcamento(campos) {
       if (q !== atual) { addonQtys[chave] = q; if (inp) inp.value = q; mudou = true; }
     }
   });
-  if (!mudou || reenviosAuto >= 1) { definirEstadoOrcamento('falha'); return; }
-  reenviosAuto++;
-  normalizandoOrcamento = true;
-  try {
-    ajustarAddonsAoTeto();
-    renderContas();
-    refreshAddons();
-  } finally {
-    normalizandoOrcamento = false;
+  const reenviar = mudou && reenviosAuto < 1;
+  if (mudou) {
+    // Mostra os valores corrigidos também quando não há nova tentativa (ex.: 2º 400 acusando outro campo).
+    normalizandoOrcamento = true;
+    try {
+      ajustarAddonsAoTeto();
+      renderContas();
+      refreshAddons();
+    } finally {
+      normalizandoOrcamento = false;
+    }
   }
+  if (!reenviar) { definirEstadoOrcamento('falha'); return; }
+  reenviosAuto++;
   pedirOrcamento();
 }
 
@@ -780,6 +791,14 @@ function renderResumoApi(r) {
   r.itens.filter(it => it.quantidade > 0).forEach(it => {
     linhas.push(linhaResumoApi(rotuloItemApi(it), it.subtotal_centavos), cascataResumoApi(it.tabela_centavos, it.descontos));
   });
+  // Avulsos (domínio principal e extras): cobrados à parte, por ano; entram no total do pedido (Pix/boleto).
+  if (linhas.length) {
+    r.avulsos.filter(av => av.quantidade > 0).forEach(av => {
+      const linha = linhaResumoApi(`${ROTULOS_AVULSOS[av.tipo]} ×${av.quantidade}`, av.subtotal_centavos);
+      linha.lastChild.textContent += '/ano';
+      linhas.push(linha);
+    });
+  }
   const linesEl = document.getElementById('sumAccountLines');
   if (linhas.length) linesEl.replaceChildren(...linhas);
   else linesEl.replaceChildren(elementoResumo('div', 'sum-empty', 'Nenhuma conta selecionada'));

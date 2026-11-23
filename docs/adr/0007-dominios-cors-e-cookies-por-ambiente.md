@@ -73,3 +73,4 @@ Regras:
 - 2026-09-25: ajustes da revisão (CIT-47).
 - 2026-09-26: aceito pelo responsável (CIT-47). Itens em "Decisões em aberto" do README e revisões previstas pela #48 continuam valendo.
 - 2026-11-23: o checkout ganhou o mapa fixo `ORIGENS_API` (CIT-176), hoje só com `http://localhost:4200` (desenvolvimento, mesma origem). As origens publicadas da API entram nesse mapa e no `connect-src` da CSP do checkout junto com a #57, sem curinga.
+- 2026-11-23: ajuste da revisão (CIT-176): `npm run dev` aberto por `http://localhost:4200` usa o modo API do checkout e exige a API local ou um mock de `POST /api/orcamento` até a #57; aberto por `http://127.0.0.1:4200` segue o modo local.
