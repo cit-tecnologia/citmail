@@ -72,3 +72,4 @@ Regras:
 - 2026-09-25: criação (CIT-47).
 - 2026-09-25: ajustes da revisão (CIT-47).
 - 2026-09-26: aceito pelo responsável (CIT-47). Itens em "Decisões em aberto" do README e revisões previstas pela #48 continuam valendo.
+- 2026-11-23: o checkout ganhou o mapa fixo `ORIGENS_API` (CIT-176), hoje só com `http://localhost:4200` (desenvolvimento, mesma origem). As origens publicadas da API entram nesse mapa e no `connect-src` da CSP do checkout junto com a #57, sem curinga.
