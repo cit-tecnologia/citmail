@@ -101,15 +101,20 @@ export function carregarConfigFila(env = process.env) {
   return { nodeEnv, logLevel: env.LOG_LEVEL || 'info', ...fila }
 }
 
-// Configuração do worker: a da fila mais o Telegram (ADR 0011), obrigatório em produção.
-// Só este processo recebe o token (menor privilégio).
+// Configuração do worker: a da fila, o banco (outbox de eventos, CIT-166) e o Telegram
+// (ADR 0011), obrigatório em produção. Só este processo recebe o token (menor privilégio).
 export function carregarConfigWorker(env = process.env) {
   const config = carregarConfigFila(env)
+  const databaseUrl = (env.DATABASE_URL ?? '').trim()
+  if (!databaseUrl) {
+    throw new Error('DATABASE_URL não definida')
+  }
+  const outboxIntervaloMs = lerInteiro(env, 'OUTBOX_INTERVALO_MS', 2000, 100, 60000)
   const telegramBotToken = (env.TELEGRAM_BOT_TOKEN ?? '').trim() || undefined
   const telegramChatId = (env.TELEGRAM_CHAT_ID ?? '').trim() || undefined
   if (config.nodeEnv === 'production') {
     if (!telegramBotToken) throw new Error('TELEGRAM_BOT_TOKEN não definida')
     if (!telegramChatId) throw new Error('TELEGRAM_CHAT_ID não definida')
   }
-  return { ...config, telegramBotToken, telegramChatId }
+  return { ...config, databaseUrl, outboxIntervaloMs, telegramBotToken, telegramChatId }
 }
