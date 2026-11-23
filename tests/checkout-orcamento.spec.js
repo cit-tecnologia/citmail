@@ -55,7 +55,7 @@ function problemasDoCorpo(/** @type {any} */ corpo) { return validar(schemaCorpo
  * Resposta 200 de /api/orcamento coerente com o corpo recebido.
  * @param {any} corpo
  * @param {{ mensal?: number, cicloMensal?: number, cicloAnual?: number, avulso?: number, economia?: number,
- *   versao?: string, descontos?: { rotulo: string, valor_centavos: number }[] }} [o]
+ *   versao?: string, descontos?: { rotulo: string, valor_centavos: number }[], avulsos?: any[] }} [o]
  */
 function orcamento(corpo, o = {}) {
   const mensal = o.mensal ?? 12345;
@@ -82,9 +82,9 @@ function orcamento(corpo, o = {}) {
     versao_tabela: o.versao ?? '2026-01-01.1',
     ciclo: corpo.ciclo,
     itens,
-    avulsos: avulso > 0
+    avulsos: o.avulsos ?? (avulso > 0
       ? [{ tipo: 'dominio_principal', quantidade: 1, periodo: 'ano', unit_centavos: avulso, subtotal_centavos: avulso }]
-      : [],
+      : []),
     totais: {
       recorrente_mensal_centavos: mensal,
       recorrente_ciclo_centavos: ciclo,
@@ -283,10 +283,10 @@ test.describe('checkout-orcamento — CA3: estado pendente', { tag: '@CIT-176' }
       await gate;
       await responder200(route, corpo, { mensal: 9990, cicloMensal: 9990, avulso: 7900, economia: 0 });
     });
-    const card = page.locator('#orderSummary > .card');
+    const busy = [page.locator('#sumAccountLines'), page.locator('#summaryTotal')];
 
     await mais25(page);
-    await expect(card).toHaveAttribute('aria-busy', 'true');
+    for (const el of busy) await expect(el).toHaveAttribute('aria-busy', 'true');
     await expect(page.locator('#orcamentoStatus')).toHaveText('Confirmando o valor…');
     await expect(page.locator('#sumTotal')).toHaveText('R$ 16,00');
 
@@ -296,12 +296,12 @@ test.describe('checkout-orcamento — CA3: estado pendente', { tag: '@CIT-176' }
 
     await debounce(page);
     await expect.poll(() => posts.length).toBe(1);
-    await expect(card).toHaveAttribute('aria-busy', 'true');
+    for (const el of busy) await expect(el).toHaveAttribute('aria-busy', 'true');
     await page.locator('#btnSubmitCadastro').click();
     await expect(page.locator('#step5')).not.toHaveClass(/active/);
 
     liberar();
-    await expect(card).not.toHaveAttribute('aria-busy', 'true');
+    for (const el of busy) await expect(el).not.toHaveAttribute('aria-busy', 'true');
     await expect(page.locator('#sumTotal')).toHaveText('R$ 99,90');
     await page.locator('#btnSubmitCadastro').click();
     await expect(page.locator('#step5')).toHaveClass(/active/);
@@ -310,14 +310,56 @@ test.describe('checkout-orcamento — CA3: estado pendente', { tag: '@CIT-176' }
   });
 });
 
+/* ---------------- CA2/CA3 (novos): avulsos no resumo e troca de plano do Skybox ---------------- */
+
+test.describe('checkout-orcamento — avulsos e Skybox', { tag: '@CIT-176' }, () => {
+  test.use(ORIGEM_API);
+
+  test('CA2 os avulsos da resposta viram linhas "×N … R$ X/ano" no resumo, com o nome de cada domínio', async ({ page, erros }) => {
+    await abrir(page, (route, corpo) => responder200(route, corpo, {
+      mensal: 12345,
+      avulsos: [
+        { tipo: 'dominio_principal', quantidade: 1, periodo: 'ano', unit_centavos: 7900, subtotal_centavos: 7900 },
+        { tipo: 'dominio_extra', quantidade: 2, periodo: 'ano', unit_centavos: 7900, subtotal_centavos: 15800 },
+      ],
+    }));
+    await mais25(page);
+    await debounce(page);
+    await expect(page.locator('#sumTotal')).toHaveText('R$ 123,45');
+    const linhas = page.locator('#sumAccountLines .sum-line');
+    await expect(linhas.filter({ hasText: 'Domínio .com.br' })).toContainText(['×1', 'R$ 79,00/ano'].join(''));
+    await expect(linhas.filter({ hasText: 'Domínio extra' })).toContainText(['×2', 'R$ 158,00/ano'].join(''));
+    descartar(erros, 'ERR_ABORTED');
+  });
+
+  test('CA3 trocar o plano do Skybox com quantidade maior que zero volta ao pendente e gera um novo POST', async ({ page, erros }) => {
+    const { posts } = await abrir(page, (route, corpo) => responder200(route, corpo, { mensal: 12345 }));
+    await page.evaluate(() => { ckChangeQty('25gb', 1); selectSkybox('50gb'); addonChange('skybox', 1); });
+    await debounce(page);
+    await expect.poll(() => posts.length).toBe(1);
+    expect(posts[0].postDataJSON().addons.skybox).toEqual({ plano: '50gb', quantidade: 1 });
+    await expect(page.locator('#orderSummary')).toHaveAttribute('data-total-confirmado', '12345');
+
+    await page.evaluate(() => selectSkybox('100gb')); // o clique em #skyOpt100 chama esta função; a seção fica recolhida
+    await expect(page.locator('#orcamentoStatus')).toHaveText('Confirmando o valor…');
+    await expect(page.locator('#orderSummary')).not.toHaveAttribute('data-total-confirmado', /.*/);
+    await debounce(page);
+    await expect.poll(() => posts.length).toBe(2);
+    expect(posts[1].postDataJSON().addons.skybox).toEqual({ plano: '100gb', quantidade: 1 });
+    await expect(page.locator('#orderSummary')).toHaveAttribute('data-total-confirmado', '12345');
+    descartar(erros, 'ERR_ABORTED');
+  });
+});
+
 /* ---------------- CA4: falhas ---------------- */
 
-/** @type {{ nome: string, modo: (route: any) => any, descarta: string[], avancaRelogio?: number }[]} */
+/** @type {{ nome: string, modo: (route: any, corpo?: any) => any, descarta: string[], avancaRelogio?: number }[]} */
 const FALHAS = [
   { nome: 'requisição abortada', modo: route => route.abort(), descarta: ['ERR_FAILED'] },
   { nome: 'resposta 500', modo: route => route.fulfill({ status: 500, contentType: 'application/json', body: '{"erro":"interno"}' }), descarta: ['500'] },
   { nome: 'resposta 429', modo: route => route.fulfill({ status: 429, contentType: 'application/json', body: '{"erro":"limite"}' }), descarta: ['429'] },
   { nome: '200 malformado', modo: route => route.fulfill({ status: 200, contentType: 'application/json', body: '{ "totais": {} }' }), descarta: [] },
+  { nome: 'avulso de tipo desconhecido', modo: (route, corpo) => responder200(route, corpo, { avulsos: [{ tipo: 'dominio_desconhecido', quantidade: 1, periodo: 'ano', unit_centavos: 100, subtotal_centavos: 100 }] }), descarta: [] },
   { nome: 'sem resposta por 8 s', modo: () => new Promise(() => {}), descarta: ['ERR_ABORTED', 'ERR_FAILED'], avancaRelogio: 8000 },
 ];
 
@@ -328,7 +370,7 @@ test.describe('checkout-orcamento — CA4: falha ao confirmar o valor', { tag: '
     test(`CA4 ${falha.nome}: mostra o alerta, bloqueia o avanço e o "Tentar novamente" recupera`, async ({ page, erros }) => {
       let falhando = true;
       const { posts } = await abrir(page, (route, corpo) => (falhando
-        ? falha.modo(route)
+        ? falha.modo(route, corpo)
         : responder200(route, corpo, { mensal: 12345, cicloMensal: 12345, economia: 2000 })));
 
       await mais25(page);
@@ -396,7 +438,7 @@ test.describe('checkout-orcamento — CA5: resposta fora de ordem', { tag: '@CIT
     // a 1ª foi abortada pela 2ª: o abort não pode virar falha nem sobrescrever o pendente da 2ª
     await page.waitForTimeout(300);
     await expect(page.locator('#orcamentoAlerta')).toBeHidden();
-    await expect(page.locator('#orderSummary > .card')).toHaveAttribute('aria-busy', 'true');
+    await expect(page.locator('#sumAccountLines')).toHaveAttribute('aria-busy', 'true');
 
     liberar1();
     await page.waitForTimeout(300);
@@ -625,9 +667,9 @@ test.describe('checkout-orcamento — CA10: falha legível em 320, 375 e 1280 px
 /* ---------------- CA11: sem regressão (estático; as specs existentes rodam à parte) ---------------- */
 
 test.describe('checkout-orcamento — CA11: versões dos recursos', { tag: '@CIT-176' }, () => {
-  test('CA11 checkout.html referencia checkout.js?v=7 e checkout.css?v=3', async () => {
+  test('CA11 checkout.html referencia checkout.js?v=8 e checkout.css?v=4', async () => {
     const html = readFileSync(new URL('../checkout.html', import.meta.url), 'utf8');
-    expect(html).toContain('assets/checkout.js?v=7');
-    expect(html).toContain('assets/checkout.css?v=3');
+    expect(html).toContain('assets/checkout.js?v=8');
+    expect(html).toContain('assets/checkout.css?v=4');
   });
 });
