@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="assets/fonts.css" />
   <link rel="stylesheet" href="assets/tokens.css" />
 
-  <link rel="stylesheet" href="assets/checkout.css?v=2" />
+  <link rel="stylesheet" href="assets/checkout.css?v=4" />
 </head>
 
 <body>
@@ -882,7 +882,7 @@
 
         <div class="summary-divider"></div>
 
-        <div class="summary-total">
+        <div class="summary-total" id="summaryTotal">
           <span class="label">Total</span>
           <div class="summary-total-value">
             <div class="price" id="sumTotal">R$ 0,00</div>
@@ -891,6 +891,19 @@
         </div>
 
         <div class="sum-economia" id="sumEconomia" hidden></div>
+
+        <div class="orcamento-estado" id="orcamentoEstado" hidden>
+          <p class="orcamento-status" id="orcamentoStatus" role="status"></p>
+          <div class="alert-box alert-err orcamento-alerta" id="orcamentoAlerta" role="alert" hidden>
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#triangle-alert"></use></svg>
+            <div class="orcamento-alerta-corpo">
+              <span id="orcamentoAlertaTexto">Não foi possível confirmar o valor.</span>
+              <button class="btn btn-outline orcamento-retry" id="btnOrcamentoRetry" type="button">
+                <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#refresh-cw"></use></svg> Tentar novamente
+              </button>
+            </div>
+          </div>
+        </div>
 
         <div class="summary-features mt-14">
           <div class="summary-feature"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Webmail + IMAP/POP3/SMTP</div>
@@ -912,7 +925,7 @@
   </div><!-- /checkout-wrapper -->
 
   <script src="assets/precos.js?v=26"></script>
-  <script src="assets/checkout.js?v=6"></script>
+  <script src="assets/checkout.js?v=8"></script>
 
 </body>
 </html>

@@ -36,6 +36,7 @@ function selectDomainOpt(choice) {
   } else {
     clearInterval(domPixIntvl);
   }
+  agendarOrcamento();
 }
 
 function limparErroDominio(campoId, erroId) {
@@ -317,6 +318,7 @@ function refreshAddons() {
   updateSummary();
   updateInstallments();
   atualizarIndicadoresSecoes();
+  agendarOrcamento();
 }
 
 /* ================================================================
@@ -374,6 +376,7 @@ function ckRefresh() {
   renderContas();
   updateSummary();
   updateInstallments();
+  agendarOrcamento();
 }
 
 function renderContas() {
@@ -476,6 +479,7 @@ function htmlSumDisc(c) {
 }
 
 function updateSummary() {
+  if (ultimoOrcamentoConfirmado) { renderResumoApi(ultimoOrcamentoConfirmado.resposta); return; }
   const total = grandTotalCentavos();
   const linesEl = document.getElementById('sumAccountLines');
   document.getElementById('sumCycle').textContent = annualBilling ? 'Cobrança Anual' : 'Cobrança Mensal';
@@ -524,7 +528,7 @@ function updateSummary() {
 }
 
 function updateInstallments() {
-  const total = grandTotalCentavos() / 100;
+  const total = (ultimoOrcamentoConfirmado ? ultimoOrcamentoConfirmado.resposta.totais.recorrente_mensal_centavos : grandTotalCentavos()) / 100;
   const sel   = document.getElementById('fInstallments');
   if (!sel) return;
   sel.innerHTML = '';
@@ -537,6 +541,273 @@ function updateInstallments() {
     opt.textContent = `${n}× de R$ ${val} (sem juros)`;
     sel.appendChild(opt);
   }
+}
+
+/* ================================================================
+   ORÇAMENTO DA API (POST /api/orcamento) — só quando a origem da página está em ORIGENS_API
+================================================================ */
+// Origem da página → origem da API. Fora do mapa (Pages, homologação, 127.0.0.1) o checkout fica no modo local.
+// As origens publicadas entram com a #57, junto do connect-src da CSP.
+const ORIGENS_API = Object.freeze({ 'http://localhost:4200': 'http://localhost:4200' });
+const ORCAMENTO_DEBOUNCE_MS = 300;
+const ORCAMENTO_TIMEOUT_MS  = 8000;
+const TIPOS_DOMINIO_API = { 'new-br': 'novo', 'existing': 'existente' };
+// Rótulos dos avulsos da resposta (cobrados à parte, por ano), com os nomes que o checkout já usa.
+const ROTULOS_AVULSOS = { dominio_principal: 'Domínio .com.br', dominio_extra: ADDONS.extraDom.rotuloCurto };
+const CAMPOS_TOTAIS = ['recorrente_mensal_centavos', 'recorrente_ciclo_centavos', 'tabela_mensal_centavos', 'economia_mensal_centavos', 'avulso_centavos'];
+
+// { corpo, versao_tabela, total_exibido_centavos, resposta } do último 200 válido; null desde a mudança até a nova confirmação.
+let ultimoOrcamentoConfirmado = null;
+let estadoOrcamento = 'local';      // 'local' | 'vazio' | 'pendente' | 'confirmado' | 'falha'
+let seqOrcamento = 0;               // só a resposta da sequência mais recente é aplicada
+let controladorOrcamento = null;    // AbortController da requisição em voo
+let temporizadorOrcamento = null;   // debounce
+let reenviosAuto = 0;               // novas tentativas automáticas após 400 (máx. 1 por mudança do usuário)
+let normalizandoOrcamento = false;  // true enquanto a página corrige campos por causa de um 400
+
+function origemApi() {
+  return Object.prototype.hasOwnProperty.call(ORIGENS_API, location.origin) ? ORIGENS_API[location.origin] : null;
+}
+
+// Corpo só com as chaves aceitas pelo schema da API (criarCorpoOrcamento, api/src/precos/rotas.js).
+function montarCorpoOrcamento() {
+  const corpo = { ciclo: annualBilling ? 'anual' : 'mensal', contas: {} };
+  Object.keys(ACCOUNT_DEFS).forEach(tipo => { if (ckQtys[tipo] > 0) corpo.contas[tipo] = ckQtys[tipo]; });
+  const addons = {};
+  ['talk', 'backup90', 'backup365', 'grupoEmail', 'extraDom'].forEach(key => { if (addonQtys[key] > 0) addons[key] = addonQtys[key]; });
+  if (skyboxPlan && addonQtys.skybox > 0) addons.skybox = { plano: skyboxPlan, quantidade: addonQtys.skybox };
+  if (Object.keys(addons).length) corpo.addons = addons;
+  if (TIPOS_DOMINIO_API[domainChoice]) corpo.dominio = { tipo: TIPOS_DOMINIO_API[domainChoice] };
+  return corpo;
+}
+
+function inteiroNaoNegativo(v) { return Number.isInteger(v) && v >= 0; }
+
+// 200 só vale com o formato esperado; qualquer desvio é tratado como falha.
+function validarRespostaOrcamento(r, ciclo) {
+  if (!r || typeof r !== 'object') return false;
+  if (typeof r.versao_tabela !== 'string' || !r.versao_tabela || r.ciclo !== ciclo) return false;
+  if (!Array.isArray(r.itens) || !Array.isArray(r.avulsos) || !r.totais || typeof r.totais !== 'object') return false;
+  if (!CAMPOS_TOTAIS.every(c => inteiroNaoNegativo(r.totais[c]))) return false;
+  return r.itens.every(it => it && typeof it === 'object'
+    && (it.tipo === 'conta' ? Object.prototype.hasOwnProperty.call(ACCOUNT_DEFS, it.chave)
+      : it.tipo === 'addon' && Object.prototype.hasOwnProperty.call(ADDONS, it.chave))
+    && (it.plano === undefined || (it.chave === 'skybox' && Object.prototype.hasOwnProperty.call(ADDONS.skybox.planos, it.plano)))
+    && inteiroNaoNegativo(it.quantidade) && inteiroNaoNegativo(it.subtotal_centavos) && inteiroNaoNegativo(it.tabela_centavos)
+    && Array.isArray(it.descontos)
+    && it.descontos.every(d => d && typeof d.rotulo === 'string' && inteiroNaoNegativo(d.valor_centavos)))
+    && r.avulsos.every(av => av && Object.prototype.hasOwnProperty.call(ROTULOS_AVULSOS, av.tipo)
+      && inteiroNaoNegativo(av.quantidade) && inteiroNaoNegativo(av.subtotal_centavos));
+}
+
+function definirEstadoOrcamento(estado) {
+  estadoOrcamento = estado;
+  const resumo = document.getElementById('orderSummary');
+  document.getElementById('orcamentoEstado').hidden = estado !== 'pendente' && estado !== 'falha';
+  document.getElementById('orcamentoStatus').textContent = estado === 'pendente' ? 'Confirmando o valor…' : '';
+  document.getElementById('orcamentoAlerta').hidden = estado !== 'falha';
+  // aria-busy só nos valores (não no card): o #orcamentoStatus (role=status) continua anunciável no pendente.
+  ['sumAccountLines', 'summaryTotal'].forEach(id => {
+    const el = document.getElementById(id);
+    if (estado === 'pendente') el.setAttribute('aria-busy', 'true');
+    else el.removeAttribute('aria-busy');
+  });
+  if (estado === 'confirmado') {
+    resumo.dataset.totalConfirmado = String(ultimoOrcamentoConfirmado.total_exibido_centavos);
+    resumo.dataset.versaoTabela = ultimoOrcamentoConfirmado.versao_tabela;
+  } else {
+    delete resumo.dataset.totalConfirmado;
+    delete resumo.dataset.versaoTabela;
+  }
+}
+
+// Chamado a cada mudança da seleção: anula o confirmado, põe em pendente na hora e agenda o envio (debounce).
+// Durante a correção de um 400 só marca pendente: quem corrige envia a nova tentativa.
+function agendarOrcamento() {
+  if (!origemApi()) return;
+  clearTimeout(temporizadorOrcamento);
+  seqOrcamento++;
+  if (controladorOrcamento) { controladorOrcamento.abort(); controladorOrcamento = null; }
+  if (!normalizandoOrcamento) reenviosAuto = 0;
+  const tinhaConfirmado = ultimoOrcamentoConfirmado !== null;
+  ultimoOrcamentoConfirmado = null;
+  if (totalAccounts() === 0) {
+    definirEstadoOrcamento('vazio');
+  } else {
+    definirEstadoOrcamento('pendente');
+    if (!normalizandoOrcamento) temporizadorOrcamento = setTimeout(pedirOrcamento, ORCAMENTO_DEBOUNCE_MS);
+  }
+  if (tinhaConfirmado) { updateSummary(); updateInstallments(); }
+}
+
+async function pedirOrcamento() {
+  const origem = origemApi();
+  if (!origem || totalAccounts() === 0) return;
+  clearTimeout(temporizadorOrcamento);
+  if (controladorOrcamento) controladorOrcamento.abort();
+  const seq = ++seqOrcamento;
+  const corpo = montarCorpoOrcamento();
+  const controlador = new AbortController();
+  controladorOrcamento = controlador;
+  definirEstadoOrcamento('pendente');
+  // setTimeout + abort (e não AbortSignal.timeout) para o page.clock dos testes controlar o prazo.
+  const prazo = setTimeout(() => controlador.abort(), ORCAMENTO_TIMEOUT_MS);
+  let status = 0;
+  let dados = null;
+  try {
+    const r = await fetch(`${origem}/api/orcamento`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corpo),
+      credentials: 'omit',
+      signal: controlador.signal,
+    });
+    status = r.status;
+    dados = await r.json().catch(() => null);
+  } catch {
+    status = 0;
+  } finally {
+    clearTimeout(prazo);
+  }
+  if (seq !== seqOrcamento) return;   // resposta antiga (ou abortada por uma mais nova): ignora
+  controladorOrcamento = null;
+  if (status === 200 && validarRespostaOrcamento(dados, corpo.ciclo)) {
+    const t = dados.totais;
+    ultimoOrcamentoConfirmado = {
+      corpo,
+      versao_tabela: dados.versao_tabela,
+      total_exibido_centavos: t.recorrente_ciclo_centavos + t.avulso_centavos,
+      resposta: dados,
+    };
+    definirEstadoOrcamento('confirmado');
+    updateSummary();
+    updateInstallments();
+    return;
+  }
+  if (status === 400 && dados && dados.erro === 'validacao' && Array.isArray(dados.campos)) {
+    tratarValidacaoOrcamento(dados.campos);
+    return;
+  }
+  definirEstadoOrcamento('falha');
+}
+
+// 400 de validação: marca e normaliza os campos acusados (contas.<tipo>, addons.<chave>[.…]); se algo mudou e ainda não
+// houve nova tentativa automática nesta mudança do usuário, reenvia uma vez; senão, falha genérica.
+function tratarValidacaoOrcamento(campos) {
+  let mudou = false;
+  campos.forEach(c => {
+    if (!c || typeof c.campo !== 'string') return;
+    const [grupo, chave] = c.campo.split('.');
+    if (grupo === 'contas' && Object.prototype.hasOwnProperty.call(ACCOUNT_DEFS, chave)) {
+      const inp = document.getElementById(ACCOUNT_DEFS[chave].qtyId);
+      inp.setAttribute('aria-invalid', 'true');
+      const q = ckNormalizeQty(chave, ckQtys[chave]);
+      if (q !== ckQtys[chave]) { ckQtys[chave] = q; inp.value = q; mudou = true; }
+    } else if (grupo === 'addons' && Object.prototype.hasOwnProperty.call(ADDONS, chave)) {
+      const inp = document.getElementById(ADDONS[chave].qtd);
+      if (inp) inp.setAttribute('aria-invalid', 'true');
+      const atual = addonQtys[chave] || 0;
+      const q = limitarAddon(chave, atual);
+      if (q !== atual) { addonQtys[chave] = q; if (inp) inp.value = q; mudou = true; }
+    }
+  });
+  const reenviar = mudou && reenviosAuto < 1;
+  if (mudou) {
+    // Mostra os valores corrigidos também quando não há nova tentativa (ex.: 2º 400 acusando outro campo).
+    normalizandoOrcamento = true;
+    try {
+      ajustarAddonsAoTeto();
+      renderContas();
+      refreshAddons();
+    } finally {
+      normalizandoOrcamento = false;
+    }
+  }
+  if (!reenviar) { definirEstadoOrcamento('falha'); return; }
+  reenviosAuto++;
+  pedirOrcamento();
+}
+
+function tentarOrcamentoDeNovo() {
+  reenviosAuto = 0;
+  pedirOrcamento();
+}
+
+// Guarda de #btnSubmitCadastro e #btnPagar: no modo API só avança com orçamento confirmado.
+function orcamentoLiberaAvanco() {
+  if (!origemApi() || ultimoOrcamentoConfirmado) return true;
+  const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+  const bloco = document.getElementById('orcamentoEstado');
+  if (!bloco.hidden) bloco.scrollIntoView({ behavior, block: 'center' });
+  if (estadoOrcamento === 'falha') document.getElementById('btnOrcamentoRetry').focus({ preventScroll: true });
+  return false;
+}
+
+// Resumo a partir da resposta da API: mesmas classes e textos do modo local; dado da resposta só por textContent.
+function elementoResumo(tag, classe, texto) {
+  const el = document.createElement(tag);
+  if (classe) el.className = classe;
+  if (texto !== undefined) el.textContent = texto;
+  return el;
+}
+function linhaResumoApi(rotulo, valor) {
+  const linha = elementoResumo('div', 'sum-line');
+  linha.append(elementoResumo('span', '', rotulo), elementoResumo('span', '', `R$ ${fmtCentavos(valor)}`));
+  return linha;
+}
+function cascataResumoApi(tabela, descontos) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const disc = elementoResumo('div', 'sum-disc');
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'icon');
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS(NS, 'use');
+  use.setAttribute('href', 'assets/icons.svg#tag');
+  svg.appendChild(use);
+  disc.append(svg, ' ');
+  const primeiro = elementoResumo('span', 'sum-disc-seg', 'de ');
+  primeiro.appendChild(elementoResumo('s', '', `R$ ${fmtCentavos(tabela)}`));
+  disc.appendChild(primeiro);
+  descontos.forEach(d => {
+    disc.append(' · ', elementoResumo('span', 'sum-disc-seg', `${d.rotulo} −R$ ${fmtCentavos(d.valor_centavos)}`));
+  });
+  return disc;
+}
+function rotuloItemApi(it) {
+  if (it.tipo === 'conta') return `${it.quantidade}× ${ACCOUNT_DEFS[it.chave].label}`;
+  const a = ADDONS[it.chave];
+  const nome = it.chave === 'skybox' && it.plano ? `${a.rotuloCurto} ${a.planos[it.plano].rotuloCurto}` : a.rotuloCurto;
+  return `${nome} ×${it.quantidade}`;
+}
+function renderResumoApi(r) {
+  const anual = r.ciclo === 'anual';
+  const t = r.totais;
+  document.getElementById('sumCycle').textContent = anual ? 'Cobrança Anual' : 'Cobrança Mensal';
+  document.getElementById('sumTotal').textContent = `R$ ${fmtCentavos(t.recorrente_mensal_centavos)}`;
+  document.getElementById('sumPeriod').textContent = anual
+    ? `/mês · R$ ${fmtCentavos(t.recorrente_ciclo_centavos)}/ano`
+    : '/mês';
+  const linhas = [];
+  r.itens.filter(it => it.quantidade > 0).forEach(it => {
+    linhas.push(linhaResumoApi(rotuloItemApi(it), it.subtotal_centavos), cascataResumoApi(it.tabela_centavos, it.descontos));
+  });
+  // Avulsos (domínio principal e extras): cobrados à parte, por ano; entram no total do pedido (Pix/boleto).
+  if (linhas.length) {
+    r.avulsos.filter(av => av.quantidade > 0).forEach(av => {
+      const linha = linhaResumoApi(`${ROTULOS_AVULSOS[av.tipo]} ×${av.quantidade}`, av.subtotal_centavos);
+      linha.lastChild.textContent += '/ano';
+      linhas.push(linha);
+    });
+  }
+  const linesEl = document.getElementById('sumAccountLines');
+  if (linhas.length) linesEl.replaceChildren(...linhas);
+  else linesEl.replaceChildren(elementoResumo('div', 'sum-empty', 'Nenhuma conta selecionada'));
+  const economiaEl = document.getElementById('sumEconomia');
+  const economia = t.economia_mensal_centavos;
+  economiaEl.hidden = !linhas.length;
+  economiaEl.textContent = linhas.length
+    ? `Você economiza R$ ${fmtCentavos(economia)}/mês` + (anual ? ` (R$ ${fmtCentavos(economia * 12)}/ano)` : '')
+    : '';
 }
 
 /* ================================================================
@@ -658,6 +929,7 @@ function submitCadastro() {
   }
 
   if (!ok) return;
+  if (!orcamentoLiberaAvanco()) return;
 
   document.getElementById('successEmail').textContent = email;
   goStep(5);
@@ -694,7 +966,7 @@ function generatePaymentData() {
    */
 
   // Demo: populate with mock data
-  const price = grandTotalCentavos();
+  const price = ultimoOrcamentoConfirmado ? ultimoOrcamentoConfirmado.total_exibido_centavos : grandTotalCentavos();
 
   document.getElementById('pixCode').textContent =
     '00020126580014br.gov.bcb.pix0136a1b2c3d4-e5f6-7890-abcd-ef1234567890' +
@@ -724,6 +996,7 @@ function startPixTimer() {
    PROCESS PAYMENT
 ================================================================ */
 async function processPayment() {
+  if (!orcamentoLiberaAvanco()) return;
   const overlay = document.getElementById('loadingOverlay');
   const txt     = document.getElementById('loadingText');
   const payPix  = document.getElementById('payPix').classList.contains('selected');
@@ -912,6 +1185,17 @@ document.getElementById('downloadBoleto').addEventListener('click', () => downlo
 document.getElementById('fCardNum').addEventListener('input', e => formatCard(e.currentTarget));
 document.getElementById('fCardExp').addEventListener('input', e => formatExpiry(e.currentTarget));
 document.getElementById('btnPagar').addEventListener('click', () => processPayment());
+document.getElementById('btnOrcamentoRetry').addEventListener('click', () => tentarOrcamentoDeNovo());
+// aria-invalid posto por um 400 da API só sai quando o usuário mexe no próprio campo (digitando ou nos botões − / +).
+document.querySelectorAll('input[data-qtd-conta], input[data-addon]').forEach(el => {
+  el.addEventListener('input', e => e.currentTarget.removeAttribute('aria-invalid'));
+});
+document.querySelectorAll('button[data-qtd-conta]').forEach(el => {
+  el.addEventListener('click', e => document.getElementById(ACCOUNT_DEFS[e.currentTarget.dataset.qtdConta]?.qtyId)?.removeAttribute('aria-invalid'));
+});
+document.querySelectorAll('button[data-addon]').forEach(el => {
+  el.addEventListener('click', e => document.getElementById(ADDONS[e.currentTarget.dataset.addon]?.qtd)?.removeAttribute('aria-invalid'));
+});
 
 /* ================================================================
    INIT — read qty5, qty25, qty50, cycle from URL params

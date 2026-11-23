@@ -500,6 +500,19 @@ p.copia-aviso:empty { margin: 0; }
 /* Preço de tabela (riscado): sempre em <s data-preco-tabela>, em qualquer contêiner, inclusive dentro da cascata do resumo. */
 s[data-preco-tabela], .sum-disc s { color: var(--cit-error); text-decoration-line: line-through; font-weight: inherit; }
 .summary-divider { height: 1px; background: var(--cit-divider); margin: 12px 0; }
+/* ---- ORÇAMENTO DA API — estado do resumo (CIT-176) ---- */
+.orcamento-estado { margin-top: var(--cit-space-3); }
+.orcamento-status { margin: 0; font-size: var(--cit-text-small); color: var(--cit-text-muted); }
+.orcamento-status:empty { display: none; }
+.orcamento-alerta { margin-top: var(--cit-space-2); }
+.orcamento-alerta-corpo {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--cit-space-2);
+  min-width: 0; overflow-wrap: anywhere;
+}
+.orcamento-retry { width: auto; white-space: nowrap; max-width: 100%; min-height: 44px; height: 44px; padding: 0 var(--cit-space-4); font-size: .875rem; }
+.summary-total[aria-busy="true"] .summary-total-value,
+.summary-total[aria-busy="true"] ~ .sum-economia { opacity: .55; transition: opacity var(--transition); }
+
 .summary-total {
   display: flex; justify-content: space-between; align-items: baseline;
 }
