@@ -15,19 +15,31 @@ function objetoFechado(properties, required = []) {
   return { type: 'object', additionalProperties: false, required, properties }
 }
 
-const corpoOrcamento = objetoFechado({
-  ciclo: { type: 'string', enum: CICLOS },
-  contas: objetoFechado(Object.fromEntries(Object.keys(CONTAS).map((tipo) => [tipo, inteiro(LIMITES.contasPorTipo)]))),
-  addons: objetoFechado({
-    ...Object.fromEntries(LIMITES.addonsPorConta.map((chave) => [chave, inteiro(LIMITES.addonsPorContaMax)])),
-    skybox: objetoFechado({
-      plano: { type: 'string', enum: PLANOS_SKYBOX },
-      quantidade: inteiro(LIMITES.skybox)
-    }, ['plano', 'quantidade']),
-    extraDom: inteiro(LIMITES.extraDom)
-  }),
-  dominio: objetoFechado({ tipo: { type: 'string', enum: TIPOS_DOMINIO } }, ['tipo'])
-}, ['ciclo', 'contas'])
+// Schema do corpo do orçamento. Com `pedido: true` (CIT-61), `dominio` é obrigatório
+// e leva também o `nome`; o pedido acrescenta os próprios campos por cima.
+export function criarCorpoOrcamento({ pedido = false } = {}) {
+  const dominio = pedido
+    ? objetoFechado({
+      tipo: { type: 'string', enum: TIPOS_DOMINIO },
+      nome: { type: 'string', minLength: 1, maxLength: 253 }
+    }, ['tipo', 'nome'])
+    : objetoFechado({ tipo: { type: 'string', enum: TIPOS_DOMINIO } }, ['tipo'])
+  return objetoFechado({
+    ciclo: { type: 'string', enum: CICLOS },
+    contas: objetoFechado(Object.fromEntries(Object.keys(CONTAS).map((tipo) => [tipo, inteiro(LIMITES.contasPorTipo)]))),
+    addons: objetoFechado({
+      ...Object.fromEntries(LIMITES.addonsPorConta.map((chave) => [chave, inteiro(LIMITES.addonsPorContaMax)])),
+      skybox: objetoFechado({
+        plano: { type: 'string', enum: PLANOS_SKYBOX },
+        quantidade: inteiro(LIMITES.skybox)
+      }, ['plano', 'quantidade']),
+      extraDom: inteiro(LIMITES.extraDom)
+    }),
+    dominio
+  }, pedido ? ['ciclo', 'contas', 'dominio'] : ['ciclo', 'contas'])
+}
+
+const corpoOrcamento = criarCorpoOrcamento()
 
 const camposCentavos = [
   'unit_atual_centavos',
