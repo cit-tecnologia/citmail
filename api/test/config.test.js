@@ -220,3 +220,126 @@ test('CA5(c): carregarConfigWorker fora de produção é válida sem Telegram', 
   assert.equal(config.telegramBotToken, undefined);
   assert.equal(config.telegramChatId, undefined);
 });
+
+// CIT-61 (CA16): pedido no Asaas. `PEDIDOS_HABILITADO` nasce desligada em produção;
+// ligada, exige chave e URL https; `ASAAS_TIMEOUT_MS` tem faixa 1000-30000.
+const AMBIENTE_PRODUCAO = { ...AMBIENTE_BASE, NODE_ENV: 'production' };
+const AMBIENTE_ASAAS = {
+  PEDIDOS_HABILITADO: 'true',
+  ASAAS_API_KEY: 'CHAVE-FICTICIA-ASAAS',
+  ASAAS_BASE_URL: 'https://asaas.exemplo.test/v3',
+};
+
+test('CA16: PEDIDOS_HABILITADO ausente é false em produção e true fora dela', () => {
+  assert.equal(carregarConfig(AMBIENTE_PRODUCAO).pedidosHabilitado, false);
+  assert.equal(carregarConfig({ ...AMBIENTE_BASE, NODE_ENV: 'development' }).pedidosHabilitado, true);
+  assert.equal(carregarConfig(AMBIENTE_BASE).pedidosHabilitado, true);
+});
+
+test('CA16: PEDIDOS_HABILITADO vazia usa o padrão do ambiente', () => {
+  assert.equal(carregarConfig({ ...AMBIENTE_PRODUCAO, PEDIDOS_HABILITADO: '' }).pedidosHabilitado, false);
+});
+
+test('CA16: PEDIDOS_HABILITADO=sim lança erro citando a variável', () => {
+  assert.throws(
+    () => carregarConfig({ ...AMBIENTE_BASE, PEDIDOS_HABILITADO: 'sim' }),
+    (erro) => { assert.match(erro.message, /PEDIDOS_HABILITADO/); return true; },
+  );
+});
+
+test('CA16: PEDIDOS_HABILITADO=false desliga a rota também fora de produção', () => {
+  assert.equal(carregarConfig({ ...AMBIENTE_BASE, PEDIDOS_HABILITADO: 'false' }).pedidosHabilitado, false);
+});
+
+test('CA16: produção sem PEDIDOS_HABILITADO carrega sem chave nem URL do Asaas', () => {
+  const config = carregarConfig(AMBIENTE_PRODUCAO);
+  assert.equal(config.asaasApiKey, undefined);
+  assert.equal(config.asaasBaseUrl, undefined);
+});
+
+test('CA16: produção com PEDIDOS_HABILITADO=true, chave e URL https carrega e expõe a configuração', () => {
+  const config = carregarConfig({ ...AMBIENTE_PRODUCAO, ...AMBIENTE_ASAAS });
+  assert.equal(config.pedidosHabilitado, true);
+  assert.equal(config.asaasApiKey, 'CHAVE-FICTICIA-ASAAS');
+  assert.equal(config.asaasBaseUrl, 'https://asaas.exemplo.test/v3');
+  assert.equal(config.asaasTimeoutMs, 10000);
+});
+
+test('CA16: produção com PEDIDOS_HABILITADO=true sem ASAAS_API_KEY lança erro citando o nome', () => {
+  const { ASAAS_API_KEY: _descartada, ...semChave } = AMBIENTE_ASAAS;
+  assert.throws(
+    () => carregarConfig({ ...AMBIENTE_PRODUCAO, ...semChave }),
+    (erro) => { assert.match(erro.message, /ASAAS_API_KEY/); return true; },
+  );
+});
+
+test('CA16: produção com PEDIDOS_HABILITADO=true sem ASAAS_BASE_URL lança erro citando o nome', () => {
+  const { ASAAS_BASE_URL: _descartada, ...semUrl } = AMBIENTE_ASAAS;
+  assert.throws(
+    () => carregarConfig({ ...AMBIENTE_PRODUCAO, ...semUrl }),
+    (erro) => { assert.match(erro.message, /ASAAS_BASE_URL/); return true; },
+  );
+});
+
+test('CA16: produção com ASAAS_BASE_URL http:// lança erro citando o nome, sem o valor', () => {
+  assert.throws(
+    () => carregarConfig({ ...AMBIENTE_PRODUCAO, ...AMBIENTE_ASAAS, ASAAS_BASE_URL: 'http://asaas-ficticio.exemplo.test/v3' }),
+    (erro) => {
+      assert.match(erro.message, /ASAAS_BASE_URL/);
+      assert.ok(!erro.message.includes('asaas-ficticio'));
+      return true;
+    },
+  );
+});
+
+test('CA16: produção com a rota desligada também recusa ASAAS_BASE_URL http:// (valor nunca usado fora do https)', () => {
+  assert.throws(
+    () => carregarConfig({ ...AMBIENTE_PRODUCAO, PEDIDOS_HABILITADO: 'false', ASAAS_API_KEY: 'CHAVE-FICTICIA-ASAAS', ASAAS_BASE_URL: 'http://asaas.exemplo.test' }),
+    (erro) => { assert.match(erro.message, /ASAAS_BASE_URL/); return true; },
+  );
+});
+
+test('CA16: ASAAS_BASE_URL que não é URL lança erro citando o nome', () => {
+  assert.throws(
+    () => carregarConfig({ ...AMBIENTE_BASE, ASAAS_BASE_URL: 'isto não é url' }),
+    (erro) => { assert.match(erro.message, /ASAAS_BASE_URL/); return true; },
+  );
+});
+
+test('CA16: fora de produção, ASAAS_API_KEY sem ASAAS_BASE_URL lança erro na partida sem o valor da chave', () => {
+  assert.throws(
+    () => carregarConfig({ ...AMBIENTE_BASE, ASAAS_API_KEY: 'CHAVE-FICTICIA-ASAAS' }),
+    (erro) => {
+      assert.match(erro.message, /ASAAS_BASE_URL/);
+      assert.ok(!erro.message.includes('CHAVE-FICTICIA-ASAAS'));
+      return true;
+    },
+  );
+});
+
+test('CA16: fora de produção, chave com URL http:// local é aceita', () => {
+  const config = carregarConfig({ ...AMBIENTE_BASE, ASAAS_API_KEY: 'CHAVE-FICTICIA-ASAAS', ASAAS_BASE_URL: 'http://127.0.0.1:4010' });
+  assert.equal(config.asaasBaseUrl, 'http://127.0.0.1:4010');
+});
+
+test('CA16: fora de produção, sem chave nem URL, a configuração carrega (a rota responde 503)', () => {
+  const config = carregarConfig(AMBIENTE_BASE);
+  assert.equal(config.asaasApiKey, undefined);
+  assert.equal(config.asaasBaseUrl, undefined);
+});
+
+for (const valor of ['999', '30001', '1e4', 'abc', '-1', '0x10', ' 5000']) {
+  test(`CA16: carregarConfig lança erro citando ASAAS_TIMEOUT_MS com ${JSON.stringify(valor)}`, () => {
+    assert.throws(
+      () => carregarConfig({ ...AMBIENTE_BASE, ASAAS_TIMEOUT_MS: valor }),
+      (erro) => { assert.match(erro.message, /ASAAS_TIMEOUT_MS/); return true; },
+    );
+  });
+}
+
+test('CA16: ASAAS_TIMEOUT_MS ausente ou vazia usa 10000 e aceita os limites 1000 e 30000', () => {
+  assert.equal(carregarConfig(AMBIENTE_BASE).asaasTimeoutMs, 10000);
+  assert.equal(carregarConfig({ ...AMBIENTE_BASE, ASAAS_TIMEOUT_MS: '' }).asaasTimeoutMs, 10000);
+  assert.equal(carregarConfig({ ...AMBIENTE_BASE, ASAAS_TIMEOUT_MS: '1000' }).asaasTimeoutMs, 1000);
+  assert.equal(carregarConfig({ ...AMBIENTE_BASE, ASAAS_TIMEOUT_MS: '30000' }).asaasTimeoutMs, 30000);
+});
