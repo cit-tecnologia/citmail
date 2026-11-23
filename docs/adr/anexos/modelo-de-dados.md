@@ -37,6 +37,7 @@ erDiagram
 | conta do titular → caixa | 1 : N | E5-H4 a E5-H7 |
 | pedido → caixa | 1 : N | E4-H2 (caixas contratadas no pedido) |
 | agregado → evento | 1 : N | ADR 0005 |
+| evento → evento processado | 1 : N (um por consumidor) | ADR 0005, CIT-166 |
 | ator ou alvo → auditoria | 1 : N | E6-H7 |
 | conta do titular → solicitação de senha | 1 : N | E5-H2, E7-H3 (tabela auxiliar) |
 
@@ -113,6 +114,14 @@ Evento de domínio gravado na mesma transação da mudança de estado e publicad
 - **Atributos:** `nome`, `versao`, `agregado_tipo` (`pedido`, `conta_titular` ou `assinatura`), `agregado_id`, `payload` (JSON só com ids e dados não pessoais), `request_id` (correlação, ADR 0013), `ocorrido_em`, `publicado_em` (nulo até ir para a fila), `tentativas_publicacao`.
 - **Relações:** pertence a 1 agregado (pedido, conta do titular ou assinatura).
 - **Regras:** a restrição única em `chave_idempotencia` impede o mesmo fato duas vezes; formato da chave no anexo de eventos. O webhook bruto do Asaas (E3-H4) e o log de chamadas à Skymail (E4-H1) ficam em tabelas próprias, fora deste anexo. O webhook bruto é único pelo id do evento do Asaas, guarda só campos sem dado pessoal e tem retenção proposta de 90 dias (ADR 0005, a confirmar).
+
+### Tabela auxiliar: evento processado
+
+Marca, por consumidor, o evento já tratado (consumidor idempotente, ADR 0005; CIT-166). Gravada na mesma transação do efeito do consumidor no banco.
+
+- **Chave:** `consumidor` + `evento_id`.
+- **Atributos:** `consumidor` (nome do consumidor, `^[a-z][a-z0-9_]{0,47}$`, sem hífen: é o separador do `jobId`), `evento_id` (referencia `evento.id`, `ON DELETE CASCADE`), `processado_em`.
+- **Regras:** a marca repetida não entra (`ON CONFLICT DO NOTHING`): a 2ª entrega do mesmo evento ao mesmo consumidor não repete o efeito. Sem limpeza por enquanto (retenção em história própria).
 
 ## Entidade: auditoria
 
@@ -201,4 +210,5 @@ Transições:
 |---|---|---|
 | 2026-09-25 | Criação do anexo. | CIT-47 |
 | 2026-09-25 | Ajustes da revisão: estados do pedido com domínio novo, tabela de solicitação de senha, itens de domínio com id, `agregado_tipo` sem `dominio`, retenções. | CIT-47 |
+| 2026-11-23 | Tabela auxiliar `evento_processado` e relação evento → evento processado. | CIT-166 |
 | a definir | Revisão prevista pela #48 (PoC Skymail): campos da caixa marcados "provisório (#48)", lista de add-ons do pedido. | #48 |

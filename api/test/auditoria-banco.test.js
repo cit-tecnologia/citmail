@@ -274,6 +274,8 @@ test('CA9: migração cria um papel por banco, tem down com guarda e é reaplic�
   } finally {
     await poolA.end();
   }
+  // A migração mais recente (eventos, CIT-166) vem depois da auditoria: sai primeiro.
+  await aplicarMigracoes(a.url, 'down', 1);
   await assert.rejects(aplicarMigracoes(a.url, 'down', 1), /auditoria com registros/);
   const aposRecusa = await consultar(
     a.url,
@@ -283,6 +285,7 @@ test('CA9: migração cria um papel por banco, tem down com guarda e é reaplic�
   assert.equal(aposRecusa.rows[0].total, 1);
 
   // down com a tabela vazia apaga tabela e função, mas não o papel.
+  await aplicarMigracoes(b.url, 'down', 1);
   await assert.doesNotReject(aplicarMigracoes(b.url, 'down', 1));
   const aposDown = await consultar(
     b.url,
@@ -439,6 +442,8 @@ test('CA2: INSERT por SQL com autor_id ou alvo_id vazio viola o CHECK (23514)', 
 test('CA9: down que concorre com um INSERT ainda não confirmado espera e recusa, sem perder o registro', async (t) => {
   const { pool, url, fechar } = await criarBancoMigrado();
   t.after(fechar);
+  // A migração mais recente (eventos, CIT-166) vem depois da auditoria: sai primeiro.
+  await aplicarMigracoes(url, 'down', 1);
 
   const client = await pool.connect();
   let down;

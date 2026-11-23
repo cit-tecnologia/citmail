@@ -26,7 +26,7 @@ Processos Node.js gerenciados pelo PM2, atrás de Nginx com certificado emitido 
 
 **Proposto:**
 
-1. **Processos:** serviços `systemd` (API e worker da fila; o worker sobe com `npm run worker`, CIT-56), com usuário de serviço próprio, sem login e sem shell (`<usuario-de-servico>`), diferente do usuário de deploy. O usuário de deploy só publica os arquivos e reinicia o serviço.
+1. **Processos:** serviços `systemd` (API e worker da fila; o worker sobe com `npm run worker`, CIT-56, e lê o banco para o outbox de eventos, CIT-166), com usuário de serviço próprio, sem login e sem shell (`<usuario-de-servico>`), diferente do usuário de deploy. O usuário de deploy só publica os arquivos e reinicia o serviço.
 2. **Endurecimento da unidade:** `NoNewPrivileges=true`, `ProtectSystem=strict`, `PrivateTmp=true`, `WorkingDirectory` fixo e caminho absoluto no `ExecStart`.
 3. **Proxy:** Caddy com HTTPS automático. A API escuta só no loopback, atrás do Caddy (o `trustProxy` do ADR 0003 confia só nele).
 4. **PostgreSQL e Redis** só na interface de loopback, sem porta aberta no firewall.
@@ -82,3 +82,4 @@ WantedBy=multi-user.target
 - 2026-09-25: ajustes da revisão (CIT-47).
 - 2026-09-26: aceito pelo responsável (CIT-47). Itens em "Decisões em aberto" do README e revisões previstas pela #48 continuam valendo.
 - 2026-10-01: worker da fila como processo próprio, com `npm run worker` (`node src/worker.js`) como comando da futura unidade `systemd` da #57; o worker não lê banco nem CORS e encerra no SIGTERM esperando o job ativo e os alertas em curso (um segundo sinal é ignorado). A unidade do worker precisa de `TimeoutStopSec` maior que a duração máxima de um job mais alguns segundos para o alerta; senão o systemd mata o processo no meio do encerramento (CIT-56).
+- 2026-11-23: o worker passa a ler o banco (publicador do outbox e consumidores de eventos, ADR 0005): `DATABASE_URL` obrigatória no worker, com o mesmo login da API (membro de `<banco>_aplicacao`, #57). Continua um único processo worker: o publicador não tem bloqueio de linha, e duas instâncias publicariam o mesmo evento em duplicidade (absorvido pelo `jobId` e pelo `evento_processado`). No encerramento, o publicador para antes dos workers (CIT-166).

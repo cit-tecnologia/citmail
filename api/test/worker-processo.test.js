@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as esperar } from 'node:timers/promises';
-import { urlRedisTeste, criarFilasTeste } from './auxiliares.js';
+import { urlRedisTeste, criarFilasTeste, criarBancoTemporario, removerBancoTemporario, aplicarMigracoes } from './auxiliares.js';
 
 const CAMINHO_API = fileURLToPath(new URL('..', import.meta.url));
 
@@ -21,6 +21,14 @@ async function aguardarCondicao(condicao, { timeoutMs = 15000, intervaloMs = 20 
     if (Date.now() >= prazo) throw new Error('aguardarCondicao: tempo esgotado');
     await esperar(intervaloMs);
   }
+}
+
+// CIT-166: o worker lê o banco (outbox); cada teste recebe um banco temporário migrado.
+async function criarBancoParaWorker(t) {
+  const { nomeBanco, url } = await criarBancoTemporario();
+  t.after(() => removerBancoTemporario(nomeBanco));
+  await aplicarMigracoes(url);
+  return url;
 }
 
 function spawnWorker(env) {
@@ -38,10 +46,11 @@ function spawnWorker(env) {
 test('CA6: SIGTERM no worker com job em andamento conclui o job antes de sair com código 0', { timeout: 25000 }, async (t) => {
   const aux = criarFilasTeste({ tentativas: 3, backoffMs: 300 });
   t.after(aux.fechar);
+  const databaseUrl = await criarBancoParaWorker(t);
 
   const job = await aux.filas.jobs.add('exemplo', { requestId: 'req-ficticio-ca6', esperarMs: 1500 });
 
-  const env = { PATH: process.env.PATH, NODE_ENV: 'test', REDIS_URL: urlRedisTeste(), FILA_PREFIXO: aux.prefixo };
+  const env = { PATH: process.env.PATH, NODE_ENV: 'test', REDIS_URL: urlRedisTeste(), DATABASE_URL: databaseUrl, FILA_PREFIXO: aux.prefixo };
   const { filho, obterSaida } = spawnWorker(env);
   let codigoDeSaida;
   const encerrado = new Promise((resolve) => { filho.on('exit', (codigo) => { codigoDeSaida = codigo; resolve(); }); });
@@ -66,10 +75,11 @@ test('CA6: SIGTERM no worker com job em andamento conclui o job antes de sair co
 test('Revisão: um segundo sinal durante o encerramento é ignorado (só uma linha "encerrando")', { timeout: 25000 }, async (t) => {
   const aux = criarFilasTeste({ tentativas: 3, backoffMs: 300 });
   t.after(aux.fechar);
+  const databaseUrl = await criarBancoParaWorker(t);
 
   await aux.filas.jobs.add('exemplo', { requestId: 'req-ficticio-ca6-dupla', esperarMs: 1500 });
 
-  const env = { PATH: process.env.PATH, NODE_ENV: 'test', REDIS_URL: urlRedisTeste(), FILA_PREFIXO: aux.prefixo };
+  const env = { PATH: process.env.PATH, NODE_ENV: 'test', REDIS_URL: urlRedisTeste(), DATABASE_URL: databaseUrl, FILA_PREFIXO: aux.prefixo };
   const { filho, obterSaida } = spawnWorker(env);
   let codigoDeSaida;
   const encerrado = new Promise((resolve) => { filho.on('exit', (codigo) => { codigoDeSaida = codigo; resolve(); }); });
@@ -88,12 +98,14 @@ test('Revisão: um segundo sinal durante o encerramento é ignorado (só uma lin
 test('Revisão: em produção, o worker não registra o handler "exemplo" (job vai a "job desconhecido")', { timeout: 20000 }, async (t) => {
   const aux = criarFilasTeste({ tentativas: 1, backoffMs: 300 });
   t.after(aux.fechar);
+  const databaseUrl = await criarBancoParaWorker(t);
   const job = await aux.filas.jobs.add('exemplo', {});
 
   const env = {
     PATH: process.env.PATH,
     NODE_ENV: 'production',
     REDIS_URL: urlRedisTeste(),
+    DATABASE_URL: databaseUrl,
     FILA_PREFIXO: aux.prefixo,
     TELEGRAM_BOT_TOKEN: 'TOKEN-FICTICIO',
     TELEGRAM_CHAT_ID: 'CHAT-FICTICIO',
@@ -124,4 +136,45 @@ test('CA6: worker sem REDIS_URL (e sem DATABASE_URL) sai com código 1 citando R
   const saida = obterSaida();
   assert.match(saida, /REDIS_URL/);
   assert.ok(!saida.includes('DATABASE_URL'));
+});
+
+test('CA6: worker com REDIS_URL e sem DATABASE_URL sai com código 1 citando DATABASE_URL', { timeout: 10000 }, async (t) => {
+  const env = { PATH: process.env.PATH, NODE_ENV: 'test', REDIS_URL: urlRedisTeste() };
+  const { filho, obterSaida } = spawnWorker(env);
+  let codigoDeSaida;
+  const encerrado = new Promise((resolve) => { filho.on('exit', (codigo) => { codigoDeSaida = codigo; resolve(); }); });
+  t.after(() => { if (filho.exitCode === null) filho.kill('SIGKILL'); });
+
+  await encerrado;
+
+  assert.equal(codigoDeSaida, 1);
+  assert.match(obterSaida(), /DATABASE_URL/);
+});
+
+test('CA6: o worker sobe o publicador ("publicador iniciado") e sai com código 0 no SIGTERM', { timeout: 20000 }, async (t) => {
+  const aux = criarFilasTeste({ tentativas: 1, backoffMs: 300 });
+  t.after(aux.fechar);
+  const databaseUrl = await criarBancoParaWorker(t);
+
+  const env = {
+    PATH: process.env.PATH,
+    NODE_ENV: 'test',
+    REDIS_URL: urlRedisTeste(),
+    DATABASE_URL: databaseUrl,
+    FILA_PREFIXO: aux.prefixo,
+    OUTBOX_INTERVALO_MS: '100',
+  };
+  const { filho, obterSaida } = spawnWorker(env);
+  let codigoDeSaida;
+  const encerrado = new Promise((resolve) => { filho.on('exit', (codigo) => { codigoDeSaida = codigo; resolve(); }); });
+  t.after(() => { if (filho.exitCode === null) filho.kill('SIGKILL'); });
+
+  await aguardarCondicao(() => obterSaida().includes('"publicador iniciado"'), { timeoutMs: 15000 });
+  filho.kill('SIGTERM');
+  await encerrado;
+
+  assert.equal(codigoDeSaida, 0);
+  const saida = obterSaida();
+  assert.ok(saida.includes('"worker iniciado"'));
+  assert.ok(saida.includes('"encerrando"'));
 });
