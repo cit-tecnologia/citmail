@@ -1,0 +1,53 @@
+/* Estilos de termos.html (CIT-51). Reaproveita landing.css (header, rodapé, tipografia); só o que é próprio dos termos. */
+
+/* Header simplificado: logo e "Voltar ao site", sem menu (não depende de JS). */
+.termos-voltar {
+  margin-left: auto;
+  color: var(--white); border-color: rgba(255,255,255,.4);
+}
+.termos-voltar:hover { background: rgba(255,255,255,.08); border-color: var(--white); }
+
+.footer-logo { display: inline-flex; align-items: center; text-decoration: none; }
+
+/* Leitura: coluna estreita do Brandbook, abaixo do header fixo (68px). */
+.termos { padding: calc(68px + clamp(32px, 6vw, 64px)) 0 clamp(56px, 8vw, 96px); }
+.termos-doc { max-width: var(--cit-container-narrow); margin: 0 auto; }
+.termos-doc h1 { margin-bottom: var(--cit-space-4); overflow-wrap: anywhere; }
+.termos-doc h2 {
+  font-size: clamp(1.25rem, 2.2vw, 1.5rem);
+  margin: var(--cit-space-12) 0 var(--cit-space-4);
+}
+.termos-doc p, .termos-doc li { font-size: 1rem; overflow-wrap: anywhere; }
+.termos-doc p + p { margin-top: var(--cit-space-4); }
+.termos-doc ul, .termos-doc ol {
+  margin: var(--cit-space-3) 0 var(--cit-space-4);
+  padding-left: var(--cit-space-6);
+  color: var(--cit-text-secondary);
+}
+.termos-doc li { margin-bottom: var(--cit-space-2); line-height: var(--cit-leading-relaxed); }
+.termos-doc strong { color: var(--cit-text-primary); font-weight: 600; }
+.termos-doc a { color: var(--cit-text-link); text-decoration: underline; }
+.termos-doc a:hover { color: var(--cit-text-link-hover); }
+.termos-doc a .icon { margin-left: 4px; font-size: .8em; }
+
+.termos-versao { color: var(--cit-text-muted); font-size: var(--cit-text-small); }
+.termos-versao--fim {
+  margin-top: var(--cit-space-12); padding-top: var(--cit-space-6);
+  border-top: var(--cit-border);
+}
+
+/* Aviso de minuta e marcadores pendentes: tons de aviso do Brandbook. */
+.termos-aviso {
+  margin: var(--cit-space-6) 0;
+  padding: var(--cit-space-4) var(--cit-space-5);
+  background: var(--cit-warning-subtle);
+  border-left: var(--cit-border-width-strong) solid var(--cit-warning);
+  border-radius: var(--cit-radius-sm);
+  color: var(--cit-warning-strong);
+  font-size: var(--cit-text-small);
+}
+.termos-pendente {
+  background: var(--cit-warning-subtle); color: var(--cit-warning-strong);
+  padding: 0 var(--cit-space-1); border-radius: var(--cit-radius-xs);
+  font-weight: 600; overflow-wrap: anywhere;
+}
