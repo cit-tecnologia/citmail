@@ -360,7 +360,7 @@ test('CA3: 2º pedido do mesmo documento não consulta nem cria cliente no Asaas
 
 test('CA3: cliente que só existe no Asaas (GET /customers) é reaproveitado sem POST /customers', async () => {
   const corpo = montarCorpo();
-  stub.semearCliente({ id: 'cus_existente', documento: corpo.cliente.documento });
+  stub.semearCliente({ id: 'cus_existente', documento: corpo.cliente.documento, nome: 'Fulana de Teste', email: 'fulana@exemplo.test' });
   const resposta = await enviar(corpo);
 
   assert.equal(resposta.status, 201);
@@ -374,11 +374,12 @@ test('CA3: cliente que só existe no Asaas (GET /customers) é reaproveitado sem
 // CA4 e CA14: erro do Asaas e repetição
 // ---------------------------------------------------------------------------
 
+// A compensação consulta `pedido:<id>:contas` pelo externalReference (1 GET /subscriptions a mais).
 const ROTAS_DE_CRIACAO = [
-  ['GET /customers', ['GET /customers']],
-  ['POST /customers', ['GET /customers', 'POST /customers', 'GET /customers']],
-  ['GET /subscriptions', ['GET /customers', 'POST /customers', 'GET /subscriptions']],
-  ['POST /subscriptions', ['GET /customers', 'POST /customers', 'GET /subscriptions', 'POST /subscriptions', 'GET /subscriptions']],
+  ['GET /customers', ['GET /customers', 'GET /subscriptions']],
+  ['POST /customers', ['GET /customers', 'POST /customers', 'GET /customers', 'GET /subscriptions']],
+  ['GET /subscriptions', ['GET /customers', 'POST /customers', 'GET /subscriptions', 'GET /subscriptions']],
+  ['POST /subscriptions', ['GET /customers', 'POST /customers', 'GET /subscriptions', 'POST /subscriptions', 'GET /subscriptions', 'GET /subscriptions']],
 ];
 const FALHAS_DO_ASAAS = [
   ['400', { status: 400 }, 502, 'asaas_http_4xx'],
@@ -1155,7 +1156,7 @@ test('CA16: com ASAAS_API_KEY e ASAAS_BASE_URL na config, o app cria o adaptador
 
 test('CA16: cliente removido (deleted: true) no GET /customers não é reaproveitado: o fluxo cria um novo', async () => {
   const corpo = montarCorpo();
-  stub.semearCliente({ id: 'cus_removido', documento: corpo.cliente.documento, deleted: true });
+  stub.semearCliente({ id: `cus_removido_${randomUUID().replaceAll('-', '')}`, documento: corpo.cliente.documento, deleted: true });
   const resposta = await enviar(corpo);
 
   assert.equal(resposta.status, 201);
@@ -1176,7 +1177,7 @@ test('CA16: assinatura removida (deleted: true) no GET /subscriptions não é re
   assert.notEqual(assinatura.asaas_assinatura_id, 'sub_removida');
 });
 
-test('CA16: prazo global: chamadas lentas (cada uma abaixo do timeout) estouram o prazo do pedido e dão 504 asaas_timeout dentro do prazo + 1 s', async () => {
+test('CA16: prazo global: chamadas lentas (cada uma abaixo do timeout) estouram o prazo do pedido e dão 504 asaas_timeout dentro do prazo + confirmação + compensação', async () => {
   const prazoPedidoMs = 1500;
   for (const rotulo of [...ROTULOS_CONTAS, ROTA_REMOCAO]) stub.definir(rotulo, { atrasoMs: 900 });
   const { app } = appExtra({ pedidos: { prazoPedidoMs } });
@@ -1187,8 +1188,308 @@ test('CA16: prazo global: chamadas lentas (cada uma abaixo do timeout) estouram 
   const duracao = Date.now() - inicio;
 
   assert.deepEqual(resposta, esperadoDaFalha(504));
-  assert.ok(duracao <= prazoPedidoMs + 1000, `duração ${duracao} ms acima do prazo global + 1 s`);
+  // A confirmação (1 × timeout) e a compensação (até 2 × timeout) ficam fora do prazo global.
+  const limite = prazoPedidoMs + 3 * 1000 + 1000;
+  assert.ok(duracao <= limite, `duração ${duracao} ms acima de ${limite} ms`);
   const pedido = await pedidoPorChave(corpo.chave_idempotencia);
   assert.equal(pedido.estado, 'falhou_na_criacao');
   assert.equal(pedido.falha_motivo, 'asaas_timeout');
+});
+
+// ---------------------------------------------------------------------------
+// Revisão: confirmação e compensação fora do prazo global, "cria e não responde"
+// ---------------------------------------------------------------------------
+
+// GET /subscriptions: normal, exceto a n-ésima chamada, que devolve 500.
+const falhaNaChamada = (alvo) => ({ n }) => (n === alvo ? { status: 500 } : undefined);
+
+test('CA16: POST /subscriptions que cria e não responde, com a confirmação falhando, tem a assinatura criada removida pela compensação (504)', async () => {
+  stub.definir('POST /subscriptions', { criaESemResposta: true });
+  stub.definir('GET /subscriptions', falhaNaChamada(2));
+  const corpo = montarCorpo();
+  const resposta = await enviar(corpo);
+
+  assert.deepEqual(resposta, esperadoDaFalha(504));
+  assert.equal(stub.chamadasDe('POST /subscriptions').length, 1);
+  assert.equal(stub.chamadasDe('GET /subscriptions').length, 3);
+  const remocoes = stub.chamadasDe(ROTA_REMOCAO);
+  assert.equal(remocoes.length, 1, 'a assinatura criada pelo POST sem resposta precisa ser removida');
+  assert.match(remocoes[0].caminho, /^\/subscriptions\/sub_stub_\d+$/);
+  assert.deepEqual(stub.assinaturasVivas(), []);
+  const pedido = await pedidoPorChave(corpo.chave_idempotencia);
+  assert.equal(pedido.estado, 'falhou_na_criacao');
+  assert.equal(pedido.falha_motivo, 'asaas_timeout');
+  assert.equal(await contarAssinaturas(pedido.id), 0);
+  const aviso = ambiente.captura.linhas().find((l) => l.msg === 'confirmação falhou' && l.pedidoId === pedido.id);
+  assert.ok(aviso, 'log confirmação falhou');
+  assert.equal(aviso.operacao, 'criar_assinatura');
+});
+
+test('CA16: POST /subscriptions que cria e não responde, com a confirmação achando a assinatura, a reaproveita (201, 1 POST, 0 DELETE)', async () => {
+  stub.definir('POST /subscriptions', { criaESemResposta: true });
+  const resposta = await enviar(montarCorpo());
+
+  assert.equal(resposta.status, 201);
+  assert.equal(stub.chamadasDe('POST /subscriptions').length, 1);
+  assert.equal(stub.chamadasDe(ROTA_REMOCAO).length, 0);
+  assert.equal(await contarAssinaturas(resposta.corpo.pedidoId), 1);
+});
+
+test('CA16: compensação consulta pedido:<id>:<tipo> de cada tipo, sem assinatura obtida, e remove o que achar', async () => {
+  // O 1º POST (contas) cria e não responde; a confirmação falha; a compensação acha as contas.
+  stub.definir('POST /subscriptions', { criaESemResposta: true });
+  stub.definir('GET /subscriptions', falhaNaChamada(2));
+  const corpo = corpoComDominios();
+  const resposta = await enviar(corpo);
+
+  assert.equal(resposta.status, 504);
+  const pedido = await pedidoPorChave(corpo.chave_idempotencia);
+  const consultas = stub.chamadasDe('GET /subscriptions').map((c) => c.query.externalReference);
+  assert.deepEqual(consultas, [`pedido:${pedido.id}:contas`, `pedido:${pedido.id}:contas`, `pedido:${pedido.id}:contas`, `pedido:${pedido.id}:dominios`]);
+  assert.equal(stub.chamadasDe(ROTA_REMOCAO).length, 1);
+  assert.deepEqual(stub.assinaturasVivas(), []);
+});
+
+test('CA16: falha na consulta da compensação é logada como compensação sem consulta e o pedido falha mesmo assim', async () => {
+  stub.definir('POST /subscriptions', { status: 500 });
+  stub.definir('GET /subscriptions', ({ n }) => (n >= 2 ? { status: 500 } : undefined));
+  const corpo = montarCorpo();
+  const resposta = await enviar(corpo);
+
+  assert.deepEqual(resposta, esperadoDaFalha(502));
+  const pedido = await pedidoPorChave(corpo.chave_idempotencia);
+  assert.equal(pedido.estado, 'falhou_na_criacao');
+  assert.ok(ambiente.captura.linhas().some((l) => l.msg === 'compensação sem consulta' && l.pedidoId === pedido.id));
+});
+
+test('CA16: com o prazo global esgotado, a confirmação usa sinal próprio e reaproveita a assinatura criada (201)', async () => {
+  stub.definir('POST /subscriptions', { criaESemResposta: true });
+  const { app } = appExtra({ pedidos: { prazoPedidoMs: 800 }, timeoutMs: 3000 });
+  const resposta = await enviar(montarCorpo(), app);
+
+  assert.equal(resposta.status, 201, JSON.stringify(resposta.corpo));
+  assert.equal(stub.chamadasDe('POST /subscriptions').length, 1);
+  assert.equal(stub.chamadasDe(ROTA_REMOCAO).length, 0);
+});
+
+test('CA16: com o prazo global esgotado, a compensação usa sinal próprio e remove a assinatura criada', async () => {
+  stub.definir('POST /subscriptions', { criaESemResposta: true });
+  stub.definir('GET /subscriptions', falhaNaChamada(2));
+  const { app } = appExtra({ pedidos: { prazoPedidoMs: 800 }, timeoutMs: 3000 });
+  const corpo = montarCorpo();
+  const resposta = await enviar(corpo, app);
+
+  assert.equal(resposta.status, 504);
+  assert.equal(stub.chamadasDe(ROTA_REMOCAO).length, 1);
+  assert.deepEqual(stub.assinaturasVivas(), []);
+});
+
+test('CA9: o prazo de retomada padrão é 105 s (45 s + 3 × timeout de 10 s + 30 s)', async () => {
+  const { app } = appExtra({ pedidos: {}, timeoutMs: 10000 });
+  const corpo = montarCorpo();
+  const criado = await pedidoEmCriando(corpo, '100 seconds');
+  assert.deepEqual(await enviar(corpo, app), { status: 409, corpo: { erro: 'pedido_em_criacao' } });
+
+  await ambiente.pool.query("UPDATE pedido SET criando_desde = now() - interval '110 seconds' WHERE id = $1", [criado.corpo.pedidoId]);
+  assert.equal((await enviar(corpo, app)).status, 201);
+});
+
+// ---------------------------------------------------------------------------
+// Revisão: assinatura duplicada para o mesmo externalReference
+// ---------------------------------------------------------------------------
+
+test('CA16: duas assinaturas ativas no mesmo externalReference: fica a mais antiga e a outra recebe DELETE', async () => {
+  const corpo = montarCorpo();
+  const sufixo = randomUUID().replaceAll('-', '');
+  const [nova, antiga] = [`sub_nova${sufixo}`, `sub_antiga${sufixo}`];
+  // A mais nova vem primeiro na lista: a ordem da resposta não decide.
+  stub.definir('GET /subscriptions', {
+    corpo: {
+      data: [
+        { id: nova, dateCreated: '2026-02-01T00:00:00Z' },
+        { id: antiga, dateCreated: '2026-01-01T00:00:00Z' }
+      ]
+    }
+  });
+  stub.definir(ROTA_PAGAMENTOS, { corpo: { data: [{ invoiceUrl: 'https://stub.test/f/antiga' }] } });
+  const resposta = await enviar(corpo);
+
+  assert.equal(resposta.status, 201);
+  assert.equal(stub.chamadasDe('POST /subscriptions').length, 0);
+  assert.deepEqual(stub.chamadasDe(ROTA_REMOCAO).map((c) => c.caminho), [`/subscriptions/${nova}`]);
+  assert.equal(stub.chamadasDe(ROTA_PAGAMENTOS)[0].caminho, `/subscriptions/${antiga}/payments`);
+  const [assinatura] = await assinaturasDe(resposta.corpo.pedidoId);
+  assert.equal(assinatura.asaas_assinatura_id, antiga);
+  assert.equal(assinatura.url_primeira_fatura, 'https://stub.test/f/antiga');
+  const duplicada = ambiente.captura.linhas().find((l) => l.msg === 'assinatura duplicada');
+  assert.equal(duplicada.pedidoId, resposta.corpo.pedidoId);
+  assert.equal(duplicada.asaasAssinaturaId, nova);
+});
+
+test('CA16: se o DELETE da duplicada falhar, o pedido segue (201) e o log assinatura órfã leva o id', async () => {
+  const sufixo = randomUUID().replaceAll('-', '');
+  stub.definir('GET /subscriptions', {
+    corpo: { data: [{ id: `sub_a${sufixo}`, dateCreated: '2026-01-01' }, { id: `sub_n${sufixo}`, dateCreated: '2026-02-01' }] }
+  });
+  stub.definir(ROTA_REMOCAO, { status: 500 });
+  const resposta = await enviar(montarCorpo());
+
+  assert.equal(resposta.status, 201, JSON.stringify(resposta.corpo));
+  const orfa = ambiente.captura.linhas().find((l) => l.msg === 'assinatura órfã' && l.pedidoId === resposta.corpo.pedidoId);
+  assert.equal(orfa.asaasAssinaturaId, `sub_n${sufixo}`);
+});
+
+// ---------------------------------------------------------------------------
+// Revisão: A1, contato divergente do cadastro do documento retém a URL da fatura
+// ---------------------------------------------------------------------------
+
+async function assertFaturaRetida(corpo, resposta) {
+  assert.equal(resposta.status, 201);
+  assert.equal(resposta.corpo.aviso, 'fatura_pendente');
+  assert.equal(resposta.corpo.estado, 'aguardando_pagamento');
+  assert.ok(resposta.corpo.faturas.length >= 1);
+  assert.ok(resposta.corpo.faturas.every((f) => f.url === null), 'todas as faturas com url null');
+  const pedido = await pedidoPorChave(corpo.chave_idempotencia);
+  assert.equal(pedido.fatura_retida, true);
+  assert.equal(pedido.estado, 'aguardando_pagamento');
+  const assinaturas = await assinaturasDe(pedido.id);
+  assert.equal(assinaturas.length, resposta.corpo.faturas.length);
+  assert.ok(assinaturas.every((a) => a.url_primeira_fatura === null), 'banco sem URL');
+  return pedido;
+}
+
+test('A1: cliente do Asaas com outro nome responde 201 com aviso fatura_pendente, url null, banco sem URL e fatura_retida true', async () => {
+  const corpo = corpoComDominios();
+  stub.semearCliente({ id: `cus_outro_nome_${randomUUID().replaceAll('-', '')}`, documento: corpo.cliente.documento, nome: 'Outra Pessoa Cadastrada', email: 'fulana@exemplo.test' });
+  const resposta = await enviar(corpo);
+
+  const pedido = await assertFaturaRetida(corpo, resposta);
+  assert.equal(resposta.corpo.faturas.length, 2);
+  assert.equal(stub.chamadasDe(ROTA_PAGAMENTOS).length, 0, 'a URL nem é buscada');
+  assert.equal(stub.chamadasDe('POST /subscriptions').length, 2, 'as assinaturas são criadas normalmente');
+  const retida = ambiente.captura.linhas().find((l) => l.msg === 'fatura retida' && l.pedidoId === pedido.id);
+  assert.ok(retida, 'log fatura retida');
+  assert.equal(retida.codigo, 'contato_divergente');
+});
+
+test('A1: cliente do Asaas com outro e-mail também retém a fatura', async () => {
+  const corpo = montarCorpo();
+  stub.semearCliente({ id: `cus_outro_email_${randomUUID().replaceAll('-', '')}`, documento: corpo.cliente.documento, nome: 'Fulana de Teste', email: 'outra@exemplo.test' });
+
+  await assertFaturaRetida(corpo, await enviar(corpo));
+});
+
+test('A1: cliente do Asaas sem nome e e-mail conta como divergente', async () => {
+  const corpo = montarCorpo();
+  stub.semearCliente({ id: `cus_sem_dados_${randomUUID().replaceAll('-', '')}`, documento: corpo.cliente.documento });
+
+  await assertFaturaRetida(corpo, await enviar(corpo));
+});
+
+test('A1: repetição pela mesma chave devolve o mesmo aviso e as mesmas faturas, sem nova chamada', async () => {
+  const corpo = montarCorpo();
+  stub.semearCliente({ id: `cus_${randomUUID().replaceAll('-', '')}`, documento: corpo.cliente.documento, nome: 'Outra Pessoa Cadastrada', email: 'fulana@exemplo.test' });
+  const primeira = await enviar(corpo);
+  await assertFaturaRetida(corpo, primeira);
+  const chamadasAntes = stub.chamadas.length;
+
+  const segunda = await enviar(corpo);
+
+  assert.deepEqual(segunda, primeira);
+  assert.equal(stub.chamadas.length, chamadasAntes);
+});
+
+test('A1: 2º pedido do mesmo documento com contato diferente do cadastrado da tabela cliente retém a fatura', async () => {
+  const documento = cpfUnico();
+  const primeiro = montarCorpo({ cliente: { documento } });
+  const segundo = montarCorpo({ cliente: { documento, nome: 'Beltrana de Teste', email: 'beltrana@exemplo.test' } });
+
+  const a = await enviar(primeiro);
+  assert.equal(a.status, 201);
+  assert.equal(a.corpo.aviso, undefined);
+  await assertFaturaRetida(segundo, await enviar(segundo));
+});
+
+test('A1: contato igual ao cadastrado devolve a URL normal, sem aviso e com fatura_retida false', async () => {
+  const documento = cpfUnico();
+  const primeiro = montarCorpo({ cliente: { documento } });
+  const segundo = montarCorpo({ cliente: { documento } });
+
+  const a = await enviar(primeiro);
+  const b = await enviar(segundo);
+
+  for (const [corpo, resposta] of [[primeiro, a], [segundo, b]]) {
+    assert.equal(resposta.status, 201);
+    assert.equal('aviso' in resposta.corpo, false);
+    assert.match(resposta.corpo.faturas[0].url, /^https:\/\/stub\.test\/f\/\d+$/);
+    assert.equal((await pedidoPorChave(corpo.chave_idempotencia)).fatura_retida, false);
+  }
+});
+
+test('A1: nome com caixa, espaços e acentuação em outra forma Unicode, e e-mail em maiúsculas, valem como iguais (URL normal)', async () => {
+  const corpo = montarCorpo({ cliente: { nome: 'José Ficticio', email: 'jose@exemplo.test' } });
+  stub.semearCliente({ id: `cus_jose_${randomUUID().replaceAll('-', '')}`, documento: corpo.cliente.documento, nome: '  JOSÉ   ficticio ', email: 'JOSE@EXEMPLO.TEST' });
+  const resposta = await enviar(corpo);
+
+  assert.equal(resposta.status, 201);
+  assert.equal('aviso' in resposta.corpo, false);
+  assert.match(resposta.corpo.faturas[0].url, /^https:\/\/stub\.test\/f\//);
+  assert.equal((await pedidoPorChave(corpo.chave_idempotencia)).fatura_retida, false);
+});
+
+test('A1: o log fatura retida não leva nome nem e-mail do cadastro (conferido pelo afterEach com o marcador de dados do stub)', async () => {
+  const corpo = montarCorpo();
+  sensiveis.add('Cadastrada Ficticia Do Stub');
+  stub.semearCliente({ id: `cus_x_${randomUUID().replaceAll('-', '')}`, documento: corpo.cliente.documento, nome: 'Cadastrada Ficticia Do Stub', email: 'cadastrada@exemplo.test' });
+  sensiveis.add('cadastrada@exemplo.test');
+
+  await assertFaturaRetida(corpo, await enviar(corpo));
+});
+
+test('A1: aviso fatura_pendente fica fora do 201 quando o pedido é retomado e o contato confere', async () => {
+  const corpo = montarCorpo();
+  await pedidoEmCriando(corpo, '1 hour');
+  const resposta = await enviar(corpo);
+
+  assert.equal(resposta.status, 201);
+  assert.equal('aviso' in resposta.corpo, false);
+});
+
+// ---------------------------------------------------------------------------
+// Revisão: caracteres de controle e invisíveis no contato
+// ---------------------------------------------------------------------------
+
+const CONTATOS_COM_CONTROLE = [
+  ['nome com espaço de largura zero', { nome: 'Fulana​Teste' }],
+  ['nome com quebra de linha', { nome: 'Fulana\nTeste' }],
+  ['nome com inversão de direção (U+202E)', { nome: 'Fulana‮Teste' }],
+  ['nome com caractere nulo', { nome: 'Fulana\u0000Teste' }],
+  ['telefone com caractere de controle', { telefone: '11999\u0007990000' }],
+  ['documento com caractere de controle', { documento: '529.982.247-25​' }],
+];
+
+for (const [rotulo, cliente] of CONTATOS_COM_CONTROLE) {
+  test(`A1: ${rotulo} responde 400 sem chamar o Asaas nem gravar`, async () => {
+    const corpo = montarCorpo();
+    const enviado = { ...corpo, cliente: { ...corpo.cliente, ...cliente } };
+    const resposta = await enviar(enviado);
+
+    assert.equal(resposta.status, 400);
+    assert.equal(stub.chamadas.length, 0);
+    assert.equal(await contarPedidos(corpo.chave_idempotencia), 0);
+  });
+}
+
+test('A1: e-mail com caractere de controle responde 400 sem chamar o Asaas', async () => {
+  const corpo = montarCorpo();
+  const resposta = await enviar({ ...corpo, cliente: { ...corpo.cliente, email: 'fulana​@exemplo.test' } });
+
+  assert.equal(resposta.status, 400);
+  assert.equal(stub.chamadas.length, 0);
+});
+
+test('A1: nome com acento e cedilha (categoria L, não C) segue aceito', async () => {
+  const resposta = await enviar(montarCorpo({ cliente: { nome: 'Conceição Ávila de Teste' } }));
+
+  assert.equal(resposta.status, 201);
 });

@@ -35,10 +35,19 @@ test('CA16: toda chamada leva access_token, User-Agent e Content-Type', async ()
   assert.equal(chamada.cabecalhos['content-type'], 'application/json');
 });
 
-test('CA16: buscarClientePorDocumento consulta pelo cpfCnpj e devolve o id', async () => {
-  stub.semearCliente({ id: 'cus_existente', documento: '52998224725' });
-  assert.equal(await adaptador().buscarClientePorDocumento('52998224725'), 'cus_existente');
+test('CA16: buscarClientePorDocumento consulta pelo cpfCnpj e devolve id, nome e e-mail', async () => {
+  stub.semearCliente({ id: 'cus_existente', documento: '52998224725', nome: 'Fulana de Teste', email: 'fulana@exemplo.test' });
+  assert.deepEqual(await adaptador().buscarClientePorDocumento('52998224725'), {
+    id: 'cus_existente',
+    nome: 'Fulana de Teste',
+    email: 'fulana@exemplo.test'
+  });
   assert.deepEqual(stub.chamadas[0].query, { cpfCnpj: '52998224725' });
+});
+
+test('CA16: buscarClientePorDocumento devolve nome e e-mail null quando o Asaas não os traz', async () => {
+  stub.semearCliente({ id: 'cus_sem_dados', documento: '52998224725' });
+  assert.deepEqual(await adaptador().buscarClientePorDocumento('52998224725'), { id: 'cus_sem_dados', nome: null, email: null });
 });
 
 test('CA16: buscarClientePorDocumento devolve null quando o Asaas não tem o cliente', async () => {
@@ -49,15 +58,29 @@ test('CA16: buscarClientePorDocumento ignora cliente removido (deleted: true) e 
   stub.semearCliente({ id: 'cus_removido', documento: '52998224725', deleted: true });
   assert.equal(await adaptador().buscarClientePorDocumento('52998224725'), null);
   stub.semearCliente({ id: 'cus_vivo', documento: '52998224725' });
-  assert.equal(await adaptador().buscarClientePorDocumento('52998224725'), 'cus_vivo');
+  assert.equal((await adaptador().buscarClientePorDocumento('52998224725')).id, 'cus_vivo');
 });
 
-test('CA16: buscarAssinaturaPorReferencia ignora assinatura removida (deleted: true)', async () => {
+test('CA16: listarAssinaturasPorReferencia ignora assinatura removida (deleted: true)', async () => {
   stub.semearAssinatura({ id: 'sub_removida', externalReference: 'pedido:p1:contas', deleted: true });
-  assert.equal(await adaptador().buscarAssinaturaPorReferencia('pedido:p1:contas'), null);
+  assert.deepEqual(await adaptador().listarAssinaturasPorReferencia('pedido:p1:contas'), []);
   stub.semearAssinatura({ id: 'sub_viva', externalReference: 'pedido:p1:contas' });
-  assert.equal(await adaptador().buscarAssinaturaPorReferencia('pedido:p1:contas'), 'sub_viva');
+  assert.deepEqual(await adaptador().listarAssinaturasPorReferencia('pedido:p1:contas'), ['sub_viva']);
   assert.deepEqual(stub.chamadas[1].query, { externalReference: 'pedido:p1:contas' });
+});
+
+test('CA16: listarAssinaturasPorReferencia devolve todas as ativas, da mais antiga para a mais nova', async () => {
+  stub.semearAssinatura({ id: 'sub_nova', externalReference: 'pedido:p1:contas', dateCreated: '2026-02-01' });
+  stub.semearAssinatura({ id: 'sub_velha', externalReference: 'pedido:p1:contas', dateCreated: '2026-01-01' });
+  stub.semearAssinatura({ id: 'sub_removida', externalReference: 'pedido:p1:contas', dateCreated: '2025-01-01', deleted: true });
+  stub.semearAssinatura({ id: 'sub_outra', externalReference: 'pedido:p2:contas', dateCreated: '2025-06-01' });
+  assert.deepEqual(await adaptador().listarAssinaturasPorReferencia('pedido:p1:contas'), ['sub_velha', 'sub_nova']);
+});
+
+test('CA16: listarAssinaturasPorReferencia desempata a mesma dateCreated pelo id crescente', async () => {
+  stub.semearAssinatura({ id: 'sub_b', externalReference: 'pedido:p1:contas', dateCreated: '2026-01-01' });
+  stub.semearAssinatura({ id: 'sub_a', externalReference: 'pedido:p1:contas', dateCreated: '2026-01-01' });
+  assert.deepEqual(await adaptador().listarAssinaturasPorReferencia('pedido:p1:contas'), ['sub_a', 'sub_b']);
 });
 
 test('CA16: criarCliente com telefone de 11 dígitos envia mobilePhone e notificationDisabled', async () => {

@@ -227,7 +227,7 @@ const AMBIENTE_PRODUCAO = { ...AMBIENTE_BASE, NODE_ENV: 'production' };
 const AMBIENTE_ASAAS = {
   PEDIDOS_HABILITADO: 'true',
   ASAAS_API_KEY: 'CHAVE-FICTICIA-ASAAS',
-  ASAAS_BASE_URL: 'https://asaas.exemplo.test/v3',
+  ASAAS_BASE_URL: 'https://api.asaas.com/v3',
 };
 
 test('CA16: PEDIDOS_HABILITADO ausente é false em produção e true fora dela', () => {
@@ -261,7 +261,7 @@ test('CA16: produção com PEDIDOS_HABILITADO=true, chave e URL https carrega e 
   const config = carregarConfig({ ...AMBIENTE_PRODUCAO, ...AMBIENTE_ASAAS });
   assert.equal(config.pedidosHabilitado, true);
   assert.equal(config.asaasApiKey, 'CHAVE-FICTICIA-ASAAS');
-  assert.equal(config.asaasBaseUrl, 'https://asaas.exemplo.test/v3');
+  assert.equal(config.asaasBaseUrl, 'https://api.asaas.com/v3');
   assert.equal(config.asaasTimeoutMs, 10000);
 });
 
@@ -290,6 +290,41 @@ test('CA16: produção com ASAAS_BASE_URL http:// lança erro citando o nome, se
       return true;
     },
   );
+});
+
+test('CA16: produção aceita os hosts api.asaas.com e api-sandbox.asaas.com', () => {
+  for (const url of ['https://api.asaas.com', 'https://api.asaas.com/v3', 'https://api-sandbox.asaas.com/v3']) {
+    const config = carregarConfig({ ...AMBIENTE_PRODUCAO, ...AMBIENTE_ASAAS, ASAAS_BASE_URL: url });
+    assert.equal(config.asaasBaseUrl, url);
+  }
+});
+
+const URLS_DE_PRODUCAO_RECUSADAS = [
+  ['outro host https', 'https://asaas.exemplo.test/v3'],
+  ['host parecido (sufixo)', 'https://api.asaas.com.exemplo.test/v3'],
+  ['host parecido (prefixo)', 'https://exemplo-api.asaas.com/v3'],
+  ['subdomínio do host', 'https://x.api.asaas.com/v3'],
+  ['porta explícita', 'https://api.asaas.com:8443/v3'],
+  ['credencial na URL', 'https://usuario:senha@api.asaas.com/v3'],
+  ['host no lugar da credencial', 'https://api.asaas.com@exemplo.test/v3'],
+];
+for (const [rotulo, url] of URLS_DE_PRODUCAO_RECUSADAS) {
+  test(`CA16: produção recusa ASAAS_BASE_URL com ${rotulo}, citando o nome e sem o valor`, () => {
+    assert.throws(
+      () => carregarConfig({ ...AMBIENTE_PRODUCAO, ...AMBIENTE_ASAAS, ASAAS_BASE_URL: url }),
+      (erro) => {
+        assert.match(erro.message, /ASAAS_BASE_URL/);
+        assert.ok(!erro.message.includes('exemplo.test'));
+        assert.ok(!erro.message.includes('senha'));
+        return true;
+      },
+    );
+  });
+}
+
+test('CA16: fora de produção ASAAS_BASE_URL aceita qualquer host https', () => {
+  const config = carregarConfig({ ...AMBIENTE_BASE, ASAAS_API_KEY: 'CHAVE-FICTICIA-ASAAS', ASAAS_BASE_URL: 'https://asaas.exemplo.test/v3' });
+  assert.equal(config.asaasBaseUrl, 'https://asaas.exemplo.test/v3');
 });
 
 test('CA16: produção com a rota desligada também recusa ASAAS_BASE_URL http:// (valor nunca usado fora do https)', () => {

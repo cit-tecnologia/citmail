@@ -35,6 +35,7 @@ function lerCorpo(request) {
  * - `status` (+ `corpo`): responde isso sem aplicar efeito; erro sem `corpo` leva o marcador.
  * - `atrasoMs`: espera antes de processar e responder.
  * - `semResposta`: aceita a conexão e nunca responde (o cliente estoura o timeout).
+ * - `criaESemResposta`: aplica o efeito (cria o recurso) e nunca responde.
  * - `respostaTardiaMs`: aplica o efeito já e responde só depois ("aceita e responde tarde").
  * - `redirecionarPara`: responde 302.
  */
@@ -72,7 +73,13 @@ export async function criarStubAsaas() {
     }
     if (metodo === 'POST' && caminho === '/customers') {
       sequencia += 1;
-      const cliente = { id: `cus_stub_${sequencia}`, cpfCnpj: corpo?.cpfCnpj, externalReference: corpo?.externalReference };
+      const cliente = {
+        id: `cus_stub_${sequencia}`,
+        cpfCnpj: corpo?.cpfCnpj,
+        name: corpo?.name,
+        email: corpo?.email,
+        externalReference: corpo?.externalReference
+      };
       clientes.push(cliente);
       return { status: 200, corpo: { id: cliente.id } };
     }
@@ -84,7 +91,12 @@ export async function criarStubAsaas() {
     }
     if (metodo === 'POST' && caminho === '/subscriptions') {
       sequencia += 1;
-      const assinatura = { id: `sub_stub_${sequencia}`, externalReference: corpo?.externalReference, numero: sequencia };
+      const assinatura = {
+        id: `sub_stub_${sequencia}`,
+        externalReference: corpo?.externalReference,
+        numero: sequencia,
+        dateCreated: new Date(Date.UTC(2026, 0, 1, 0, 0, sequencia)).toISOString()
+      };
       assinaturas.push(assinatura);
       return { status: 200, corpo: { id: assinatura.id } };
     }
@@ -120,6 +132,11 @@ export async function criarStubAsaas() {
     const comportamento = (typeof definido === 'function' ? definido({ n, corpo, query }) : definido) ?? {};
 
     if (comportamento.semResposta) return;
+    if (comportamento.criaESemResposta) {
+      // Aplica o efeito (cria o recurso) e nunca responde: o cliente estoura o timeout.
+      efeito(metodo, caminho, query, corpo);
+      return;
+    }
     if (comportamento.atrasoMs) await esperar(comportamento.atrasoMs);
     if (comportamento.redirecionarPara) {
       res.writeHead(302, { Location: comportamento.redirecionarPara });
@@ -157,13 +174,25 @@ export async function criarStubAsaas() {
       return chamadas.filter((c) => c.rotulo === rotulo);
     },
     /** Cliente já existente no Asaas (para o `GET /customers`). */
-    semearCliente({ id, documento, deleted }) {
-      clientes.push({ id, cpfCnpj: documento, ...(deleted ? { deleted: true } : {}) });
+    semearCliente({ id, documento, nome, email, deleted }) {
+      clientes.push({
+        id,
+        cpfCnpj: documento,
+        ...(nome === undefined ? {} : { name: nome }),
+        ...(email === undefined ? {} : { email }),
+        ...(deleted ? { deleted: true } : {})
+      });
     },
     /** Assinatura já existente no Asaas (para o `GET /subscriptions`). */
-    semearAssinatura({ id, externalReference, deleted }) {
+    semearAssinatura({ id, externalReference, deleted, dateCreated }) {
       sequencia += 1;
-      assinaturas.push({ id, externalReference, numero: sequencia, ...(deleted ? { deleted: true } : {}) });
+      assinaturas.push({
+        id,
+        externalReference,
+        numero: sequencia,
+        ...(dateCreated ? { dateCreated } : {}),
+        ...(deleted ? { deleted: true } : {})
+      });
     },
     /** Resolve quando a `n`-ésima chamada à rota chegar ao stub (sem polling). */
     esperarChamada(rotulo, n = 1) {
