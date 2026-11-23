@@ -13,9 +13,13 @@ export async function inserirEvento(executor, linha) {
   )
   if (resultado.rows.length > 0) return { id: resultado.rows[0].id, criado: true }
   const existente = await executor.query(
-    'SELECT id FROM evento WHERE chave_idempotencia = $1',
+    'SELECT id, agregado_tipo, agregado_id FROM evento WHERE chave_idempotencia = $1',
     [linha.chaveIdempotencia]
   )
+  const { agregado_tipo: tipo, agregado_id: agregadoId } = existente.rows[0]
+  if (tipo !== linha.agregadoTipo || agregadoId !== linha.agregadoId) {
+    throw new TypeError('evento: chave de idempotência já usada por outro agregado')
+  }
   return { id: existente.rows[0].id, criado: false }
 }
 

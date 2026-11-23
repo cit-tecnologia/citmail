@@ -48,6 +48,9 @@ export function validarConsumidores(consumidores) {
  * gravada → `evento já processado`, sem `tratar`. `eventoId` fora do formato UUID ou
  * evento inexistente → `UnrecoverableError` (o job vai a `failed` sem novas
  * tentativas). Outro erro → `ROLLBACK` (a marca não fica) e relança (nova tentativa).
+ * `tratar` não pode engolir erro SQL (try/catch em volta de query) nem emitir
+ * `COMMIT`/`ROLLBACK` próprio: a transação é deste processamento; transação abortada
+ * no `COMMIT` vira erro recuperável e a fila tenta de novo.
  */
 export async function processarEvento({ pool, consumidor, tratar, log }, { eventoId } = {}) {
   if (typeof eventoId !== 'string' || !UUID.test(eventoId)) {
@@ -73,7 +76,9 @@ export async function processarEvento({ pool, consumidor, tratar, log }, { event
       return
     }
     await tratar({ cliente, evento, log })
-    await cliente.query('COMMIT')
+    // Transação abortada (`tratar` engoliu erro SQL): o COMMIT vira ROLLBACK sem lançar.
+    const fim = await cliente.query('COMMIT')
+    if (fim.command === 'ROLLBACK') throw new Error('transação do consumidor abortada')
   } catch (err) {
     try {
       await cliente.query('ROLLBACK')

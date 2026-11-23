@@ -245,6 +245,8 @@ export const consumidoresPadrao = Object.freeze({
 UPDATE evento SET publicado_em = NULL WHERE nome = 'pedido_pago' AND ocorrido_em >= '2026-11-01';
 ```
 
+O backfill **não reentrega** a consumidor cujo job `<consumidor>-<eventoId>` ainda está retido em `failed`: o `addBulk` com o mesmo `jobId` vira no-op. Nesse caso, reprocessar pelo retry do job (`npm run reprocessar -- <consumidor>-<eventoId>`, `src/cli/reprocessar.js`) ou remover o job antes.
+
 Logs: `publicador iniciado` (`intervaloMs`), `evento sem consumidor` (`eventoId`, `evento` com o nome do evento; `nome` é chave mascarada pelo logger), `publicação falhou` (`warn`, `erro` com o nome do erro, `eventos` com a quantidade), `evento já processado` (`eventoId`, `consumidor`); erro de banco do ciclo sai com `erro` e `codigo`, sem mensagem. Sem retenção por enquanto: `evento` e `evento_processado` crescem até a história de limpeza.
 
 ## Como rodar os testes

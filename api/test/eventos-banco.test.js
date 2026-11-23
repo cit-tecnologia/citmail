@@ -391,6 +391,21 @@ test('CA2j: agregado.tipo fora da lista passa pelo serviço e o banco recusa com
   assert.equal(await contarEventos(banco.pool), 0);
 });
 
+test('CA2l: chave repetida com outro agregado é rejeitada', async (t) => {
+  const banco = await criarBancoMigrado();
+  t.after(banco.fechar);
+
+  const dados = dadosValidos();
+  await emTransacao(banco.pool, (cliente) => registrarEvento(cliente, dados));
+  const outro = { ...dados, agregado: { tipo: 'pedido', id: randomUUID() } };
+
+  await assert.rejects(
+    emTransacao(banco.pool, (cliente) => registrarEvento(cliente, outro)),
+    { name: 'TypeError', message: 'evento: chave de idempotência já usada por outro agregado' }
+  );
+  assert.equal(await contarEventos(banco.pool), 1);
+});
+
 test('CA2k: registrarEvento recusa um Pool no lugar do cliente da transação', async (t) => {
   const banco = await criarBancoMigrado();
   t.after(banco.fechar);

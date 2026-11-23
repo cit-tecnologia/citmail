@@ -322,6 +322,25 @@ for (const [descricao, eventoIdInvalido] of Object.entries(EVENTOS_ID_INVALIDOS)
   });
 }
 
+test('CA4e: tratar que engole erro SQL não marca o evento como processado', async (t) => {
+  const { pool, aux } = await montar(t);
+  const eventoId = await registrar(pool);
+  const tratar = async ({ cliente }) => {
+    try {
+      await cliente.query('SELECT * FROM tabela_inexistente_166');
+    } catch {
+      // erro engolido de propósito: a transação fica abortada
+    }
+  };
+
+  await assert.rejects(
+    processarEvento({ pool, consumidor: 'teste_a', tratar, log: aux.log }, { eventoId }),
+    /transação do consumidor abortada/
+  );
+  assert.equal(await contar(pool, 'evento_processado'), 0);
+  assert.equal(await contar(pool, 'efeito_teste'), 0);
+});
+
 test('CA4d: duas entregas concorrentes do mesmo eventoId resolvem sem erro e deixam 1 efeito e 1 marca', async (t) => {
   const { pool, aux } = await montar(t);
   const eventoId = await registrar(pool);
