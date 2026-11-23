@@ -292,7 +292,7 @@ async function privilegioDeColuna(tabela, coluna, tipo) {
 }
 
 const COLUNAS = {
-  cliente: ['id', 'tipo_pessoa', 'documento', 'nome', 'email', 'telefone', 'asaas_cliente_id', 'anonimizado_em', 'criado_em', 'atualizado_em'],
+  cliente: ['id', 'tipo_pessoa', 'documento', 'nome', 'email', 'telefone', 'asaas_cliente_id', 'asaas_contato_confere', 'anonimizado_em', 'criado_em', 'atualizado_em'],
   pedido: [
     'id', 'cliente_id', 'chave_idempotencia', 'corpo_hash', 'estado', 'criando_desde', 'ciclo', 'itens', 'total_centavos',
     'versao_tabela_precos', 'contato_nome', 'contato_email', 'contato_telefone', 'falha_motivo', 'request_id',
@@ -341,9 +341,9 @@ test('CA7: o papel <banco>_aplicacao insere exatamente as colunas que o serviço
   }
 });
 
-const ATUALIZAVEIS = ['cliente.asaas_cliente_id', 'pedido.estado', 'pedido.falha_motivo', 'pedido.criando_desde', 'pedido.fatura_retida'];
+const ATUALIZAVEIS = ['cliente.asaas_cliente_id', 'cliente.asaas_contato_confere', 'pedido.estado', 'pedido.falha_motivo', 'pedido.criando_desde', 'pedido.fatura_retida'];
 
-test('CA7: o papel <banco>_aplicacao atualiza só as 5 colunas do fluxo de criação', async () => {
+test('CA7: o papel <banco>_aplicacao atualiza só as 6 colunas do fluxo de criação', async () => {
   for (const [tabela, colunas] of Object.entries(COLUNAS)) {
     for (const coluna of colunas) {
       const esperado = ATUALIZAVEIS.includes(`${tabela}.${coluna}`);
@@ -360,6 +360,18 @@ test('CA7: fatura_retida nasce false, é NOT NULL e o papel <banco>_aplicacao a 
   assert.equal(await codigoDeErro(banco.pool.query('UPDATE pedido SET fatura_retida = NULL WHERE id = $1', [pedidoId])), '23502');
   assert.equal(await privilegioDeColuna('pedido', 'fatura_retida', 'UPDATE'), true);
   assert.equal(await privilegioDeColuna('pedido', 'fatura_retida', 'INSERT'), false);
+});
+
+test('CA7: asaas_contato_confere nasce false, é NOT NULL e o papel <banco>_aplicacao a atualiza mas não a insere', async () => {
+  const clienteId = await inserirCliente();
+  const { rows } = await banco.pool.query('SELECT asaas_contato_confere FROM cliente WHERE id = $1', [clienteId]);
+  assert.equal(rows[0].asaas_contato_confere, false);
+  assert.equal(
+    await codigoDeErro(banco.pool.query('UPDATE cliente SET asaas_contato_confere = NULL WHERE id = $1', [clienteId])),
+    '23502'
+  );
+  assert.equal(await privilegioDeColuna('cliente', 'asaas_contato_confere', 'UPDATE'), true);
+  assert.equal(await privilegioDeColuna('cliente', 'asaas_contato_confere', 'INSERT'), false);
 });
 
 test('CA7: o papel <banco>_aplicacao não atualiza pedido.total_centavos nem pedido.contato_email', async () => {

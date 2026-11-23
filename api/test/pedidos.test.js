@@ -1493,3 +1493,73 @@ test('A1: nome com acento e cedilha (categoria L, não C) segue aceito', async (
 
   assert.equal(resposta.status, 201);
 });
+
+// ---------------------------------------------------------------------------
+// Revisão: asaas_contato_confere vale também para os pedidos seguintes do documento
+// ---------------------------------------------------------------------------
+
+async function clienteDe(documento) {
+  return (await linhas('SELECT * FROM cliente WHERE documento = $1', [documento]))[0];
+}
+
+test('A1: CPF com cadastro de outro nome no Asaas e sem linha local: o 2º pedido do atacante, com outra chave e o mesmo contato, também sai retido', async () => {
+  const documento = cpfUnico();
+  stub.semearCliente({
+    id: `cus_${randomUUID().replaceAll('-', '')}`, documento, nome: 'Titular Verdadeiro Y', email: 'titular@exemplo.test'
+  });
+  const contato = { documento, nome: 'Atacante de Teste X', email: 'atacante@exemplo.test' };
+  const primeiro = montarCorpo({ cliente: contato });
+  const segundo = montarCorpo({ cliente: contato });
+
+  await assertFaturaRetida(primeiro, await enviar(primeiro));
+  assert.equal((await clienteDe(documento)).asaas_contato_confere, false);
+  const chamadasAntes = stub.chamadas.length;
+  const resposta = await enviar(segundo);
+
+  await assertFaturaRetida(segundo, resposta);
+  assert.equal(stub.chamadas.slice(chamadasAntes).some((c) => c.rotulo === ROTA_PAGAMENTOS), false, 'a URL não é buscada');
+});
+
+test('A1: retomada de pedido de cliente com a flag falsa continua retida', async () => {
+  const documento = cpfUnico();
+  stub.semearCliente({
+    id: `cus_${randomUUID().replaceAll('-', '')}`, documento, nome: 'Titular Verdadeiro Y', email: 'titular@exemplo.test'
+  });
+  const corpo = montarCorpo({ cliente: { documento, nome: 'Atacante de Teste X', email: 'atacante@exemplo.test' } });
+  const criado = await pedidoEmCriando(corpo, '1 hour');
+  assert.equal((await clienteDe(documento)).asaas_contato_confere, false);
+
+  const retomada = await enviar(corpo);
+
+  assert.equal(retomada.corpo.pedidoId, criado.corpo.pedidoId);
+  await assertFaturaRetida(corpo, retomada);
+});
+
+test('A1: cliente criado agora no Asaas grava asaas_contato_confere true e o 2º pedido com o mesmo contato traz a URL', async () => {
+  const documento = cpfUnico();
+  const primeiro = montarCorpo({ cliente: { documento } });
+  const segundo = montarCorpo({ cliente: { documento } });
+
+  const a = await enviar(primeiro);
+  assert.equal((await clienteDe(documento)).asaas_contato_confere, true);
+  const b = await enviar(segundo);
+
+  for (const resposta of [a, b]) {
+    assert.equal(resposta.status, 201);
+    assert.equal('aviso' in resposta.corpo, false);
+    assert.match(resposta.corpo.faturas[0].url, /^https:\/\/stub\.test\/f\//);
+  }
+  assert.equal((await pedidoPorChave(segundo.chave_idempotencia)).fatura_retida, false);
+});
+
+test('A1: cadastro do Asaas que confere com a linha grava a flag true', async () => {
+  const documento = cpfUnico();
+  stub.semearCliente({
+    id: `cus_${randomUUID().replaceAll('-', '')}`, documento, nome: 'Fulana de Teste', email: 'fulana@exemplo.test'
+  });
+  const resposta = await enviar(montarCorpo({ cliente: { documento } }));
+
+  assert.equal(resposta.status, 201);
+  assert.equal('aviso' in resposta.corpo, false);
+  assert.equal((await clienteDe(documento)).asaas_contato_confere, true);
+});
