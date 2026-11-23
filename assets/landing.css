@@ -832,6 +832,9 @@ p   { line-height: var(--cit-leading-relaxed); color: var(--cit-text-secondary);
   font-size: 1rem; color: var(--cit-text-secondary); line-height: 1.6;
   overflow-wrap: anywhere;
 }
+.faq-answer a { color: var(--cit-text-link); text-decoration: underline; }
+.faq-answer a:hover { color: var(--cit-text-link-hover); }
+.faq-answer a .icon { margin-left: 4px; font-size: .8em; }
 
 /* =========================================================
    CTA FINAL — bloco azul CIT + malha
@@ -881,6 +884,13 @@ footer p { color: var(--cit-text-inverse-secondary); }
   align-items: center; justify-content: space-between;
 }
 .footer-bottom p { font-size: .8125rem; color: rgba(255,255,255,.56); }
+.footer-legal { display: flex; flex-wrap: wrap; gap: 8px 24px; }
+.footer-legal a {
+  color: var(--cit-text-inverse-secondary); text-decoration: none;
+  font-size: .8125rem; transition: color var(--transition);
+}
+.footer-legal a:hover, .footer-legal a[aria-current="page"] { color: white; }
+.footer-legal .icon { margin-left: 4px; font-size: .75rem; }
 
 @media (max-width: 900px) {
   .footer-grid { grid-template-columns: 1fr 1fr; }

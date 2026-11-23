@@ -3,7 +3,7 @@ import { test, expect } from './fixtures.js';
 // CIT-22: guarda de carga (assets/precos.js não carrega) — espera erro de propósito, por isso usa o
 // `test` puro do Playwright em vez da fixture `erros` (que falharia com qualquer erro registrado).
 import { test as testSemErros } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 
 // CIT-15: ajuste de textos e componentes da landing (index.html).
 // Cada teste roda nos dois perfis configurados em playwright.config.js (desktop e mobile).
@@ -26,8 +26,8 @@ async function corSucesso(page) {
 
 // ---------------------------------------------------------------------------------------------------
 // CIT-50: literais aprovados da landing (plano .omc/plans/CIT-50.md, seção "Textos finais"), num lugar só.
-// Quem altera estas constantes: #48 (recursos da PoC Skymail: backup, IA, agenda, Talk, armazenamento),
-// #109 (depoimentos reais) e #51 (links de Privacidade/Termos no rodapé e frase da Política no FAQ).
+// Quem altera estas constantes: #48 (recursos da PoC Skymail: backup, IA, agenda, Talk, armazenamento)
+// e #109 (depoimentos reais).
 // ---------------------------------------------------------------------------------------------------
 
 // Promessas fora do lançamento: nenhum item pode casar no texto visível, na meta ou em aria-label/alt/title.
@@ -97,12 +97,9 @@ const FAQ_LITERAIS = [
   ['Como funciona o suporte técnico?', 'Por ticket no painel e por e-mail, em dias úteis, das 08h00 às 18h00.'],
   ['O serviço é compatível com Outlook, Gmail e Apple Mail?', 'Sim. O serviço usa IMAP, POP3 e SMTP e funciona com Outlook, Apple Mail, Thunderbird, Gmail App e outros clientes. As configurações chegam por e-mail após a ativação.'],
   ['Posso cancelar quando quiser?', 'Sim. Não há fidelidade nem multa. Você pede o cancelamento pelo painel; o serviço segue ativo até o fim do ciclo já pago e não há nova cobrança. Na primeira contratação, você pode desistir em até 7 dias e recebe de volta o valor pago (Código de Defesa do Consumidor, art. 49).'],
-  // #51: a resposta 8 (índice 7) volta a citar a Política de Privacidade; reescrever o literal.
-  ['Os dados são protegidos pela LGPD?', 'Sim. Tratamos os dados conforme a Lei Geral de Proteção de Dados (LGPD). As senhas do painel são guardadas com hash Argon2id e todas as conexões usam TLS. Para pedir acesso, correção ou exclusão dos seus dados, escreva para o encarregado: privacidade@cittecnologia.com.br.'],
+  ['Os dados são protegidos pela LGPD?', 'Sim. Tratamos os dados conforme a Lei Geral de Proteção de Dados (LGPD). As senhas do painel são guardadas com hash Argon2id e todas as conexões usam TLS. Para pedir acesso, correção ou exclusão dos seus dados, escreva para o encarregado: privacidade@cittecnologia.com.br. Saiba mais na Política de Privacidade (abre em nova aba).'],
 ];
-// #51: tira 'Política de Privacidade' e 'Termos de Uso' desta lista (os links voltam ao rodapé).
-const RODAPE_TEXTOS_REMOVIDOS = ['Sobre nós', 'Blog', 'Parceiros', 'Política de Privacidade', 'Termos de Uso'];
-// #51: a coluna passa a ter também os links de Privacidade e Termos (acrescentar aqui, com o href das páginas novas).
+const RODAPE_TEXTOS_REMOVIDOS = ['Sobre nós', 'Blog', 'Parceiros'];
 const RODAPE_SUPORTE = [
   { texto: 'FAQ', href: '#faq' },
   { texto: 'Painel do Cliente', href: 'login.html' },
@@ -1061,7 +1058,7 @@ test.describe('landing — CIT-50: rodapé e links', { tag: '@CIT-50' }, () => {
     expect(links, `a[href="#"] ${estado}`).toEqual([]);
   }
 
-  test('rodapé não tem os links Sobre nós, Blog, Parceiros, Privacidade e Termos', async ({ page, erros }) => {
+  test('rodapé não tem os links Sobre nós, Blog e Parceiros', async ({ page, erros }) => {
     await page.goto('index.html');
     const textos = (await page.locator('footer a').allInnerTexts()).map(t => t.trim());
     for (const removido of RODAPE_TEXTOS_REMOVIDOS) {
@@ -1309,5 +1306,74 @@ testSemErros.describe('landing — CIT-59: guarda sem PRECOS.limites (CA5)', { t
     );
     await page.evaluate(() => { setBilling('annual'); toggleBilling(); changeQty('5gb', 1); updateQty('25gb', '3'); recalcAll(); });
     expect(pageerrors, 'não deveria haver pageerror com a guarda de carga').toEqual([]);
+  });
+});
+
+// CIT-51: links de Termos de Uso e Política de Privacidade na landing
+test.describe('landing — CIT-51: links legais', { tag: '@CIT-51' }, () => {
+  const POLITICA = 'https://privacidade.cittecnologia.com.br/';
+
+  test('CA3 rodapé tem a nav "Documentos legais" com Termos de Uso e Política de Privacidade (abre em nova aba)', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('.footer-bottom nav.footer-legal')).toHaveAttribute('aria-label', 'Documentos legais');
+    await expect(page.locator('.footer-bottom .footer-legal a')).toHaveText(['Termos de Uso', 'Política de Privacidade (abre em nova aba)']);
+  });
+
+  test('CA3 link Termos de Uso do rodapé aponta para termos.html na mesma aba', async ({ page, erros }) => {
+    await page.goto('index.html');
+    const termos = page.locator('.footer-bottom .footer-legal a').first();
+    await expect(termos).toHaveAttribute('href', 'termos.html');
+    await expect(termos).not.toHaveAttribute('target', /.*/);
+  });
+
+  test('CA3 clicar em Termos de Uso no rodapé abre termos.html com o h1 dos termos', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await page.locator('.footer-bottom .footer-legal a', { hasText: 'Termos de Uso' }).click();
+    await expect(page).toHaveURL(/termos\.html$/);
+    await expect(page.locator('h1')).toHaveText('Termos de Uso da CITMail');
+  });
+
+  test('CA3 FAQ 8 termina com a frase da Política de Privacidade', async ({ page, erros }) => {
+    await page.goto('index.html');
+    await expect(page.locator('#faq .faq-item:nth-child(8) .faq-answer p')).toHaveText(FAQ_LITERAIS[7][1]);
+  });
+
+  for (const [nome, seletor] of [['rodapé', '.footer-bottom .footer-legal a:has-text("Política de Privacidade")'], ['FAQ 8', '#faq .faq-item:nth-child(8) .faq-answer a']]) {
+    test(`CA2 link da Política no ${nome} é externo, abre em nova aba e tem o ícone external-link`, async ({ page, erros }) => {
+      await page.goto('index.html');
+      const link = page.locator(seletor);
+      await expect(link).toHaveCount(1);
+      await expect(link).toHaveAttribute('href', POLITICA);
+      await expect(link).toHaveAttribute('target', '_blank');
+      await expect(link).toHaveAttribute('rel', /noopener/);
+      await expect(link).toHaveAttribute('rel', /noreferrer/);
+      await expect(link.locator('.sr-only')).toHaveText(' (abre em nova aba)');
+      const icone = link.locator('svg.icon use[href$="#external-link"]');
+      await expect(icone).toHaveCount(1);
+      await expect(link.locator('svg.icon')).toHaveAttribute('aria-hidden', 'true');
+    });
+  }
+
+  test('CA2 privacidade.html não existe e a landing não requisita o domínio da Política', async ({ page, erros }) => {
+    expect(existsSync(new URL('../privacidade.html', import.meta.url))).toBe(false);
+    const externas = [];
+    page.on('request', req => { if (req.url().includes('privacidade.cittecnologia')) externas.push(req.url()); });
+    await page.goto('index.html');
+    await page.locator('#faq .faq-item:nth-child(8) .faq-question').click();
+    expect(externas).toEqual([]);
+  });
+
+  test('CA5 rodapé da landing a 320 px sem transbordo com a nav de documentos legais', async ({ page, erros }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile', 'CA5 só no perfil mobile');
+    await page.setViewportSize({ width: 320, height: 800 });
+    await page.goto('index.html');
+    const m = await page.evaluate(() => {
+      const fb = /** @type {HTMLElement} */ (document.querySelector('.footer-bottom'));
+      const fl = /** @type {HTMLElement} */ (document.querySelector('.footer-bottom .footer-legal')).getBoundingClientRect();
+      return { excesso: fb.scrollWidth - fb.clientWidth, esq: fl.x, dir: fl.x + fl.width, largura: window.innerWidth };
+    });
+    expect(m.excesso, '.footer-bottom transborda').toBeLessThanOrEqual(0);
+    expect(m.esq).toBeGreaterThanOrEqual(0);
+    expect(m.dir).toBeLessThanOrEqual(m.largura);
   });
 });

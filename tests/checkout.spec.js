@@ -2747,3 +2747,60 @@ test.describe('checkout — CIT-181: troca de opção limpa o erro (CA7)', { tag
     await expect(page.locator('#fDomExist')).not.toHaveAttribute('aria-invalid', 'true');
   });
 });
+
+test.describe('checkout — CIT-51: aceite', { tag: '@CIT-51' }, () => {
+  /** Vai ao passo 4 (modo local no 127.0.0.1: sem API, sem mock de orçamento). */
+  async function irParaPasso4(/** @type {import('@playwright/test').Page} */ page) {
+    await page.goto('checkout.html');
+    await page.evaluate(() => goStep(4));
+    await expect(page.locator('#step4')).toHaveClass(/active/);
+  }
+
+  test('CA3 aceite não tem mais link com href="#"', async ({ page, erros }) => {
+    await irParaPasso4(page);
+    await expect(page.locator('.terms-check a[href="#"]')).toHaveCount(0);
+  });
+
+  test('CA3 link Termos de Uso aponta para termos.html em nova aba', async ({ page, erros }) => {
+    await irParaPasso4(page);
+    const link = page.locator('.terms-check a', { hasText: 'Termos de Uso' });
+    await expect(link).toHaveAttribute('href', 'termos.html');
+    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(link).toHaveAttribute('rel', /noopener/);
+    await expect(link.locator('.sr-only')).toHaveText(' (abre em nova aba)');
+  });
+
+  test('CA3 clicar em Termos de Uso abre nova aba com os termos e mantém o pedido no passo 4 sem marcar o aceite', async ({ page, context, erros }) => {
+    await irParaPasso4(page);
+    const [nova] = await Promise.all([
+      context.waitForEvent('page'),
+      page.locator('.terms-check a', { hasText: 'Termos de Uso' }).click(),
+    ]);
+    await nova.waitForLoadState();
+    await expect(nova).toHaveURL(/termos\.html$/);
+    await expect(nova.locator('h1')).toHaveText('Termos de Uso da CITMail');
+    await expect(page.locator('#step4')).toHaveClass(/active/);
+    await expect(page.locator('#termsCheck')).not.toBeChecked();
+    await nova.close();
+  });
+
+  test('CA2 link da Política é externo, em nova aba, com aviso para leitor de tela e sem ícone', async ({ page, erros }) => {
+    const externas = [];
+    page.on('request', req => { if (req.url().includes('privacidade.cittecnologia')) externas.push(req.url()); });
+    await irParaPasso4(page);
+    const link = page.locator('.terms-check a', { hasText: 'Política de Privacidade' });
+    await expect(link).toHaveAttribute('href', 'https://privacidade.cittecnologia.com.br/');
+    await expect(link).toHaveAttribute('target', '_blank');
+    await expect(link).toHaveAttribute('rel', /noopener/);
+    await expect(link).toHaveAttribute('rel', /noreferrer/);
+    await expect(link.locator('.sr-only')).toHaveText(' (abre em nova aba)');
+    await expect(page.locator('.terms-check svg.icon')).toHaveCount(0);
+    expect(externas).toEqual([]);
+  });
+
+  test('CA3 checkout mantém checkout.css?v=4 e checkout.js?v=8', async ({ erros }) => {
+    const html = readFileSync(new URL('../checkout.html', import.meta.url), 'utf8');
+    expect(html).toContain('assets/checkout.css?v=4');
+    expect(html).toContain('assets/checkout.js?v=8');
+  });
+});
