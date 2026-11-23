@@ -28,6 +28,14 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # Trava de release (CIT-51): PR para main não leva a minuta dos termos com marcadores pendentes.
+      - name: Termos sem marcadores pendentes
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        run: |
+          if grep -nE '\[(PREENCHER|a definir)' termos.html; then
+            echo "::error file=termos.html::termos.html ainda tem marcadores [PREENCHER] ou [a definir]; complete o texto antes de publicar em produção"
+            exit 1
+          fi
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm test
