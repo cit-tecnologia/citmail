@@ -51,6 +51,45 @@ function lerFila(env) {
   }
 }
 
+function lerBooleano(env, nome, padrao) {
+  const valor = env[nome]
+  if (valor === undefined || valor === '') return padrao
+  if (valor === 'true') return true
+  if (valor === 'false') return false
+  throw new Error(`${nome} inválida: use true ou false`)
+}
+
+// Pedido no Asaas (ADR 0014; CIT-61). A rota nasce desligada em produção até o aceite
+// (#62) e o limite de taxa (E6-H4). Ligada em produção, chave e URL `https://` são
+// obrigatórias; fora dela, chave sem URL é erro (sem URL padrão que aponte para produção).
+function lerAsaas(env, nodeEnv) {
+  const producao = nodeEnv === 'production'
+  const pedidosHabilitado = lerBooleano(env, 'PEDIDOS_HABILITADO', !producao)
+  const asaasApiKey = (env.ASAAS_API_KEY ?? '').trim() || undefined
+  const asaasBaseUrl = (env.ASAAS_BASE_URL ?? '').trim() || undefined
+  const asaasTimeoutMs = lerInteiro(env, 'ASAAS_TIMEOUT_MS', 10000, 1000, 30000)
+
+  if (pedidosHabilitado && producao) {
+    if (!asaasApiKey) throw new Error('ASAAS_API_KEY não definida')
+    if (!asaasBaseUrl) throw new Error('ASAAS_BASE_URL não definida')
+  }
+  if (asaasApiKey && !asaasBaseUrl) {
+    throw new Error('ASAAS_BASE_URL não definida: obrigatória com ASAAS_API_KEY')
+  }
+  if (asaasBaseUrl) {
+    let protocolo
+    try {
+      protocolo = new URL(asaasBaseUrl).protocol
+    } catch {
+      throw new Error('ASAAS_BASE_URL inválida: informe uma URL')
+    }
+    if (producao ? protocolo !== 'https:' : !['https:', 'http:'].includes(protocolo)) {
+      throw new Error(producao ? 'ASAAS_BASE_URL inválida: use https://' : 'ASAAS_BASE_URL inválida: use http:// ou https://')
+    }
+  }
+  return { pedidosHabilitado, asaasApiKey, asaasBaseUrl, asaasTimeoutMs }
+}
+
 // Configuração da API. `REDIS_URL` é opcional: sem ela não há fila nem rota de exemplo
 // de job (a #64 a torna obrigatória em produção). Não lê Telegram.
 export function carregarConfig(env = process.env) {
@@ -87,7 +126,8 @@ export function carregarConfig(env = process.env) {
     corsOrigens,
     logLevel: env.LOG_LEVEL || 'info',
     nodeEnv,
-    ...lerFila(env)
+    ...lerFila(env),
+    ...lerAsaas(env, nodeEnv)
   }
 }
 
