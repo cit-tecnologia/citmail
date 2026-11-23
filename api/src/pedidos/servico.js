@@ -26,6 +26,9 @@ const FUSO = 'America/Sao_Paulo'
 const DIAS_ATE_VENCIMENTO = 3
 const INVALIDO = 'valor inválido'
 const TIPOS_ASSINATURA = ['contas', 'dominios']
+// Contato do pedido diverge do cadastro do documento: a resposta não traz a URL da
+// fatura (ADR 0014, oráculo de nome por CPF).
+export const AVISO_FATURA_PENDENTE = 'fatura_pendente'
 export const MENSAGEM_ASAAS_INDISPONIVEL = 'Não foi possível gerar a cobrança agora. Tente de novo em alguns minutos.'
 
 class ErroBanco extends Error {
@@ -64,6 +67,22 @@ function normalizarCliente(cliente) {
     telefone: cliente.telefone.replace(/\D/g, ''),
     documento: normalizarDocumento(cliente.documento)
   }
+}
+
+function nomeComparavel(nome) {
+  return typeof nome === 'string' ? nome.normalize('NFC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('pt-BR') : null
+}
+
+function emailComparavel(email) {
+  return typeof email === 'string' ? email.trim().toLowerCase() : null
+}
+
+// Sem nome ou e-mail para comparar, conta como divergente.
+function contatoConfere(contato, cadastro) {
+  const nome = nomeComparavel(cadastro?.nome)
+  const email = emailComparavel(cadastro?.email)
+  return nome !== null && email !== null &&
+    nome === nomeComparavel(contato.nome) && email === emailComparavel(contato.email)
 }
 
 // JSON com chaves ordenadas em todos os níveis.
@@ -222,9 +241,15 @@ export function criarServicoPedidos({
     log.error({ pedidoId, code: erro.code, routine: erro.routine }, 'erro de banco no pedido')
   }
 
-  async function responderCriado(pedidoId, estado) {
+  function corpoCriado(pedidoId, estado, faturas, faturaRetida) {
+    return faturaRetida
+      ? { pedidoId, estado, faturas: faturas.map(({ tipo }) => ({ tipo, url: null })), aviso: AVISO_FATURA_PENDENTE }
+      : { pedidoId, estado, faturas }
+  }
+
+  async function responderCriado(pedidoId, estado, faturaRetida) {
     const faturas = await noBanco(() => repositorio.buscarFaturas(pool, pedidoId))
-    return { status: 201, corpo: { pedidoId, estado, faturas } }
+    return { status: 201, corpo: corpoCriado(pedidoId, estado, faturas, faturaRetida) }
   }
 
   // Compensação best-effort, com sinal próprio fora do prazo global (até 2 ×
@@ -276,20 +301,31 @@ export function criarServicoPedidos({
     return respostaFalha(motivo, requestId)
   }
 
+  // Devolve o id do cliente no Asaas e se o contato do pedido diverge do cadastro do
+  // documento: o da tabela `cliente` e, quando achado ou criado agora, o do Asaas.
   async function obterClienteAsaas(pedidoId, dados, sinal, log) {
-    if (dados.asaas_cliente_id) return dados.asaas_cliente_id
+    const contato = { nome: dados.contato_nome, email: dados.contato_email }
+    const divergeDoBanco = !contatoConfere(contato, dados)
+    if (dados.asaas_cliente_id) return { asaasClienteId: dados.asaas_cliente_id, divergente: divergeDoBanco }
     const buscar = (signal) => asaas.buscarClientePorDocumento(dados.documento, { signal })
-    let asaasClienteId = await chamar('buscar_cliente', () => buscar(sinal))
-    if (!asaasClienteId) {
-      asaasClienteId = await criarComConfirmacao('criar_cliente', () => asaas.criarCliente({
+    let cadastro = await chamar('buscar_cliente', () => buscar(sinal))
+    if (!cadastro) {
+      cadastro = await criarComConfirmacao('criar_cliente', async () => ({
+        id: await asaas.criarCliente({
+          nome: dados.nome,
+          email: dados.email,
+          telefone: dados.telefone,
+          documento: dados.documento,
+          referencia: `cliente:${dados.cliente_id}`
+        }, { signal: sinal }),
         nome: dados.nome,
-        email: dados.email,
-        telefone: dados.telefone,
-        documento: dados.documento,
-        referencia: `cliente:${dados.cliente_id}`
-      }, { signal: sinal }), () => buscar(AbortSignal.timeout(asaasTimeoutMs)), { pedidoId, log })
+        email: dados.email
+      }), () => buscar(AbortSignal.timeout(asaasTimeoutMs)), { pedidoId, log })
     }
-    return noBanco(() => repositorio.gravarAsaasClienteId(pool, dados.cliente_id, asaasClienteId))
+    const asaasClienteId = await noBanco(() => repositorio.gravarAsaasClienteId(pool, dados.cliente_id, cadastro.id))
+    // Outro pedido gravou outro id antes: o cadastro do Asaas desse id não foi lido aqui.
+    const divergeDoAsaas = asaasClienteId !== cadastro.id || !contatoConfere(contato, cadastro)
+    return { asaasClienteId, divergente: divergeDoBanco || divergeDoAsaas }
   }
 
   // Fica a mais antiga; as demais (POST em voo efetivado depois de uma retomada) são
@@ -342,17 +378,22 @@ export function criarServicoPedidos({
     const vencimento = calcularVencimento(agora())
     const obtidas = []
     let asaasClienteId
+    let faturaRetida = false
     let tipos
     try {
       const dados = await noBanco(() => repositorio.buscarDadosDoFluxo(pool, pedidoId))
       const planos = planosDeAssinatura(dados)
       tipos = planos.map(({ tipo }) => tipo)
-      asaasClienteId = await obterClienteAsaas(pedidoId, dados, sinal, log)
+      const cliente = await obterClienteAsaas(pedidoId, dados, sinal, log)
+      asaasClienteId = cliente.asaasClienteId
+      faturaRetida = cliente.divergente
+      if (faturaRetida) log.info({ pedidoId, asaasClienteId, codigo: 'contato_divergente' }, 'fatura retida')
       for (const plano of planos) {
         const asaasAssinaturaId = await obterAssinatura(pedidoId, plano, asaasClienteId, vencimento, sinal, log)
         const assinatura = { ...plano, clienteId: dados.cliente_id, asaasAssinaturaId, url: null }
         obtidas.push(assinatura)
-        assinatura.url = await urlDaFatura(pedidoId, asaasAssinaturaId, sinal, log)
+        // Fatura retida: a URL (que mostra o nome do cadastro) não é buscada nem gravada.
+        if (!faturaRetida) assinatura.url = await urlDaFatura(pedidoId, asaasAssinaturaId, sinal, log)
       }
     } catch (erro) {
       if (erro instanceof ErroAsaas) {
@@ -367,7 +408,7 @@ export function criarServicoPedidos({
     let concluido
     try {
       concluido = await emTransacao(async (conexao) => {
-        if (!(await repositorio.concluirPedido(conexao, pedidoId, posse))) return false
+        if (!(await repositorio.concluirPedido(conexao, pedidoId, posse, faturaRetida))) return false
         for (const assinatura of obtidas) {
           await repositorio.inserirAssinatura(conexao, {
             pedidoId,
@@ -389,11 +430,7 @@ export function criarServicoPedidos({
     log.info({ pedidoId, estado: 'aguardando_pagamento', asaasClienteId }, 'pedido criado')
     return {
       status: 201,
-      corpo: {
-        pedidoId,
-        estado: 'aguardando_pagamento',
-        faturas: obtidas.map(({ tipo, url }) => ({ tipo, url }))
-      }
+      corpo: corpoCriado(pedidoId, 'aguardando_pagamento', obtidas.map(({ tipo, url }) => ({ tipo, url })), faturaRetida)
     }
   }
 
@@ -405,7 +442,7 @@ export function criarServicoPedidos({
       return { status: 422, corpo: { erro: 'chave_reutilizada' } }
     }
     if (existente.estado === 'falhou_na_criacao') return respostaFalha(existente.falha_motivo, requestId)
-    if (existente.estado !== 'criando') return responderCriado(existente.id, existente.estado)
+    if (existente.estado !== 'criando') return responderCriado(existente.id, existente.estado, existente.fatura_retida)
     if (!existente.expirado) return EM_CRIACAO
     // Passo 7: posse atômica; a retomada perdedora recebe 409.
     const posse = await noBanco(() => repositorio.retomarPedido(pool, existente.id, prazoRetomadaMs))

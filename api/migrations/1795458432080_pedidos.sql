@@ -25,6 +25,8 @@ CREATE TABLE cliente (
 -- anexo de modelo de dados. `criando_desde` é a posse do fluxo (retomada pelo prazo).
 -- `falha_motivo` é código (sem dado pessoal), aceito nos dois estados de falha.
 -- `contato_*` é o contato informado nesta compra (dado pessoal, anonimização da E6-H3).
+-- `fatura_retida`: o contato diverge do cadastro do documento; a URL da fatura não é
+-- gravada nem devolvida (ADR 0014, oráculo de nome por CPF).
 CREATE TABLE pedido (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   cliente_id uuid NOT NULL REFERENCES cliente (id),
@@ -44,6 +46,7 @@ CREATE TABLE pedido (
   contato_telefone text NOT NULL CHECK (contato_telefone ~ '^[0-9]{10,11}$'),
   falha_motivo text CHECK (falha_motivo ~ '^[a-z][a-z0-9_]{0,47}$'),
   request_id text CHECK (char_length(request_id) <= 128),
+  fatura_retida boolean NOT NULL DEFAULT false,
   criado_em timestamptz NOT NULL DEFAULT now(),
   atualizado_em timestamptz NOT NULL DEFAULT now(),
   CHECK ((estado = 'criando') = (criando_desde IS NOT NULL)),
@@ -116,7 +119,7 @@ BEGIN
     'ON pedido TO %I',
     papel
   );
-  EXECUTE format('GRANT UPDATE (estado, falha_motivo, criando_desde) ON pedido TO %I', papel);
+  EXECUTE format('GRANT UPDATE (estado, falha_motivo, criando_desde, fatura_retida) ON pedido TO %I', papel);
   EXECUTE format('GRANT INSERT (pedido_id, nome, tipo, papel) ON pedido_dominio TO %I', papel);
   EXECUTE format(
     'GRANT INSERT (pedido_id, cliente_id, tipo, ciclo, valor_centavos, asaas_assinatura_id, url_primeira_fatura) '

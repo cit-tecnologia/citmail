@@ -8,7 +8,7 @@
 export async function buscarPedidoPorChave(executor, chave, prazoCriandoMs) {
   const resultado = await executor.query(
     `SELECT p.id, p.estado, p.corpo_hash, p.contato_nome, p.contato_email, p.contato_telefone,
-            p.falha_motivo, c.documento,
+            p.falha_motivo, p.fatura_retida, c.documento,
             (p.criando_desde < now() - $2 * interval '1 millisecond') AS expirado
        FROM pedido p JOIN cliente c ON c.id = p.cliente_id
       WHERE p.chave_idempotencia = $1`,
@@ -57,8 +57,8 @@ export async function inserirDominios(executor, pedidoId, dominios) {
 // Dados para os passos 3 e 4 (criação e retomada): o cliente e o snapshot do pedido.
 export async function buscarDadosDoFluxo(executor, pedidoId) {
   const resultado = await executor.query(
-    `SELECT p.ciclo, p.itens, p.total_centavos, c.id AS cliente_id, c.documento, c.nome, c.email,
-            c.telefone, c.asaas_cliente_id
+    `SELECT p.ciclo, p.itens, p.total_centavos, p.contato_nome, p.contato_email,
+            c.id AS cliente_id, c.documento, c.nome, c.email, c.telefone, c.asaas_cliente_id
        FROM pedido p JOIN cliente c ON c.id = p.cliente_id
       WHERE p.id = $1`,
     [pedidoId]
@@ -88,11 +88,11 @@ export async function temPosse(executor, pedidoId, posse) {
 }
 
 // false = posse perdida para uma retomada.
-export async function concluirPedido(executor, pedidoId, posse) {
+export async function concluirPedido(executor, pedidoId, posse, faturaRetida = false) {
   const resultado = await executor.query(
-    `UPDATE pedido SET estado = 'aguardando_pagamento', criando_desde = NULL
+    `UPDATE pedido SET estado = 'aguardando_pagamento', criando_desde = NULL, fatura_retida = $3
       WHERE id = $1 AND estado = 'criando' AND criando_desde = $2::timestamptz`,
-    [pedidoId, posse]
+    [pedidoId, posse, faturaRetida]
   )
   return resultado.rowCount > 0
 }

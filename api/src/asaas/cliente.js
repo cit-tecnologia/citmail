@@ -105,11 +105,18 @@ export function criarClienteAsaas({ baseUrl, apiKey, timeoutMs, fetch = globalTh
   }
 
   return {
-    // GET /customers?cpfCnpj= → id do primeiro cliente não removido, ou null (P2).
+    // GET /customers?cpfCnpj= → `{ id, nome, email }` do primeiro cliente não removido,
+    // ou null (P2). `nome` e `email` só servem para conferir o contato do pedido (nunca
+    // vão a log nem a resposta); fora de texto, viram null.
     async buscarClientePorDocumento(documento, { signal } = {}) {
       const corpo = await chamar('GET', `/customers?${new URLSearchParams({ cpfCnpj: documento })}`, { signal })
       const item = primeiroAtivo(corpo)
-      return item ? idValido(item.id) : null
+      if (!item) return null
+      return {
+        id: idValido(item.id),
+        nome: typeof item.name === 'string' ? item.name : null,
+        email: typeof item.email === 'string' ? item.email : null
+      }
     },
 
     // POST /customers com notificações do Asaas desligadas (ADR 0014, decisão 8).

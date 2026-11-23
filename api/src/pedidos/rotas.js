@@ -4,7 +4,7 @@
 // `versao_tabela` e `total_exibido_centavos`; todo objeto é fechado (campo de cartão → 400).
 import { criarCorpoOrcamento } from '../precos/rotas.js'
 import { LIMITES } from '../precos/tabela.js'
-import { criarServicoPedidos } from './servico.js'
+import { AVISO_FATURA_PENDENTE, criarServicoPedidos } from './servico.js'
 
 function objetoFechado(properties, required = Object.keys(properties)) {
   return { type: 'object', additionalProperties: false, required, properties }
@@ -52,8 +52,9 @@ const respostas = {
         tipo: { type: 'string', enum: ['contas', 'dominios'] },
         url: { type: ['string', 'null'] }
       })
-    }
-  }),
+    },
+    aviso: { type: 'string', enum: [AVISO_FATURA_PENDENTE] }
+  }, ['pedidoId', 'estado', 'faturas']),
   409: objetoFechado({ erro: tipoTexto, total_centavos: { type: 'integer' }, versao_tabela: tipoTexto }, ['erro']),
   422: respostaErro,
   502: respostaAsaas,
