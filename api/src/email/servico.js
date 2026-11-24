@@ -166,7 +166,7 @@ export function criarHandlerEmail({ pool, modelos, transporte, remetente, respon
       return
     }
 
-    const dados = await modelo.carregar(pool, envio.refs)
+    const dados = await modelo.carregar(pool, envio.refs, { log })
     const destinatario = limparLinha(dados?.destinatario)
     if (!ENDERECO.test(destinatario)) {
       await marcarNaoEnviado(pool, envioId, geracao, 'SEM_DESTINATARIO')

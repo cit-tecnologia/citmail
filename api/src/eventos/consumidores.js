@@ -3,6 +3,7 @@
 // é idempotente: a marca em `evento_processado` e o efeito no banco vão na mesma
 // transação. Efeito externo (e-mail, Skymail) não é transacional: consultar antes de criar.
 import { UnrecoverableError } from 'bullmq'
+import { emailCompraConfirmada } from '../email/consumidor-compra-confirmada.js'
 import { handlersPadrao } from '../fila/worker.js'
 import { buscarEvento, marcarProcessado } from './repositorio.js'
 import { NOMES_EVENTOS } from './vocabulario.js'
@@ -14,10 +15,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 /**
  * Registro dos consumidores: `{ <consumidor>: { eventos: [<nome>...], tratar } }`, com
  * `tratar: async ({ cliente, evento, log }) => {}`. `cliente` é o da transação que grava
- * a marca; `evento` é a linha de `evento`. Vazio nesta versão: os de negócio chegam
- * com as histórias #64, #65 e #68.
+ * a marca; `evento` é a linha de `evento`. `email_compra_confirmada` (CIT-66) consome
+ * `pedido_pago`; os demais de negócio chegam com as próximas histórias.
  */
-export const consumidoresPadrao = Object.freeze({})
+export const consumidoresPadrao = Object.freeze({ email_compra_confirmada: emailCompraConfirmada })
 
 function invalido(motivo) {
   return new TypeError(`consumidores: ${motivo}`)
