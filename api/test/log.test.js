@@ -123,6 +123,7 @@ const NOMES_ESPERADOS_CA3 = [
   'creditCard', 'creditCardToken', 'ipAceite', 'ip_aceite',
   // E-mail transacional (CIT-65).
   'to', 'from', 'replyTo', 'destinatario', 'variaveis', 'html', 'text', 'subject', 'assunto',
+  'pass', 'smtpSenha',
 ];
 
 function construirComMarcadores(nomes, profundidade) {
@@ -141,11 +142,11 @@ function acessarNivel(linha, profundidade) {
   return linha.a.b.c;
 }
 
-test('CA3: os 52 campos sensíveis da decisão 5 são mascarados na raiz e em até 3 níveis de aninhamento', async (t) => {
+test('CA3: os 54 campos sensíveis da decisão 5 são mascarados na raiz e em até 3 níveis de aninhamento', async (t) => {
   const { app, captura, fechar } = await construirAppTeste();
   t.after(fechar);
 
-  assert.equal(NOMES_ESPERADOS_CA3.length, 52);
+  assert.equal(NOMES_ESPERADOS_CA3.length, 54);
   assert.deepEqual([...camposSensiveis].sort(), [...NOMES_ESPERADOS_CA3].sort());
 
   for (let profundidade = 0; profundidade <= 3; profundidade++) {

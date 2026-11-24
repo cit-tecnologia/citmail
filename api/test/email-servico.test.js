@@ -368,14 +368,61 @@ describe('handler do job email_enviar', () => {
     const modelos = {
       teste_exemplo: {
         ...modelosForaDeProducao.teste_exemplo,
-        carregar: async () => ({ destinatario: `${ENDERECO}\r\nBcc: outro@exemplo.test`, variaveis: { nome: 'Ana\r\nBcc: outro@exemplo.test' } })
+        assunto: () => 'Ola\r\nBcc: outro@exemplo.test'
       }
     };
     const transporte = transporteFalso();
     await criarHandler(transporte, { modelos })({ log }, { envioId: id, geracao: 1 });
     const mensagem = transporte.enviadas[0];
     assert.ok(!/[\r\n]/.test(mensagem.subject));
-    assert.ok(!/[\r\n]/.test(mensagem.to));
+    assert.equal(mensagem.subject, 'OlaBcc: outro@exemplo.test');
+    assert.deepEqual(mensagem.envelope, { from: 'naoresponda@exemplo.test', to: [ENDERECO] });
+  });
+
+  const DESTINATARIOS_INVALIDOS = [
+    ['com Bcc injetado por CR/LF', `${ENDERECO}\r\nBcc: outro@exemplo.test`],
+    ['com lista por vírgula', `${ENDERECO},outro@exemplo.test`],
+    ['com lista por ponto e vírgula', `${ENDERECO};outro@exemplo.test`],
+    ['com nome de exibição entre <>', `Fulano <${ENDERECO}>`],
+    ['com aspas', `"fulano"@exemplo.test`],
+    ['com espaço', 'fulano @exemplo.test'],
+    ['sem arroba', 'fulano.exemplo.test'],
+    ['com dois arrobas', 'a@b@exemplo.test']
+  ];
+  for (const [descricao, destinatario] of DESTINATARIOS_INVALIDOS) {
+    test(`CA7: destinatário ${descricao} grava nao_enviado/SEM_DESTINATARIO sem enviar nem relançar`, async () => {
+      const { id } = await pedirEnvio();
+      const modelos = {
+        teste_exemplo: { ...modelosForaDeProducao.teste_exemplo, carregar: async () => ({ destinatario, variaveis: { nome: 'x' } }) }
+      };
+      const transporte = transporteFalso();
+      await criarHandler(transporte, { modelos })({ log, tentativa: { feita: 0, maxima: 3 } }, { envioId: id, geracao: 1 });
+      const gravada = await linha(id);
+      assert.equal(gravada.estado, 'nao_enviado');
+      assert.equal(gravada.erro_codigo, 'SEM_DESTINATARIO');
+      assert.equal(transporte.enviadas.length, 0);
+      assert.ok(!captura.texto().includes('outro@exemplo.test'));
+    });
+  }
+
+  test('CA7: o envelope leva só o remetente e o destinatário único', async () => {
+    const { id } = await pedirEnvio();
+    const transporte = transporteFalso();
+    await criarHandler(transporte)({ log }, { envioId: id, geracao: 1 });
+    assert.deepEqual(transporte.enviadas[0].envelope, { from: 'naoresponda@exemplo.test', to: [ENDERECO] });
+  });
+
+  test('CA7: modelo cujo html() devolve string comum falha com UnrecoverableError "modelo sem escape" e não envia', async () => {
+    const { id } = await pedirEnvio();
+    const modelos = {
+      teste_exemplo: { ...modelosForaDeProducao.teste_exemplo, html: (v) => `<p>${v.nome}</p>` }
+    };
+    const transporte = transporteFalso();
+    const erro = await erroDe(criarHandler(transporte, { modelos })({ log }, { envioId: id, geracao: 1 }));
+    assert.ok(erro instanceof UnrecoverableError);
+    assert.equal(erro.message, 'modelo sem escape');
+    assert.equal(transporte.enviadas.length, 0);
+    assert.equal((await linha(id)).estado, 'pendente');
   });
 
   test('CA6: o segundo job conclui sem reenviar quando outra execução já marcou a linha (UPDATE condicionado)', async () => {

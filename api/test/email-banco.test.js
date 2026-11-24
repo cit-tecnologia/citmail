@@ -91,6 +91,25 @@ test('CA10: o papel da aplicação lê a tabela e insere nas colunas da lista', 
   await assert.doesNotReject(inserir(banco.app));
 });
 
+test('CA10: o papel da aplicação insere só evento_id, chave_idempotencia, modelo, versao_modelo e refs', async () => {
+  const papel = `${banco.nomeBanco}_aplicacao`;
+  const consulta = (coluna) => banco.admin.query(
+    'SELECT has_column_privilege($1, $2, $3, $4) AS tem', [papel, 'email_envio', coluna, 'INSERT']
+  );
+  for (const coluna of ['evento_id', 'chave_idempotencia', 'modelo', 'versao_modelo', 'refs']) {
+    assert.equal((await consulta(coluna)).rows[0].tem, true, coluna);
+  }
+  for (const coluna of ['id', 'estado', 'geracao', 'tentativas', 'erro_codigo', 'message_id', 'destinatario_mascarado',
+    'criado_em', 'enfileirado_em', 'enviado_em', 'alertado_parado_em']) {
+    assert.equal((await consulta(coluna)).rows[0].tem, false, coluna);
+  }
+});
+
+test('CA10: o papel da aplicação não insere a linha já em estado enviado (42501)', async () => {
+  assert.equal(await codigoDeErro(inserir(banco.app, { estado: 'enviado' })), '42501');
+  assert.equal(await codigoDeErro(inserir(banco.app, { tentativas: 3 })), '42501');
+});
+
 test('CA10: o papel da aplicação não apaga linha (42501)', async () => {
   const { rows } = await inserir(banco.admin);
   assert.equal(await codigoDeErro(banco.app.query('DELETE FROM email_envio WHERE id = $1', [rows[0].id])), '42501');

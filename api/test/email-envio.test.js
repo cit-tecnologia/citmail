@@ -7,7 +7,7 @@ import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { enfileirarEmails, iniciarEnfileiradorEmail, jobIdEmail } from '../src/email/enfileirador.js';
 import { modelosForaDeProducao } from '../src/email/modelos/index.js';
-import { reiniciarEnvio } from '../src/email/repositorio.js';
+import { buscarParados, marcarAlertadoParado, reiniciarEnvio } from '../src/email/repositorio.js';
 import { criarHandlerEmail, JOB_EMAIL } from '../src/email/servico.js';
 import { criarTransporte } from '../src/email/transporte.js';
 import { criarFilasTeste } from './auxiliares.js';
@@ -431,6 +431,60 @@ test('CA7: nome com CR/LF e Bcc injetado gera um só RCPT, nenhum cabeçalho Bcc
   assert.ok(!/^Bcc:/im.test(cabecalho), 'cabeçalho Bcc injetado');
   const assunto = cabecalho.match(/^Subject: (.*)$/m)[1];
   assert.equal(assunto, 'Teste do CITMail para AnaBcc: outro@exemplo.test');
+});
+
+test('CA7: destinatário com Bcc injetado vira nao_enviado/SEM_DESTINATARIO, sem conexão ao stub e sem retry', async (t) => {
+  const m = await montar(t);
+  const { id } = await pedirEnvio(banco, { email: `${ENDERECO}\r\nBcc: outro@exemplo.test` });
+  const concluido = aguardar(m.workers.jobs, 'completed');
+  await m.ciclo();
+  await concluido;
+
+  const gravada = await linhaDe(banco, id);
+  assert.equal(gravada.estado, 'nao_enviado');
+  assert.equal(gravada.erro_codigo, 'SEM_DESTINATARIO');
+  assert.equal(m.stub.conexoes, 0);
+  assert.equal((await m.aux.filas.jobs.getJob(jobIdEmail(id, 1))).attemptsMade, 1);
+});
+
+test('CA7: o envelope SMTP tem um só RCPT mesmo com o destinatário válido e MAIL FROM do remetente', async (t) => {
+  const m = await montar(t);
+  await pedirEnvio(banco);
+  const concluido = aguardar(m.workers.jobs, 'completed');
+  await m.ciclo();
+  await concluido;
+  assert.deepEqual(m.stub.mensagens[0].rcptTo, [ENDERECO]);
+  assert.equal(m.stub.mensagens[0].mailFrom, 'naoresponda@exemplo.test');
+});
+
+test('CA9: reset entre a busca e a marcação não suprime o alerta da geração nova', async (t) => {
+  await montar(t, { semWorkers: true });
+  const { id } = await pedirEnvio(banco);
+  await banco.admin.query("UPDATE email_envio SET enfileirado_em = now() - interval '2 hours' WHERE id = $1", [id]);
+  const parados = await buscarParados(banco.app, 1, 10);
+  assert.equal(parados.length, 1);
+  await banco.admin.query("UPDATE email_envio SET estado = 'falhou' WHERE id = $1", [id]);
+  await reiniciarEnvio(banco.app, id);
+
+  await marcarAlertadoParado(banco.app, parados);
+  const gravada = await linhaDe(banco, id);
+  assert.equal(gravada.geracao, 2);
+  assert.equal(gravada.alertado_parado_em, null);
+});
+
+test('CA9: a marcação de parados não toca linha que deixou de ser pendente na mesma geração', async (t) => {
+  await montar(t, { semWorkers: true });
+  const { id } = await pedirEnvio(banco);
+  await banco.admin.query("UPDATE email_envio SET estado = 'enviado' WHERE id = $1", [id]);
+  await marcarAlertadoParado(banco.app, [{ id, geracao: 1 }]);
+  assert.equal((await linhaDe(banco, id)).alertado_parado_em, null);
+});
+
+test('CA9: a marcação de parados grava só a linha pendente da geração alertada', async (t) => {
+  await montar(t, { semWorkers: true });
+  const { id } = await pedirEnvio(banco);
+  await marcarAlertadoParado(banco.app, [{ id, geracao: 1 }]);
+  assert.ok((await linhaDe(banco, id)).alertado_parado_em instanceof Date);
 });
 
 test('CA8(f): transporte desligado grava nao_enviado sem tentativa, conclui o job, não conecta ao stub e não alerta', async (t) => {

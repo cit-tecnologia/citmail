@@ -632,7 +632,7 @@ test('CA8(b): EMAIL_TRANSPORTE fora de desligado|smtp lança citando a variável
 });
 
 test('CA8(c): em produção, smtp com SMTP_HOST de loopback lança citando a variável', () => {
-  for (const host of ['127.0.0.1', 'localhost', '127.1.2.3', '::1', '[::1]', '0.0.0.0', 'smtp.localhost']) {
+  for (const host of ['127.0.0.1', 'localhost', '127.1.2.3', '127.1', '0', '0.0.0.0', '::', '[::]', '::1', '[::1]', '0:0:0:0:0:0:0:1', '::ffff:127.0.0.1', '[::ffff:127.0.0.1]', 'smtp.localhost', 'a.b.localhost', 'LOCALHOST']) {
     assert.throws(
       () => carregarConfigWorker({ ...AMBIENTE_WORKER_PRODUCAO, ...AMBIENTE_EMAIL_SMTP, NODE_ENV: 'production', SMTP_HOST: host }),
       (erro) => {
@@ -724,4 +724,16 @@ test('CA8: remetente e responder-para válidos são lidos sem as pontas em branc
 test('CA8: a configuração da API (carregarConfig) não lê o e-mail', () => {
   const config = carregarConfig({ ...AMBIENTE_BASE, EMAIL_TRANSPORTE: 'smtp' });
   assert.equal(config.emailTransporte, undefined);
+});
+
+test('CA8: smtpRequireTls é true em qualquer host fora do loopback, em produção ou não, e false no loopback', () => {
+  const externo = carregarConfigWorker({ ...AMBIENTE_EMAIL_SMTP, SMTP_HOST: 'smtp.exemplo.test' });
+  assert.equal(externo.smtpRequireTls, true);
+  const loopback = carregarConfigWorker({ ...AMBIENTE_EMAIL_SMTP, SMTP_HOST: '127.0.0.1' });
+  assert.equal(loopback.smtpRequireTls, false);
+});
+
+test('CA8: EMAIL_TRANSPORTE com espaços nas pontas é aceito e só com espaços vale desligado', () => {
+  assert.equal(carregarConfigWorker({ ...AMBIENTE_EMAIL_SMTP, EMAIL_TRANSPORTE: ' smtp ' }).emailTransporte, 'smtp');
+  assert.equal(carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development', EMAIL_TRANSPORTE: '   ' }).emailTransporte, 'desligado');
 });
