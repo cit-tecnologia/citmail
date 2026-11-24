@@ -159,6 +159,11 @@ test.describe('CIT-70 modo API', { tag: '@CIT-70' }, () => {
       await expect(page).toHaveURL(/\/login\.html$/);
       expect(estado.reqs.filter(r => r.rota === 'logout').map(r => r.metodo)).toEqual(['POST']);
       expect(estado.sessao, 'o mock encerrou a sessão').toBe(401);
+
+      // voltar não chega a um painel: a entrada do painel foi trocada pelo login (location.replace)
+      await page.goBack();
+      await expect(page).not.toHaveURL(/painel\.html/);
+      expect(chamadas(estado, 'sessao'), 'nenhuma nova consulta de sessão').toBe(1);
       descartarPainel(erros);
     });
 
@@ -176,6 +181,23 @@ test.describe('CIT-70 modo API', { tag: '@CIT-70' }, () => {
       await expect(page).toHaveURL(/\/login\.html$/);
       expect(chamadas(estado, 'sessao'), 'o painel reconsultou GET /sessao').toBe(2);
       expect(vistos, '.app visível depois de a sessão acabar').toEqual([]);
+      await expect(page.locator('#painelEmail')).toHaveCount(0);
+      descartarPainel(erros);
+    });
+
+    test('CA4 pageshow vindo do cache reconsulta a sessão mesmo com a consulta anterior ainda pendente, escondendo o e-mail até a resposta', async ({ page, erros }) => {
+      const estado = await mockarPainel(page, { sessao: 200, atrasoSessao: 1200 });
+      await page.goto('painel.html', { waitUntil: 'commit' });
+      await expect.poll(() => chamadas(estado, 'sessao')).toBe(1);
+
+      // simula a ida ao bfcache e a volta enquanto a 1ª consulta ainda está pendente
+      await page.evaluate(() => {
+        window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+        window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+      });
+      await expect.poll(() => chamadas(estado, 'sessao'), 'pageshow reconsulta a sessão').toBe(2);
+      await expect(page.locator('#painelEmail')).toHaveText(EMAIL);
+      await expect(page.locator('.app')).toBeVisible();
       descartarPainel(erros);
     });
 

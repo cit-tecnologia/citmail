@@ -161,7 +161,8 @@ document.getElementById('btnPainelTentar').addEventListener('click', () => carre
 if (origem) {
   carregarSessao();
   // bfcache: a cópia guardada sai sem o e-mail e, ao voltar, a sessão é consultada de novo.
-  window.addEventListener('pagehide', () => ocultarPainel());
+  // (consultandoSessao volta a false para o pageshow reconsultar mesmo com o fetch da ida ainda pendente)
+  window.addEventListener('pagehide', () => { consultandoSessao = false; ocultarPainel(); });
   window.addEventListener('pageshow', e => {
     if (!e.persisted) return;
     saindo = false;

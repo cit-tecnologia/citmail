@@ -341,7 +341,7 @@ h1,h2,h3 { font-family: var(--font-title); font-weight: 600; line-height: 1.2; l
 .login-indisponivel strong { color: var(--cit-text-primary); font-weight: 600; }
 .login-indisponivel a { color: var(--cit-text-link); font-weight: 600; overflow-wrap: anywhere; }
 .login-indisponivel a:hover { color: var(--cit-text-link-hover); }
-/* Com #loginIndisponivel visível, o formulário e o aviso de erro saem (o JS esconde o <form> e o divisor) */
+/* Com #loginIndisponivel visível, o formulário e o aviso de erro saem (o CSS esconde o subtítulo, o <form> e o aviso de erro) */
 .login-card.login-card--local .subtitle,
 .login-card.login-card--local form,
 .login-card.login-card--local .alert-error { display: none; }

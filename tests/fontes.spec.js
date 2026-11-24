@@ -15,6 +15,15 @@ const PAGINAS = ['index.html', 'checkout.html'];
 const PAGINAS_CIT156 = ['login.html', 'painel.html', 'pedido.html'];
 
 /**
+ * Chamar dentro do describe do arquivo: o painel roda em localhost:4200 (BASE_API), e é essa origem que a fixture `erros`
+ * precisa vigiar (4xx e falhas de rede do painel), não a de 127.0.0.1.
+ * @param {string} arquivo
+ */
+function usarOrigemDe(arquivo) {
+  if (arquivo === 'painel.html') test.use({ baseURL: BASE_API });
+}
+
+/**
  * CIT-70: sem sessão o painel redireciona para o login, então painel.html só é medido no modo API
  * (localhost:4200) com GET /api/painel/sessao mockado em 200; as demais páginas abrem como antes (baseURL padrão).
  * login.html em modo local (127.0.0.1) mantém o h1 "Acesse seu painel" e esconde o formulário.
@@ -23,7 +32,7 @@ const PAGINAS_CIT156 = ['login.html', 'painel.html', 'pedido.html'];
 async function abrirPagina(page, arquivo, opcoes) {
   if (arquivo !== 'painel.html') return page.goto(arquivo, opcoes);
   await mockarPainel(page, { sessao: 200 });
-  const resposta = await page.goto(new URL(arquivo, BASE_API).href, opcoes);
+  const resposta = await page.goto(arquivo, opcoes);
   await expect(page.locator('#painelEmail')).toHaveText(EMAIL);
   return resposta;
 }
@@ -179,21 +188,25 @@ test.describe('CA1 — sem Google Fonts', { tag: '@CIT-52' }, () => {
 
 test.describe('CA1 — sem Google Fonts (login, painel e pedido)', { tag: ['@CIT-156', '@CIT-69'] }, () => {
   for (const arquivo of PAGINAS_CIT156) {
-    test(`CIT-156 CA1 ${arquivo}: nenhuma requisição nem referência a host do Google Fonts; assets/fonts.css antes de assets/tokens.css`, async ({ page, erros }) => {
-      const requisicoesGoogle = [];
-      page.on('request', req => {
-        if (REGEX_HOST_GOOGLE_FONTS.test(new URL(req.url()).host)) requisicoesGoogle.push(req.url());
+    test.describe(arquivo, () => {
+      usarOrigemDe(arquivo);
+      test(`CIT-156 CA1 ${arquivo}: nenhuma requisição nem referência a host do Google Fonts; assets/fonts.css antes de assets/tokens.css`, async ({ page, erros }) => {
+        const requisicoesGoogle = [];
+        page.on('request', req => {
+          if (REGEX_HOST_GOOGLE_FONTS.test(new URL(req.url()).host)) requisicoesGoogle.push(req.url());
+        });
+
+        await abrirPagina(page, arquivo, { waitUntil: 'load' });
+        await page.evaluate(() => document.fonts.ready);
+
+        expect(requisicoesGoogle, `${arquivo}: requisição a host do Google Fonts`).toEqual([]);
+
+        const html = lerDoDisco(arquivo);
+        expect(html, `${arquivo}: host do Google Fonts no HTML fonte`).not.toMatch(REGEX_HOST_GOOGLE_FONTS);
+        confirmarFontsAntesDeTokens(html, arquivo);
+        descartarPainel(erros);
       });
-
-      await abrirPagina(page, arquivo, { waitUntil: 'load' });
-      await page.evaluate(() => document.fonts.ready);
-
-      expect(requisicoesGoogle, `${arquivo}: requisição a host do Google Fonts`).toEqual([]);
-
-      const html = lerDoDisco(arquivo);
-      expect(html, `${arquivo}: host do Google Fonts no HTML fonte`).not.toMatch(REGEX_HOST_GOOGLE_FONTS);
-      confirmarFontsAntesDeTokens(html, arquivo);
-      descartarPainel(erros);
+  
     });
   }
 });
@@ -272,6 +285,8 @@ test.describe('CA2 — fontes locais aplicadas (login e painel)', { tag: '@CIT-1
     expect(h1.fontWeight, 'login.html: font-weight do h1 "Acesse seu painel"').toBe('600');
   });
 
+  test.describe('painel.html', () => {
+  usarOrigemDe('painel.html');
   test('CIT-156 CA2 painel.html: FontFace exatas via document.fonts, requisição 200 a poppins-400.woff2, body em Poppins 400 e .topbar-title em Montserrat', async ({ page, erros }) => {
     const statusPoppins400 = [];
     page.on('response', res => { if (res.url().endsWith('/assets/fonts/poppins-400.woff2')) statusPoppins400.push(res.status()); });
@@ -291,6 +306,7 @@ test.describe('CA2 — fontes locais aplicadas (login e painel)', { tag: '@CIT-1
     expect(titulo.fontFamily, 'painel.html: font-family do #topbarTitle').toMatch(/^"?Montserrat/);
     descartarPainel(erros);
   });
+  });
 });
 
 // CIT-156: o teste de glifos passa a ler um clone do body sem <script>, <style> e <template> (o
@@ -306,32 +322,36 @@ test.describe('CA3 — glifos (texto visível, sem script/style/template)', { ta
   const intervalos = analisarUnicodeRange(UNICODE_RANGE_LATIN);
 
   for (const arquivo of [...PAGINAS, ...PAGINAS_CIT156]) {
-    // Limite conhecido desta prova: só o texto da carga inicial (goto + load). Atributos (placeholder,
-    // aria-label, title, alt) ficam de fora, e texto montado depois por script (ex.: mensagens de
-    // validação, valores calculados) também — hoje esse texto adicional só usa caracteres do subset
-    // latin ou o fallback conhecido da página; se algum dia usar outro caractere fora do subset, esta
-    // prova não pega — reavaliar o escopo então.
-    test(`CIT-156 CA3 ${arquivo}: todo caractere do texto visível está no subset latin (exceto o fallback conhecido da página)`, async ({ page, erros }) => {
-      const fallback = FALLBACK_CONHECIDO_POR_PAGINA[arquivo] ?? [];
+    test.describe(arquivo, () => {
+      usarOrigemDe(arquivo);
+      // Limite conhecido desta prova: só o texto da carga inicial (goto + load). Atributos (placeholder,
+      // aria-label, title, alt) ficam de fora, e texto montado depois por script (ex.: mensagens de
+      // validação, valores calculados) também — hoje esse texto adicional só usa caracteres do subset
+      // latin ou o fallback conhecido da página; se algum dia usar outro caractere fora do subset, esta
+      // prova não pega — reavaliar o escopo então.
+      test(`CIT-156 CA3 ${arquivo}: todo caractere do texto visível está no subset latin (exceto o fallback conhecido da página)`, async ({ page, erros }) => {
+        const fallback = FALLBACK_CONHECIDO_POR_PAGINA[arquivo] ?? [];
 
-      await abrirPagina(page, arquivo, { waitUntil: 'load' });
-      const texto = await page.evaluate(() => {
-        const clone = /** @type {HTMLElement} */ (document.body.cloneNode(true));
-        clone.querySelectorAll('script, style, template').forEach(el => el.remove());
-        return clone.textContent || '';
-      });
+        await abrirPagina(page, arquivo, { waitUntil: 'load' });
+        const texto = await page.evaluate(() => {
+          const clone = /** @type {HTMLElement} */ (document.body.cloneNode(true));
+          clone.querySelectorAll('script, style, template').forEach(el => el.remove());
+          return clone.textContent || '';
+        });
 
-      const foraDoIntervalo = [];
-      for (const caractere of texto) {
-        if (fallback.includes(caractere)) continue;
-        const codePoint = caractere.codePointAt(0);
-        if (codePoint !== undefined && !estaNoIntervalo(codePoint, intervalos)) {
-          foraDoIntervalo.push(`"${caractere}" (U+${codePoint.toString(16).toUpperCase()})`);
+        const foraDoIntervalo = [];
+        for (const caractere of texto) {
+          if (fallback.includes(caractere)) continue;
+          const codePoint = caractere.codePointAt(0);
+          if (codePoint !== undefined && !estaNoIntervalo(codePoint, intervalos)) {
+            foraDoIntervalo.push(`"${caractere}" (U+${codePoint.toString(16).toUpperCase()})`);
+          }
         }
-      }
 
-      expect([...new Set(foraDoIntervalo)], `${arquivo}: caracteres fora do subset latin`).toEqual([]);
-      descartarPainel(erros);
+        expect([...new Set(foraDoIntervalo)], `${arquivo}: caracteres fora do subset latin`).toEqual([]);
+        descartarPainel(erros);
+      });
+  
     });
   }
 });
@@ -480,17 +500,21 @@ test.describe('CA5 — mobile (login, painel e pedido)', { tag: ['@CIT-156', '@C
   });
 
   for (const arquivo of PAGINAS_CIT156) {
-    for (const largura of [320, 375]) {
-      test(`CIT-156 CA5 ${arquivo} a ${largura}px: sem rolagem horizontal`, async ({ page, erros }) => {
-        await page.setViewportSize({ width: largura, height: 800 });
-        await page.goto(arquivo, { waitUntil: 'load' });
-        await page.evaluate(() => document.fonts.ready);
+    test.describe(arquivo, () => {
+      usarOrigemDe(arquivo);
+      for (const largura of [320, 375]) {
+        test(`CIT-156 CA5 ${arquivo} a ${largura}px: sem rolagem horizontal`, async ({ page, erros }) => {
+          await page.setViewportSize({ width: largura, height: 800 });
+          await page.goto(arquivo, { waitUntil: 'load' });
+          await page.evaluate(() => document.fonts.ready);
 
-        const semRolagem = await page.evaluate(() =>
-          document.documentElement.scrollWidth <= document.documentElement.clientWidth);
-        expect(semRolagem, `${arquivo} a ${largura}px: scrollWidth > clientWidth`).toBe(true);
-      });
-    }
+          const semRolagem = await page.evaluate(() =>
+            document.documentElement.scrollWidth <= document.documentElement.clientWidth);
+          expect(semRolagem, `${arquivo} a ${largura}px: scrollWidth > clientWidth`).toBe(true);
+        });
+      }
+  
+    });
   }
 });
 
