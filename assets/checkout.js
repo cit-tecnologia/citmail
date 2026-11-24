@@ -10,11 +10,8 @@ if (typeof PRECOS === 'undefined' || !Number.isInteger(PRECOS.dominio) || !PRECO
    DOMAIN & ADD-ONS STATE
 ================================================================ */
 let domainChoice  = null;   // 'new-br' | 'existing'
-let domPixSec     = 1800;
-let domPixIntvl   = null;
 const addonQtys   = { talk: 0, backup90: 0, backup365: 0, grupoEmail: 0, skybox: 0, extraDom: 0 };
 let   skyboxPlan  = null; // '50gb' | '100gb' | '1tb'
-let   extraDomPixVal = null; // centavos do último Pix gerado para os domínios extras
 
 /* ---- DOMAIN STEP ---- */
 const DOMAIN_OPTS = { 'new-br':'doptBr', 'existing':'doptExist' };
@@ -28,14 +25,7 @@ function selectDomainOpt(choice) {
   document.getElementById('step2Error').style.display = 'none';
   limparErroDominio('fDomNew', 'err-dom-new');
   limparErroDominio('fDomExist', 'err-dom-exist');
-  if (choice === 'new-br') {
-    document.getElementById('domNewTld').textContent = '.com.br';
-    document.getElementById('domPixDesc').textContent = `Registrar domínio .com.br — R$ ${fmtCentavos(PRECOS.dominio)}/ano`;
-    document.getElementById('domPixCode').textContent = genFakePix(PRECOS.dominio / 100);
-    startDomPixTimer();
-  } else {
-    clearInterval(domPixIntvl);
-  }
+  if (choice === 'new-br') document.getElementById('domNewTld').textContent = '.com.br';
   agendarOrcamento();
 }
 
@@ -69,58 +59,133 @@ function dominioExistenteValido(d) {
   return /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(d);
 }
 
-function genFakePix(val) {
-  return '00020126580014br.gov.bcb.pix0136a1b2c3d4-e5f6-7890-abcd-ef1234567890' +
-    '520400005303986540' + String(val).padStart(6,'0') +
-    '5802BR5912CITMail Ltda6009SaoPaulo62070503***6304' + Math.random().toString(36).slice(-4).toUpperCase();
+// Marca o campo com a mensagem de erro (sem focar: quem chama foca depois de mostrar o passo).
+function marcarCampoInvalido(campo, erroId, msg) {
+  showErr(erroId, msg);
+  campo.setAttribute('aria-invalid', 'true');
 }
 
-function startDomPixTimer() {
-  clearInterval(domPixIntvl);
-  domPixSec = 1800;
-  domPixIntvl = setInterval(() => {
-    domPixSec--;
-    if (domPixSec <= 0) { clearInterval(domPixIntvl); document.getElementById('domPixCountdown').textContent = 'Pix expirado. Selecione novamente.'; return; }
-    const m = Math.floor(domPixSec/60).toString().padStart(2,'0');
-    const s = (domPixSec%60).toString().padStart(2,'0');
-    document.getElementById('domPixCountdown').textContent = `Pix válido por ${m}:${s}`;
-  }, 1000);
-}
-
-function goStep2Next() {
+// Valida e normaliza o domínio principal (passo 2). Devolve o elemento a focar quando inválido, ou null.
+function validarDominioPrincipal() {
   const errEl = document.getElementById('step2Error');
-  if (!Object.keys(DOMAIN_OPTS).includes(domainChoice)) { errEl.style.display = 'flex'; return; }
-  const campoInvalido = (campo, erroId, msg) => {
-    showErr(erroId, msg);
-    campo.setAttribute('aria-invalid', 'true');
-    campo.focus();
-  };
+  if (!Object.keys(DOMAIN_OPTS).includes(domainChoice)) { errEl.style.display = 'flex'; return errEl; }
   if (domainChoice === 'new-br') {
     const campo = document.getElementById('fDomNew');
     const bruto = campo.value.trim();
     const name = normalizarDominioNovo(bruto);
-    if (!bruto) { campoInvalido(campo, 'err-dom-new', 'Informe o nome do domínio.'); return; }
-    if (!dominioNovoValido(name)) { campoInvalido(campo, 'err-dom-new', 'Use de 2 a 26 letras, números ou hífen, sem hífen no início ou no fim e não só números.'); return; }
+    if (!bruto) { marcarCampoInvalido(campo, 'err-dom-new', 'Informe o nome do domínio.'); return campo; }
+    if (!dominioNovoValido(name)) { marcarCampoInvalido(campo, 'err-dom-new', 'Use de 2 a 26 letras, números ou hífen, sem hífen no início ou no fim e não só números.'); return campo; }
     campo.value = name;
-    document.getElementById('successWebmail').textContent = 'webmail.' + name + '.com.br';
   }
   if (domainChoice === 'existing') {
     const campo = document.getElementById('fDomExist');
     const bruto = campo.value.trim();
     const d = normalizarDominioExistente(bruto);
-    if (!bruto) { campoInvalido(campo, 'err-dom-exist', 'Informe seu domínio.'); return; }
-    if (!dominioExistenteValido(d)) { campoInvalido(campo, 'err-dom-exist', 'Domínio inválido. Ex.: minhaempresa.com.br'); return; }
+    if (!bruto) { marcarCampoInvalido(campo, 'err-dom-exist', 'Informe seu domínio.'); return campo; }
+    if (!dominioExistenteValido(d)) { marcarCampoInvalido(campo, 'err-dom-exist', 'Domínio inválido. Ex.: minhaempresa.com.br'); return campo; }
     campo.value = d;
-    document.getElementById('successWebmail').textContent = 'webmail.' + d;
   }
   errEl.style.display = 'none';
+  return null;
+}
+
+function goStep2Next() {
+  const invalido = validarDominioPrincipal();
+  if (invalido) { invalido.focus(); return; }
   goStep(3);
+}
+
+// Nome completo do domínio principal (novo: "<rótulo>.com.br"; existente: o nome normalizado), para comparar com os extras.
+function nomePrincipalCompleto() {
+  if (domainChoice === 'new-br') {
+    const n = normalizarDominioNovo(document.getElementById('fDomNew').value);
+    return n ? `${n}.com.br` : '';
+  }
+  if (domainChoice === 'existing') return normalizarDominioExistente(document.getElementById('fDomExist').value);
+  return '';
+}
+
+/* ---- DOMÍNIOS EXTRAS (um campo .com.br por unidade de addonQtys.extraDom, no padrão do #fDomNew) ---- */
+function camposExtras() {
+  return [...document.querySelectorAll('#domExtrasCampos input')];
+}
+
+function criarCampoExtra(i) {
+  const id = `fDomExtra${i}`;
+  const erroId = `err-dom-extra-${i}`;
+  const NS = 'http://www.w3.org/2000/svg';
+  const campo = elementoResumo('div', 'field');
+  const rotulo = elementoResumo('label', '', `Domínio extra ${i} `);
+  rotulo.htmlFor = id;
+  rotulo.appendChild(elementoResumo('span', 'req', '*'));
+  const linha = elementoResumo('div', 'domain-row');
+  const arroba = elementoResumo('div', 'domain-at');
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'icon mr-4');
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS(NS, 'use');
+  use.setAttribute('href', 'assets/icons.svg#at-sign');
+  svg.appendChild(use);
+  arroba.appendChild(svg);
+  const input = document.createElement('input');
+  Object.assign(input, { type: 'text', id, placeholder: 'outraempresa', inputMode: 'text', spellcheck: false });
+  input.setAttribute('autocapitalize', 'none');
+  input.setAttribute('autocorrect', 'off');
+  input.setAttribute('aria-describedby', erroId);
+  input.addEventListener('input', () => limparErroDominio(id, erroId));
+  linha.append(arroba, input, elementoResumo('div', 'domain-tld', '.com.br'));
+  const erro = elementoResumo('span', 'field-error');
+  erro.id = erroId;
+  campo.append(rotulo, linha, erro);
+  return campo;
+}
+
+// Um campo por domínio extra: reduzir remove os últimos e mantém os primeiros; aumentar abre a seção para mostrar o campo novo.
+function sincronizarCamposExtras() {
+  const box = document.getElementById('domExtrasCampos');
+  const qtd = addonQtys.extraDom || 0;
+  const antes = box.children.length;
+  while (box.children.length > qtd) box.lastElementChild.remove();
+  while (box.children.length < qtd) box.appendChild(criarCampoExtra(box.children.length + 1));
+  box.hidden = qtd === 0;
+  if (qtd > antes) definirSecao('Dominio', true);
+}
+
+// Valida e normaliza os extras: vazio, inválido ou repetido (entre si ou com o principal). Devolve o 1º campo inválido, ou null.
+function validarDominiosExtras() {
+  const principal = nomePrincipalCompleto();
+  const vistos = new Set(principal ? [principal] : []);
+  let primeiro = null;
+  camposExtras().forEach((campo, i) => {
+    const erroId = `err-dom-extra-${i + 1}`;
+    limparErroDominio(campo.id, erroId);
+    const bruto = campo.value.trim();
+    const rotulo = normalizarDominioNovo(bruto);
+    let msg = '';
+    if (!bruto) msg = 'Informe o nome do domínio extra.';
+    else if (!dominioNovoValido(rotulo)) msg = 'Domínio inválido.';
+    else if (vistos.has(`${rotulo}.com.br`)) msg = 'Domínio repetido.';
+    if (msg) {
+      marcarCampoInvalido(campo, erroId, msg);
+      if (!primeiro) primeiro = campo;
+      return;
+    }
+    campo.value = rotulo;
+    vistos.add(`${rotulo}.com.br`);
+  });
+  return primeiro;
+}
+
+function goStep3Next() {
+  const invalido = validarDominiosExtras();
+  if (invalido) { invalido.focus(); return; }
+  goStep(4);
 }
 
 /* ---- ADD-ONS STEP ---- */
 // Tabela dos add-ons: nomes e rótulos (valores em centavos vêm de PRECOS, assets/precos.js) usados no passo 3, no painel de
 // selecionados e no resumo. `unidade` e `periodo` formam o texto do preço exibido ("/conta/mês").
-// Domínio extra é cobrado por ano via Pix separado e fica fora do total mensal.
+// Domínio extra é cobrado por ano na fatura de domínios e fica fora do total mensal.
 const ADDONS = {
   talk:       { nome: 'Talk',            rotuloCurto: 'Talk',         centavos: PRECOS.addons.talk,       unidade: 'conta',   periodo: 'mês', linha: 'adTalk',      sub: 'asTalk',      qtd: 'aqTalk' },
   backup90:   { nome: 'Backup 90 dias',  rotuloCurto: 'Backup 90d',   centavos: PRECOS.addons.backup90,   unidade: 'conta',   periodo: 'mês', linha: 'adBackup90',  sub: 'asBackup90',  qtd: 'aqBackup90' },
@@ -153,7 +218,7 @@ function rotuloAddon(key) {
   return key === 'skybox' && skyboxPlan ? `${a.rotuloCurto} ${a.planos[skyboxPlan].rotuloCurto}` : a.rotuloCurto;
 }
 // Linhas mensais com valor (Skybox só com plano e quantidade), usadas no painel de selecionados,
-// no resumo e no total. Domínio extra fica fora: é anual, com Pix próprio.
+// no resumo e no total. Domínio extra fica fora: é anual, com fatura própria.
 function linhasAddonsMensais() {
   return ADDONS_MENSAIS
     .filter(key => valorAddon(key) > 0)
@@ -282,22 +347,8 @@ function refreshAddons() {
     document.getElementById(cfg.linha)?.classList.toggle('active', val > 0);
   });
 
-  // Extra domain (anual, Pix separado)
-  const domQ   = addonQtys.extraDom || 0;
-  const domVal = valorAddon('extraDom');
-  const pixPanel = document.getElementById('extraDomPixPanel');
-  if (pixPanel) {
-    pixPanel.style.display = domQ > 0 ? 'block' : 'none';
-    if (domQ > 0) {
-      document.getElementById('extraDomPixTotal').textContent = `R$ ${fmtCentavos(domVal)}`;
-      // refreshAddons roda a cada add-on alterado: o código só é gerado de novo quando o valor muda,
-      // para o código já copiado continuar valendo.
-      if (domVal !== extraDomPixVal) {
-        document.getElementById('extraDomPixCode').textContent = genFakePix(domVal / 100);
-        extraDomPixVal = domVal;
-      }
-    }
-  }
+  // Domínios extras (anuais, na fatura de domínios): um campo de nome por unidade
+  sincronizarCamposExtras();
 
   // Subtotal summary panel
   const lines = linhasAddonsMensais();
@@ -316,7 +367,6 @@ function refreshAddons() {
   }
 
   updateSummary();
-  updateInstallments();
   atualizarIndicadoresSecoes();
   agendarOrcamento();
 }
@@ -334,12 +384,10 @@ const ckQtys      = { '5gb': 0, '25gb': 0, '50gb': 0 };
 let annualBilling = false;
 // domainOk removed — domain handled in step 2
 let currentStep   = 1;
-let pixInterval   = null;
 
 /* ---- calc helpers ---- */
-// Valores em centavos inteiros (PRECOS e funções em assets/precos.js); fmtR só nas parcelas.
+// Valores em centavos inteiros (PRECOS e funções em assets/precos.js).
 function calcDiscount(qty)   { return percentualVolume(qty, annualBilling); }
-function fmtR(v)             { return v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function unitPriceCentavos(type) { return unitarioCobradoCentavos(type, ckQtys[type], annualBilling); }
 function addonsMonthly()     { return linhasAddonsMensais().reduce((s, l) => s + l.valor, 0); }
 function grandTotalCentavos() { return Object.keys(ACCOUNT_DEFS).reduce((s,t) => s + ckQtys[t]*unitPriceCentavos(t), 0) + addonsMonthly(); }
@@ -375,7 +423,6 @@ function ckUpdateQty(type, raw) {
 function ckRefresh() {
   renderContas();
   updateSummary();
-  updateInstallments();
   agendarOrcamento();
 }
 
@@ -431,12 +478,14 @@ function goStep1Next() {
 // Mesmo limite dos dois @media (max-width: 960px) do CSS (grid em coluna única e resumo não fixo).
 const COLUNA_UNICA_MQ = '(max-width: 960px)';
 function goStep(n) {
+  // Estado ambíguo do pedido: a revisão não sai do lugar (o reenvio usa o corpo guardado).
+  if (pedidoAmbiguo && n !== 5) return;
   document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('step' + n).classList.add('active');
   currentStep = n;
   updateStepBar(n);
   if (n === 3) abrirSecoesIniciais();
-  if (n === 5) generatePaymentData();
+  if (n === 5) renderRevisao();
   // Coluna única: o resumo fica no topo, então rola até a barra de etapas para o passo ficar à vista
   const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
   if (window.matchMedia(COLUNA_UNICA_MQ).matches) {
@@ -447,23 +496,23 @@ function goStep(n) {
 }
 
 function updateStepBar(n) {
-  for (let i = 1; i <= 6; i++) {
+  for (let i = 1; i <= 5; i++) {
     const sc = document.getElementById('sc' + i);
     const sl = document.getElementById('sl' + i);
     if (!sc) continue;
     sc.className = 'step-circle' + (i < n ? ' done' : i === n ? ' active' : '');
-    if (i < n || i === 6) sc.innerHTML = '<svg class="icon icon--step-check" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>';
+    if (i < n) sc.innerHTML = '<svg class="icon icon--step-check" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>';
     else sc.textContent = i;
     if (sl) sl.className = 'step-label' + (i < n ? ' done' : i === n ? ' active' : '');
   }
-  for (let i = 1; i <= 5; i++) {
+  for (let i = 1; i <= 4; i++) {
     const conn = document.getElementById('conn' + i);
     if (conn) conn.className = 'step-connector' + (i < n ? ' done' : '');
   }
 }
 
 /* ================================================================
-   SUMMARY & INSTALLMENTS (account-based)
+   SUMMARY (account-based)
 ================================================================ */
 // Cascata de um item do resumo: "de R$ T · −15% contratação −R$ A[ · −20% anual −R$ B | · −5% volume −R$ B]".
 // Só renderiza o resultado de cascataCentavos (assets/precos.js). Segmentos não quebram por dentro.
@@ -525,22 +574,6 @@ function updateSummary() {
   economiaEl.textContent = hasAny
     ? `Você economiza R$ ${fmtCentavos(economia)}/mês` + (annualBilling ? ` (R$ ${fmtCentavos(economia * 12)}/ano)` : '')
     : '';
-}
-
-function updateInstallments() {
-  const total = (ultimoOrcamentoConfirmado ? ultimoOrcamentoConfirmado.resposta.totais.recorrente_mensal_centavos : grandTotalCentavos()) / 100;
-  const sel   = document.getElementById('fInstallments');
-  if (!sel) return;
-  sel.innerHTML = '';
-  const maxInst = annualBilling ? 12 : 3;
-  for (let n = 1; n <= maxInst; n++) {
-    if (![1,2,3,6,12].includes(n)) continue;
-    const val = total > 0 ? fmtR(total / n) : '0,00';
-    const opt = document.createElement('option');
-    opt.value = n;
-    opt.textContent = `${n}× de R$ ${val} (sem juros)`;
-    sel.appendChild(opt);
-  }
 }
 
 /* ================================================================
@@ -637,7 +670,7 @@ function agendarOrcamento() {
     definirEstadoOrcamento('pendente');
     if (!normalizandoOrcamento) temporizadorOrcamento = setTimeout(pedirOrcamento, ORCAMENTO_DEBOUNCE_MS);
   }
-  if (tinhaConfirmado) { updateSummary(); updateInstallments(); }
+  if (tinhaConfirmado) updateSummary();
 }
 
 async function pedirOrcamento() {
@@ -681,7 +714,6 @@ async function pedirOrcamento() {
     };
     definirEstadoOrcamento('confirmado');
     updateSummary();
-    updateInstallments();
     return;
   }
   if (status === 400 && dados && dados.erro === 'validacao' && Array.isArray(dados.campos)) {
@@ -733,7 +765,7 @@ function tentarOrcamentoDeNovo() {
   pedirOrcamento();
 }
 
-// Guarda de #btnSubmitCadastro e #btnPagar: no modo API só avança com orçamento confirmado.
+// Guarda de #btnSubmitCadastro e #btnIrPagamento: no modo API só avança com orçamento confirmado.
 function orcamentoLiberaAvanco() {
   if (!origemApi() || ultimoOrcamentoConfirmado) return true;
   const behavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
@@ -791,7 +823,7 @@ function renderResumoApi(r) {
   r.itens.filter(it => it.quantidade > 0).forEach(it => {
     linhas.push(linhaResumoApi(rotuloItemApi(it), it.subtotal_centavos), cascataResumoApi(it.tabela_centavos, it.descontos));
   });
-  // Avulsos (domínio principal e extras): cobrados à parte, por ano; entram no total do pedido (Pix/boleto).
+  // Avulsos (domínio principal e extras): cobrados à parte, por ano; entram no total do pedido.
   if (linhas.length) {
     r.avulsos.filter(av => av.quantidade > 0).forEach(av => {
       const linha = linhaResumoApi(`${ROTULOS_AVULSOS[av.tipo]} ×${av.quantidade}`, av.subtotal_centavos);
@@ -868,25 +900,6 @@ async function fetchCEP(cep) {
 }
 
 /* ================================================================
-   CARD FORMATTING
-================================================================ */
-function formatCard(el) {
-  let v = el.value.replace(/\D/g,'').slice(0,16);
-  el.value = v.replace(/(.{4})/g,'$1 ').trim();
-  const brands = { visa:'^4', master:'^5[1-5]', elo:'^(4011|4312|4389|4514|4576|5041|5066|5090|6277|6362|6363|6516)', amex:'^3[47]' };
-  const icon   = document.getElementById('cardBrandIcon');
-  for (const [brand, pattern] of Object.entries(brands)) {
-    if (new RegExp(pattern).test(v)) { icon.dataset.brand = brand; return; }
-  }
-  icon.dataset.brand = '';
-}
-function formatExpiry(el) {
-  let v = el.value.replace(/\D/g,'').slice(0,4);
-  if (v.length >= 2) v = v.slice(0,2) + '/' + v.slice(2);
-  el.value = v;
-}
-
-/* ================================================================
    STEP 4 — VALIDATE & SUBMIT (Cadastro)
 ================================================================ */
 function showErr(id, msg) {
@@ -903,19 +916,17 @@ function submitCadastro() {
   const nome  = document.getElementById('fNome').value.trim();
   const email = document.getElementById('fEmail').value.trim();
   const tel   = document.getElementById('fTelefone').value.trim();
-  const senha = document.getElementById('fSenha').value;
   const isCPF = document.getElementById('btnCPF').classList.contains('active');
   const cep   = document.getElementById('fCEP').value.trim();
   const terms = document.getElementById('termsCheck').checked;
 
   clearErr('err-nome'); clearErr('err-email'); clearErr('err-telefone');
-  clearErr('err-senha'); clearErr('err-cpf'); clearErr('err-cnpj');
+  clearErr('err-cpf'); clearErr('err-cnpj');
   clearErr('err-razao'); clearErr('err-cep');
 
   if (nome.split(' ').length < 2) { showErr('err-nome','Informe nome e sobrenome.'); ok = false; }
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showErr('err-email','E-mail inválido.'); ok = false; }
   if (tel.replace(/\D/g,'').length < 10) { showErr('err-telefone','Telefone inválido.'); ok = false; }
-  if (senha.length < 8) { showErr('err-senha','Mínimo 8 caracteres.'); ok = false; }
   if (cep.replace(/\D/g,'').length < 8) { showErr('err-cep','CEP inválido.'); ok = false; }
   if (!terms) { alert('Aceite os Termos de Uso e a Política de Privacidade para continuar.'); ok = false; }
 
@@ -931,207 +942,329 @@ function submitCadastro() {
   if (!ok) return;
   if (!orcamentoLiberaAvanco()) return;
 
-  document.getElementById('successEmail').textContent = email;
   goStep(5);
 }
 
 /* ================================================================
-   PAYMENT SELECTION
+   STEP 5 — REVISÃO
 ================================================================ */
-function selectPayment(type) {
-  document.querySelectorAll('.payment-option').forEach(el => el.classList.remove('selected'));
-  const map = { pix:'payPix', boleto:'payBoleto', card:'payCard' };
-  document.getElementById(map[type]).classList.add('selected');
-  const labels = { pix:'Pagar com Pix', boleto:'Gerar Boleto', card:'Pagar com Cartão' };
-  document.getElementById('btnPagarLabel').textContent = labels[type];
+// Domínio novo (principal ou extra) tem registro manual: o aviso de prazo aparece na revisão.
+function temDominioNovo() {
+  return domainChoice === 'new-br' || (addonQtys.extraDom || 0) > 0;
+}
+
+function itemRevisao(rotulo, valor) {
+  const item = elementoResumo('div', 'revisao-item');
+  item.append(elementoResumo('dt', 'revisao-rotulo', rotulo), elementoResumo('dd', 'revisao-valor', valor));
+  return item;
+}
+
+// Resumo do que foi preenchido, só por textContent (o total fica no resumo do pedido).
+function renderRevisao() {
+  const contas = Object.entries(ACCOUNT_DEFS).filter(([t]) => ckQtys[t] > 0).map(([t, d]) => `${ckQtys[t]}× ${d.label}`);
+  const addons = linhasAddonsMensais().map(l => `${l.rotulo} ×${l.qtd}`);
+  const principal = nomePrincipalCompleto();
+  const extras = camposExtras().map(c => normalizarDominioNovo(c.value)).filter(Boolean).map(r => `${r}.com.br`);
+  const isCPF = document.getElementById('btnCPF').classList.contains('active');
+  const valor = id => document.getElementById(id).value.trim() || '—';
+  const itens = [
+    itemRevisao('Contas', contas.join(', ') || '—'),
+    itemRevisao('Cobrança', annualBilling ? 'Anual' : 'Mensal'),
+    itemRevisao('Domínio', principal ? `${principal}${domainChoice === 'new-br' ? ' (registro novo)' : ' (domínio existente)'}` : '—'),
+  ];
+  if (extras.length) itens.push(itemRevisao('Domínios extras', extras.join(', ')));
+  if (addons.length) itens.push(itemRevisao('Add-ons', addons.join(', ')));
+  itens.push(
+    itemRevisao('Nome', valor('fNome')),
+    itemRevisao('E-mail', valor('fEmail')),
+    itemRevisao('Telefone', valor('fTelefone')),
+    isCPF ? itemRevisao('CPF', valor('fCPF')) : itemRevisao('CNPJ', valor('fCNPJ')),
+  );
+  document.getElementById('revisaoResumo').replaceChildren(...itens);
+  document.getElementById('revisaoAvisoDominio').hidden = !temDominioNovo();
+  // Erro de uma tentativa anterior sai ao voltar à revisão, salvo quando a edição está travada ou o envio, bloqueado.
+  if (!pedidoAmbiguo && !pedidoBloqueado) document.getElementById('pedidoErro').hidden = true;
+  atualizarBotaoPedido();
 }
 
 /* ================================================================
-   GENERATE PAYMENT DATA (Asaas integration point)
+   PEDIDO (POST /api/pedidos) — só no modo API (origemApi())
 ================================================================ */
-function generatePaymentData() {
-  /*
-   * INTEGRAÇÃO ASAAS — substituir por chamadas reais ao backend:
-   *
-   * 1. POST /backend/create-customer
-   *    Body: { nome, email, cpfCnpj, phone, address }
-   *    Retorna: { asaasCustomerId }
-   *
-   * 2. POST /backend/create-subscription
-   *    Body: { customerId, planId, cycle, billingType, value }
-   *    Retorna: { subscriptionId, pixQrCode, pixCopiaECola, boletoUrl, boletoBarCode }
-   *
-   * 3. Webhook: POST /backend/asaas-webhook
-   *    Evento: PAYMENT_CONFIRMED → provisionar serviço + liberar painel
-   */
+// Versões do aceite: iguais às vigentes na API (api/src/pedidos/aceite.js) e à de termos.html (#termosVersao).
+const VERSAO_TERMOS = '0.1';
+const VERSAO_PRIVACIDADE = 'externa-2026-11-23';
+// Hosts aceitos para a fatura (igualdade exata): fora deles o comprador não é levado à URL recebida.
+const HOSTS_FATURA = Object.freeze(['www.asaas.com', 'sandbox.asaas.com']);
+const PEDIDO_TIMEOUT_MS = 90000;
+const CONTATO_COMERCIAL = 'comercial@citmail.com.br';
+const MSG_PEDIDO_GENERICA = 'Não foi possível gerar a fatura agora. Tente novamente.';
 
-  // Demo: populate with mock data
-  const price = ultimoOrcamentoConfirmado ? ultimoOrcamentoConfirmado.total_exibido_centavos : grandTotalCentavos();
+// Regra da chave de idempotência (ADR 0014): a chave nasce no 1º envio e vive só em memória com o corpo enviado.
+// Falha definitiva → chave nova no próximo envio; retomável (500 interno) → mesma chave;
+// ambígua → mesma chave e mesmo corpo, com a edição travada até um 201 (ou uma resposta definitiva).
+let chavePedido = null;          // UUID em uso (null = o próximo envio gera outra)
+let corpoPedidoEnviado = null;   // JSON do último envio (reenviado byte a byte no estado ambíguo)
+let pedidoEnviando = false;      // guarda contra clique duplo (não depende só do disabled)
+let pedidoAmbiguo = false;       // o pedido pode já existir
+let pedidoBloqueado = false;     // sem novo envio pela página (404 ou chave reutilizada no ambíguo)
+let pedidoConcluido = false;     // 201 válido: nada de 2º pedido na mesma página
+let passoComErroPedido = null;   // 1º passo com campo acusado por um 400 (destino de #btnPedidoRevisar)
 
-  document.getElementById('pixCode').textContent =
-    '00020126580014br.gov.bcb.pix0136a1b2c3d4-e5f6-7890-abcd-ef1234567890' +
-    '520400005303986540' + reaisTxt(price).padStart(7,'0') +
-    '5802BR5912CITMail Ltda6009Sao Paulo62070503***6304ABCD';
-
-  document.getElementById('boletoCode').textContent =
-    '34191.09008 05487.010103 0800' + reaisTxt(price) + '.000000 5 0000' + String(price).padStart(14,'0');
-
-  startPixTimer();
+function urlFaturaSegura(url) {
+  if (typeof url !== 'string') return null;
+  let u;
+  try { u = new URL(url); } catch { return null; }
+  if (u.protocol !== 'https:' || !HOSTS_FATURA.includes(u.hostname) || u.port !== '' || u.username !== '' || u.password !== '') return null;
+  return u.href;
 }
 
-let pixSeconds = 1800;
-function startPixTimer() {
-  clearInterval(pixInterval);
-  pixSeconds = 1800;
-  pixInterval = setInterval(() => {
-    pixSeconds--;
-    if (pixSeconds <= 0) { clearInterval(pixInterval); document.getElementById('pixCountdown').textContent = 'QR Code expirado. Gere um novo.'; return; }
-    const m = Math.floor(pixSeconds / 60).toString().padStart(2,'0');
-    const s = (pixSeconds % 60).toString().padStart(2,'0');
-    document.getElementById('pixCountdown').textContent = `QR Code válido por ${m}:${s}`;
-  }, 1000);
-}
-
-/* ================================================================
-   PROCESS PAYMENT
-================================================================ */
-async function processPayment() {
-  if (!orcamentoLiberaAvanco()) return;
-  const overlay = document.getElementById('loadingOverlay');
-  const txt     = document.getElementById('loadingText');
-  const payPix  = document.getElementById('payPix').classList.contains('selected');
-  const payCard = document.getElementById('payCard').classList.contains('selected');
-
-  if (payCard) {
-    const num  = document.getElementById('fCardNum').value.replace(/\s/g,'');
-    const name = document.getElementById('fCardName').value.trim();
-    const exp  = document.getElementById('fCardExp').value;
-    const cvv  = document.getElementById('fCardCvv').value;
-    if (num.length < 16 || !name || exp.length < 5 || cvv.length < 3) {
-      alert('Preencha número, nome, validade e CVV do cartão.');
-      return;
-    }
-  }
-
-  txt.textContent = 'Processando pagamento…';
-  overlay.classList.add('active');
-
-  /*
-   * INTEGRAÇÃO ASAAS — ponto de chamada:
-   *
-   * Para PIX/Boleto: o pagamento foi gerado em generatePaymentData().
-   * Aqui apenas aguardamos confirmação via polling ou WebSocket.
-   *
-   * Para cartão:
-   * POST /backend/pay-with-card
-   * Body: { subscriptionId, cardNumber, holderName, expiryMonth, expiryYear, ccv, installments }
-   * Resposta: { success: true } ou { error: 'mensagem' }
-   *
-   * Após confirmação de qualquer método:
-   * POST /backend/provision-service
-   * Body: { customerId, subscriptionId, domain, planId }
-   * → cria domínio, caixas de e-mail, envia credenciais, libera acesso ao painel
-   */
-
-  // Demo: simulate API call delay
-  await new Promise(r => setTimeout(r, 2800));
-
-  txt.textContent = 'Ativando seu serviço…';
-  await new Promise(r => setTimeout(r, 1500));
-
-  overlay.classList.remove('active');
-  clearInterval(pixInterval);
-  goStep(6);
-}
-
-/* ================================================================
-   COPY HELPERS
-================================================================ */
-// Conteúdo original de cada botão de cópia e timer da restauração (um por botão).
-const conteudoOriginalCopia = new WeakMap();
-const temporizadorCopia = new WeakMap();
-// Geração do último clique por botão (ignora promessas antigas) e frame pendente da falha por aviso.
-const geracaoCopia = new WeakMap();
-const quadroAviso = new WeakMap();
-// Copia `texto` e dá feedback no botão. opcoes: codigo (elemento selecionado na falha),
-// aviso (região role="status" da falha), aoCopiar (substitui o feedback de sucesso do botão).
-function copiarComFeedback(botao, texto, opcoes = {}) {
-  if (!conteudoOriginalCopia.has(botao)) conteudoOriginalCopia.set(botao, botao.innerHTML);
-  const geracao = (geracaoCopia.get(botao) || 0) + 1;
-  geracaoCopia.set(botao, geracao);
-  function mostrarFeedback(icone, rotulo) {
-    clearTimeout(temporizadorCopia.get(botao));
-    botao.innerHTML = '<svg class="icon" aria-hidden="true"><use href="assets/icons.svg#' + icone + '"></use></svg> ' + rotulo;
-    temporizadorCopia.set(botao, setTimeout(() => { botao.innerHTML = conteudoOriginalCopia.get(botao); }, 2000));
-  }
-  function sucesso() {
-    if (opcoes.aviso) {
-      cancelAnimationFrame(quadroAviso.get(opcoes.aviso));
-      opcoes.aviso.textContent = '';
-    }
-    if (opcoes.aoCopiar) {
-      clearTimeout(temporizadorCopia.get(botao));
-      botao.innerHTML = conteudoOriginalCopia.get(botao);
-      opcoes.aoCopiar();
-    } else {
-      mostrarFeedback('check', 'Copiado');
-    }
-  }
-  function falha() {
-    mostrarFeedback('triangle-alert', 'Erro ao copiar');
-    if (opcoes.codigo) window.getSelection().selectAllChildren(opcoes.codigo);
-    if (opcoes.aviso) {
-      // Limpa e regrava no próximo frame para o leitor de tela reanunciar a mensagem.
-      const aviso = opcoes.aviso;
-      aviso.textContent = '';
-      cancelAnimationFrame(quadroAviso.get(aviso));
-      quadroAviso.set(aviso, requestAnimationFrame(() => {
-        aviso.textContent = 'Não foi possível copiar automaticamente. O código foi selecionado: copie com Ctrl+C (Cmd+C no Mac) ou, no celular, toque e segure.';
-      }));
-    }
-  }
-  // Chamada síncrona no clique (preserva o gesto do usuário); sem clipboard ou exceção = falha tratada.
-  let promessa;
-  try { promessa = navigator.clipboard.writeText(texto); } catch (err) { falha(); return; }
-  const atual = () => geracaoCopia.get(botao) === geracao;
-  promessa.then(() => { if (atual()) sucesso(); }, () => { if (atual()) falha(); });
-}
-// Abre o boleto numa página própria e aciona a impressão, onde o cliente escolhe "Salvar como PDF".
-// Escapa texto antes de ir para o HTML do pop-up (o código e o valor do boleto virão do Asaas).
-function escHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-}
-function downloadBoleto() {
-  const code = escHtml(document.getElementById('boletoCode').textContent.trim());
-  const total = escHtml(document.getElementById('sumTotal').textContent.trim());
-  const w = window.open('', '_blank');
-  if (!w) { alert('Permita pop-ups deste site para baixar o boleto em PDF.'); return; }
-  // URL absoluta: o about:blank do pop-up não tem a base do checkout. Folha da mesma origem (CSP style-src 'self').
-  const folha = new URL('assets/boleto.css?v=1', document.baseURI).href;
-  w.document.write(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Boleto CITMail</title>
-    <link rel="stylesheet" href="${folha}">
-    </head><body><h1>Boleto CITMail</h1><p>Valor: ${total}</p><p>Linha digitável:<br><code>${code}</code></p>
-    <p>Compensação em até 3 dias úteis após o pagamento.</p></body></html>`);
-  w.document.close();
-  w.focus();
-  // Imprime uma única vez, depois que a folha carregar ou falhar (o load dispara também com a folha em cache);
-  // se a folha travar, imprime assim mesmo após 3 s.
-  const link = w.document.querySelector('link[rel="stylesheet"]');
-  let impresso = false;
-  const imprimir = () => {
-    if (impresso) return;
-    impresso = true;
-    w.print();
+// Corpo do pedido: o do orçamento + nomes dos domínios, cliente, chave, valores confirmados e aceite. Nenhum outro campo
+// (CEP, endereço, razão social e nascimento ficam só na tela).
+function montarCorpoPedido(chave) {
+  const corpo = montarCorpoOrcamento();
+  const isCPF = document.getElementById('btnCPF').classList.contains('active');
+  const digitos = id => document.getElementById(id).value.replace(/\D/g, '');
+  corpo.dominio = {
+    ...corpo.dominio,
+    nome: domainChoice === 'new-br'
+      ? normalizarDominioNovo(document.getElementById('fDomNew').value)
+      : normalizarDominioExistente(document.getElementById('fDomExist').value),
   };
-  link.addEventListener('load', imprimir, { once: true });
-  link.addEventListener('error', imprimir, { once: true });
-  setTimeout(imprimir, 3000);
+  const extras = camposExtras().map(c => normalizarDominioNovo(c.value));
+  if (extras.length) corpo.dominios_extras = extras;
+  corpo.cliente = {
+    nome: document.getElementById('fNome').value.trim(),
+    email: document.getElementById('fEmail').value.trim(),
+    telefone: digitos('fTelefone'),
+    documento: digitos(isCPF ? 'fCPF' : 'fCNPJ'),
+  };
+  corpo.chave_idempotencia = chave;
+  corpo.versao_tabela = ultimoOrcamentoConfirmado.versao_tabela;
+  corpo.total_exibido_centavos = ultimoOrcamentoConfirmado.total_exibido_centavos;
+  corpo.aceite = { termos: true, versao_termos: VERSAO_TERMOS, versao_privacidade: VERSAO_PRIVACIDADE };
+  return corpo;
 }
+
+// Pré-condições de um envio novo: domínios revalidados, aceite marcado e orçamento confirmado.
+function pedidoPodeSerEnviado() {
+  const principal = validarDominioPrincipal();
+  if (principal) { goStep(2); principal.focus(); return false; }
+  const extra = validarDominiosExtras();
+  if (extra) { goStep(3); extra.focus(); return false; }
+  const termos = document.getElementById('termsCheck');
+  if (!termos.checked) { goStep(4); termos.focus(); return false; }
+  return orcamentoLiberaAvanco();
+}
+
+function atualizarBotaoPedido() {
+  const btn = document.getElementById('btnIrPagamento');
+  btn.hidden = !origemApi() || pedidoConcluido || pedidoBloqueado;
+  btn.disabled = pedidoEnviando;
+  if (pedidoEnviando) btn.setAttribute('aria-busy', 'true');
+  else btn.removeAttribute('aria-busy');
+  document.getElementById('pedidoProgresso').hidden = !pedidoEnviando;
+  document.getElementById('pedidoAmbiguoAviso').hidden = !pedidoAmbiguo;
+  // Edição dos passos 1-4 travada durante o envio e no estado ambíguo (goStep também recusa).
+  document.querySelectorAll('#step5 [data-ir-passo]').forEach(b => { b.disabled = pedidoEnviando || pedidoAmbiguo; });
+}
+
+async function enviarPedido() {
+  const origem = origemApi();
+  if (!origem || pedidoEnviando || pedidoBloqueado || pedidoConcluido) return;
+  let corpoTexto;
+  if (pedidoAmbiguo) {
+    corpoTexto = corpoPedidoEnviado;   // mesmo corpo e mesma chave, sem remontar da tela
+  } else {
+    if (!pedidoPodeSerEnviado()) return;
+    if (!chavePedido) chavePedido = crypto.randomUUID();
+    corpoTexto = JSON.stringify(montarCorpoPedido(chavePedido));
+  }
+  corpoPedidoEnviado = corpoTexto;
+  pedidoEnviando = true;
+  document.getElementById('pedidoErro').hidden = true;
+  document.getElementById('pedidoAviso').hidden = true;
+  atualizarBotaoPedido();
+  const controlador = new AbortController();
+  // setTimeout + abort (e não AbortSignal.timeout) para o page.clock dos testes controlar o prazo.
+  const prazo = setTimeout(() => controlador.abort(), PEDIDO_TIMEOUT_MS);
+  let status = 0;
+  let dados = null;
+  try {
+    const r = await fetch(`${origem}/api/pedidos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: corpoTexto,
+      credentials: 'omit',
+      signal: controlador.signal,
+    });
+    status = r.status;
+    dados = await r.json().catch(() => null);
+  } catch {
+    status = 0;
+  } finally {
+    clearTimeout(prazo);
+  }
+  pedidoEnviando = false;
+  tratarRespostaPedido(status, dados);
+  atualizarBotaoPedido();
+}
+
+function respostaCriadaValida(d) {
+  return !!d && typeof d === 'object'
+    && ((typeof d.pedidoId === 'string' && d.pedidoId !== '') || Number.isInteger(d.pedidoId))
+    && Array.isArray(d.faturas)
+    && d.faturas.every(f => f && typeof f === 'object' && (f.tipo === 'contas' || f.tipo === 'dominios')
+      && (f.url === null || typeof f.url === 'string'));
+}
+
+// Classe da resposta (Decisão 8): o que não for reconhecido como definitivo ou retomável é ambíguo.
+function classificarRespostaPedido(status, d) {
+  const erro = d && typeof d === 'object' ? d.erro : undefined;
+  if (status === 201) return respostaCriadaValida(d) ? 'criado' : 'ambigua';
+  if (status === 404) return 'indisponivel';
+  if (status === 400 && erro === 'validacao') return 'validacao';
+  if (status === 409 && erro === 'total_divergente') return 'total';
+  if (status === 409 && erro === 'versao_termos_divergente') return 'termos';
+  if (status === 422 && erro === 'chave_reutilizada') return pedidoAmbiguo ? 'irrecuperavel' : 'definitiva';
+  if ((status === 502 || status === 504) && erro === 'asaas_indisponivel') return 'definitiva';
+  if (status === 500 && erro === 'interno') return 'retomavel';
+  return 'ambigua';
+}
+
+function tratarRespostaPedido(status, d) {
+  const classe = classificarRespostaPedido(status, d);
+  if (classe === 'criado') {
+    pedidoAmbiguo = false;
+    pedidoConcluido = true;
+    chavePedido = null;
+    mostrarResultadoPedido(d);
+    return;
+  }
+  if (classe === 'ambigua') {
+    pedidoAmbiguo = true;
+    mostrarErroPedido(MSG_PEDIDO_GENERICA, { retry: true });
+    return;
+  }
+  if (classe === 'retomavel') {   // o pedido fica em "criando": a mesma chave o retoma
+    mostrarErroPedido(MSG_PEDIDO_GENERICA, { retry: true });
+    return;
+  }
+  if (classe === 'irrecuperavel') {   // sem chave nova silenciosa e sem novo envio pela página
+    pedidoBloqueado = true;
+    mostrarErroPedido(`Não conseguimos confirmar seu pedido. Fale com ${CONTATO_COMERCIAL} informando o e-mail do cadastro.`, {});
+    return;
+  }
+  // Definitivas: nenhum pedido ficou pendente com esta chave; o próximo envio gera outra (e o corpo pode mudar).
+  chavePedido = null;
+  pedidoAmbiguo = false;
+  if (classe === 'indisponivel') {
+    pedidoBloqueado = true;
+    mostrarErroPedido(`A contratação online está indisponível no momento. Fale com ${CONTATO_COMERCIAL}.`, {});
+  } else if (classe === 'validacao') {
+    const marcados = Array.isArray(d.campos) && marcarCamposPedido(d.campos);
+    if (marcados) mostrarErroPedido('Revise os dados destacados.', { revisar: true });
+    else mostrarErroPedido(MSG_PEDIDO_GENERICA, { retry: true });
+  } else if (classe === 'total') {
+    // O total mudou no servidor: refaz o orçamento na hora (sem debounce); o comprador confere e clica de novo.
+    ultimoOrcamentoConfirmado = null;
+    tentarOrcamentoDeNovo();
+    mostrarErroPedido('O valor foi atualizado. Confira o novo total e clique de novo em Ir para pagamento.', { foco: 'btnIrPagamento' });
+  } else if (classe === 'termos') {
+    document.getElementById('termsCheck').checked = false;
+    mostrarErroPedido('Os termos foram atualizados. Recarregue a página e aceite a versão nova.', {});
+  } else {
+    mostrarErroPedido(MSG_PEDIDO_GENERICA, { retry: true });
+  }
+}
+
+// opcoes: retry (mostra "Tentar novamente"), revisar (mostra "Revisar dados"), foco (id a focar sem esses botões).
+function mostrarErroPedido(texto, opcoes) {
+  const retry = document.getElementById('btnPedidoRetry');
+  const revisar = document.getElementById('btnPedidoRevisar');
+  document.getElementById('pedidoErroTexto').textContent = texto;
+  retry.hidden = !opcoes.retry;
+  revisar.hidden = !opcoes.revisar;
+  document.getElementById('pedidoErro').hidden = false;
+  atualizarBotaoPedido();
+  const foco = opcoes.retry ? retry : opcoes.revisar ? revisar : opcoes.foco && document.getElementById(opcoes.foco);
+  if (foco && !foco.hidden) foco.focus();
+}
+
+// Campo da tela para cada campo acusado num 400 do pedido: { el, erroId, passo } ou null.
+function campoDoErroPedido(nome) {
+  const isCPF = document.getElementById('btnCPF').classList.contains('active');
+  const cliente = {
+    'cliente': ['fNome', 'err-nome'], 'cliente.nome': ['fNome', 'err-nome'], 'cliente.email': ['fEmail', 'err-email'],
+    'cliente.telefone': ['fTelefone', 'err-telefone'],
+    'cliente.documento': isCPF ? ['fCPF', 'err-cpf'] : ['fCNPJ', 'err-cnpj'],
+  };
+  if (Object.prototype.hasOwnProperty.call(cliente, nome)) {
+    const [id, erroId] = cliente[nome];
+    return { el: document.getElementById(id), erroId, passo: 4 };
+  }
+  if (nome === 'dominio' || nome === 'dominio.nome') {
+    const [id, erroId] = domainChoice === 'existing' ? ['fDomExist', 'err-dom-exist'] : ['fDomNew', 'err-dom-new'];
+    return { el: document.getElementById(id), erroId, passo: 2 };
+  }
+  const extra = /^dominios_extras\.(\d+)$/.exec(nome);
+  const indice = extra ? Number(extra[1]) + 1 : (nome === 'dominios_extras' || nome === 'addons.extraDom' ? 1 : 0);
+  const el = indice ? document.getElementById(`fDomExtra${indice}`) : null;
+  return el ? { el, erroId: `err-dom-extra-${indice}`, passo: 3 } : null;
+}
+
+// Marca os campos acusados (aria-invalid e mensagem); devolve true se marcou algum.
+function marcarCamposPedido(campos) {
+  passoComErroPedido = null;
+  campos.forEach(c => {
+    const alvo = c && typeof c.campo === 'string' ? campoDoErroPedido(c.campo) : null;
+    if (!alvo) return;
+    marcarCampoInvalido(alvo.el, alvo.erroId, 'Confira este dado.');
+    if (passoComErroPedido === null || alvo.passo < passoComErroPedido) passoComErroPedido = alvo.passo;
+  });
+  return passoComErroPedido !== null;
+}
+
+function revisarDadosPedido() {
+  if (passoComErroPedido === null) return;
+  goStep(passoComErroPedido);
+  const marcado = document.querySelector(`#step${passoComErroPedido} [aria-invalid="true"]`);
+  if (marcado) marcado.focus();
+}
+
+// 201: só a fatura das contas (segura) → vai para ela; com a de domínios → links em nova aba; sem URL segura → aviso.
+function mostrarResultadoPedido(d) {
+  const contas = d.faturas.find(f => f.tipo === 'contas');
+  const dominios = d.faturas.find(f => f.tipo === 'dominios');
+  const urlContas = contas ? urlFaturaSegura(contas.url) : null;
+  document.getElementById('pedidoErro').hidden = true;
+  if (d.aviso === 'fatura_pendente' || !urlContas) {
+    const aviso = document.getElementById('pedidoAviso');
+    aviso.textContent = `Pedido recebido. Número do pedido: ${d.pedidoId}. Se não receber a fatura por e-mail, fale com ${CONTATO_COMERCIAL}.`;
+    aviso.hidden = false;
+    return;
+  }
+  if (!dominios) {
+    location.assign(urlContas);
+    return;
+  }
+  const urlDominios = urlFaturaSegura(dominios.url);
+  const linkContas = document.getElementById('linkFaturaContas');
+  const linkDominios = document.getElementById('linkFaturaDominios');
+  linkContas.href = urlContas;
+  linkContas.hidden = false;
+  if (urlDominios) linkDominios.href = urlDominios;
+  else linkDominios.removeAttribute('href');
+  linkDominios.hidden = !urlDominios;
+  document.getElementById('pedidoFaturasTexto').textContent = urlDominios
+    ? `Pedido recebido (número ${d.pedidoId}). Abra as faturas abaixo para pagar.`
+    : `Pedido recebido (número ${d.pedidoId}). Abra a fatura das contas abaixo para pagar; a do domínio foi enviada para o seu e-mail.`;
+  document.getElementById('pedidoFaturas').hidden = false;
+  linkContas.focus();
+}
+
 /* ================================================================
    VÍNCULOS — cada controle recebe o seu listener no próprio elemento
-   (sem handler inline, por causa da CSP). Os aninhados (.pix-copy em
-   #payPix, copiar/#downloadBoleto em #payBoleto) disparam o interno e
-   depois o externo, por bubbling.
+   (sem handler inline, por causa da CSP).
 ================================================================ */
 document.querySelectorAll('button[data-qtd-conta]').forEach(el => {
   el.addEventListener('click', e => ckChangeQty(e.currentTarget.dataset.qtdConta, Number(e.currentTarget.dataset.qtdDelta)));
@@ -1146,9 +1279,6 @@ document.querySelectorAll('[data-dominio-opcao]').forEach(el => {
 });
 document.getElementById('fDomNew').addEventListener('input', () => onDomNewInput());
 document.getElementById('fDomExist').addEventListener('input', () => onDomExistInput());
-document.getElementById('btnCopyDomPix').addEventListener('click', e =>
-  copiarComFeedback(e.currentTarget, document.getElementById('domPixCode').textContent,
-    { codigo: document.getElementById('domPixCode'), aviso: document.getElementById('domPixCopiaAviso') }));
 document.getElementById('btnStep2Next').addEventListener('click', () => goStep2Next());
 document.querySelectorAll('[data-ir-passo]').forEach(el => {
   el.addEventListener('click', e => goStep(Number(e.currentTarget.dataset.irPasso)));
@@ -1165,26 +1295,14 @@ document.querySelectorAll('button[data-addon]').forEach(el => {
 document.querySelectorAll('input[data-addon]').forEach(el => {
   el.addEventListener('change', e => addonInput(e.currentTarget.dataset.addon, e.currentTarget.value));
 });
-document.getElementById('btnCopyExtraDomPix').addEventListener('click', e =>
-  copiarComFeedback(e.currentTarget, document.getElementById('extraDomPixCode').textContent,
-    { codigo: document.getElementById('extraDomPixCode'), aviso: document.getElementById('extraDomPixCopiaAviso') }));
+document.getElementById('btnStep3Next').addEventListener('click', () => goStep3Next());
 document.querySelectorAll('[data-doc-tipo]').forEach(el => {
   el.addEventListener('click', e => setDocType(e.currentTarget.dataset.docTipo));
 });
 document.getElementById('btnSubmitCadastro').addEventListener('click', () => submitCadastro());
-document.querySelectorAll('[data-pagamento]').forEach(el => {
-  el.addEventListener('click', e => selectPayment(e.currentTarget.dataset.pagamento));
-});
-document.getElementById('btnCopyPix').addEventListener('click', e =>
-  copiarComFeedback(e.currentTarget, document.getElementById('pixCode').textContent,
-    { codigo: document.getElementById('pixCode'), aviso: document.getElementById('pixCopiaAviso') }));
-document.getElementById('btnCopyBoleto').addEventListener('click', e =>
-  copiarComFeedback(e.currentTarget, document.getElementById('boletoCode').textContent.trim(),
-    { codigo: document.getElementById('boletoCode'), aviso: document.getElementById('boletoCopiaAviso'), aoCopiar: () => alert('Código do boleto copiado.') }));
-document.getElementById('downloadBoleto').addEventListener('click', () => downloadBoleto());
-document.getElementById('fCardNum').addEventListener('input', e => formatCard(e.currentTarget));
-document.getElementById('fCardExp').addEventListener('input', e => formatExpiry(e.currentTarget));
-document.getElementById('btnPagar').addEventListener('click', () => processPayment());
+document.getElementById('btnIrPagamento').addEventListener('click', () => enviarPedido());
+document.getElementById('btnPedidoRetry').addEventListener('click', () => enviarPedido());
+document.getElementById('btnPedidoRevisar').addEventListener('click', () => revisarDadosPedido());
 document.getElementById('btnOrcamentoRetry').addEventListener('click', () => tentarOrcamentoDeNovo());
 // aria-invalid posto por um 400 da API só sai quando o usuário mexe no próprio campo (digitando ou nos botões − / +).
 document.querySelectorAll('input[data-qtd-conta], input[data-addon]').forEach(el => {
@@ -1195,6 +1313,10 @@ document.querySelectorAll('button[data-qtd-conta]').forEach(el => {
 });
 document.querySelectorAll('button[data-addon]').forEach(el => {
   el.addEventListener('click', e => document.getElementById(ADDONS[e.currentTarget.dataset.addon]?.qtd)?.removeAttribute('aria-invalid'));
+});
+// aria-invalid posto por um 400 do pedido nos dados do cadastro sai quando o usuário edita o campo.
+['fNome', 'fEmail', 'fTelefone', 'fCPF', 'fCNPJ'].forEach(id => {
+  document.getElementById(id).addEventListener('input', e => e.currentTarget.removeAttribute('aria-invalid'));
 });
 
 /* ================================================================
@@ -1229,4 +1351,8 @@ document.querySelectorAll('button[data-addon]').forEach(el => {
   renderContas();
   refreshAddons();
   updateStepBar(1);
+  // Modo local (Pages, homologação, 127.0.0.1): contratação online em breve, sem envio do pedido.
+  const modoLocal = !origemApi();
+  ['avisoEmBreve', 'avisoEmBreveCadastro', 'revisaoEmBreve'].forEach(id => { document.getElementById(id).hidden = !modoLocal; });
+  atualizarBotaoPedido();
 })();
