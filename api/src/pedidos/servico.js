@@ -21,6 +21,7 @@ import {
   normalizarDominioNovo
 } from './dominio.js'
 import * as repositorio from './repositorio.js'
+import { gerarToken, hashDoToken } from './token.js'
 
 // Prazo global das chamadas de criação ao Asaas numa requisição (D1, passo 0).
 export const PRAZO_PEDIDO_MS = 45000
@@ -246,15 +247,16 @@ export function criarServicoPedidos({
     log.error({ pedidoId, code: erro.code, routine: erro.routine }, 'erro de banco no pedido')
   }
 
-  function corpoCriado(pedidoId, estado, faturas, faturaRetida) {
+  // `token`: o de acompanhamento (ADR 0016), novo a cada 201; nenhuma resposta de erro o traz.
+  function corpoCriado(pedidoId, estado, faturas, faturaRetida, token) {
     return faturaRetida
-      ? { pedidoId, estado, faturas: faturas.map(({ tipo }) => ({ tipo, url: null })), aviso: AVISO_FATURA_PENDENTE }
-      : { pedidoId, estado, faturas }
+      ? { pedidoId, estado, faturas: faturas.map(({ tipo }) => ({ tipo, url: null })), aviso: AVISO_FATURA_PENDENTE, token }
+      : { pedidoId, estado, faturas, token }
   }
 
-  async function responderCriado(pedidoId, estado, faturaRetida) {
+  async function responderCriado(pedidoId, estado, faturaRetida, token) {
     const faturas = await noBanco(() => repositorio.buscarFaturas(pool, pedidoId))
-    return { status: 201, corpo: corpoCriado(pedidoId, estado, faturas, faturaRetida) }
+    return { status: 201, corpo: corpoCriado(pedidoId, estado, faturas, faturaRetida, token) }
   }
 
   // Compensação best-effort, com sinal próprio fora do prazo global (até 2 ×
@@ -417,10 +419,12 @@ export function criarServicoPedidos({
       throw erro
     }
 
+    // O hash é gravado na mesma transação guardada pela posse (ADR 0016).
+    const token = gerarToken()
     let concluido
     try {
       concluido = await emTransacao(async (conexao) => {
-        if (!(await repositorio.concluirPedido(conexao, pedidoId, posse, faturaRetida))) return false
+        if (!(await repositorio.concluirPedido(conexao, pedidoId, posse, faturaRetida, hashDoToken(token)))) return false
         for (const assinatura of obtidas) {
           await repositorio.inserirAssinatura(conexao, {
             pedidoId,
@@ -442,7 +446,9 @@ export function criarServicoPedidos({
     log.info({ pedidoId, estado: 'aguardando_pagamento', asaasClienteId }, 'pedido criado')
     return {
       status: 201,
-      corpo: corpoCriado(pedidoId, 'aguardando_pagamento', obtidas.map(({ tipo, url }) => ({ tipo, url })), faturaRetida)
+      corpo: corpoCriado(
+        pedidoId, 'aguardando_pagamento', obtidas.map(({ tipo, url }) => ({ tipo, url })), faturaRetida, token
+      )
     }
   }
 
@@ -454,7 +460,14 @@ export function criarServicoPedidos({
       return { status: 422, corpo: { erro: 'chave_reutilizada' } }
     }
     if (existente.estado === 'falhou_na_criacao') return respostaFalha(existente.falha_motivo, requestId)
-    if (existente.estado !== 'criando') return responderCriado(existente.id, existente.estado, existente.fatura_retida)
+    if (existente.estado !== 'criando') {
+      // Rotação (ADR 0016): o token anterior deixa de valer; em repetições concorrentes, vale a última.
+      const token = gerarToken()
+      const atual = await noBanco(() => repositorio.rotacionarToken(pool, existente.id, hashDoToken(token)))
+      // Sem linha: o estado lido não volta a `criando` nem passa a `falhou_na_criacao`; só por segurança.
+      if (!atual) return EM_CRIACAO
+      return responderCriado(existente.id, atual.estado, atual.fatura_retida, token)
+    }
     if (!existente.expirado) return EM_CRIACAO
     // Passo 7: posse atômica; a retomada perdedora recebe 409.
     const posse = await noBanco(() => repositorio.retomarPedido(pool, existente.id, prazoRetomadaMs))

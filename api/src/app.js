@@ -87,7 +87,9 @@ export function construirApp(config, { pool, logStream, filas, asaas, pedidos } 
     origin: origens,
     methods: ['GET', 'POST'],
     allowedHeaders: ['Content-Type'],
-    credentials: false
+    credentials: false,
+    // O POST com JSON faz preflight; sem cache, o polling da página de status (CIT-69) o repetiria a cada consulta.
+    maxAge: 600
   })
 
   registrarErros(app)
@@ -95,7 +97,8 @@ export function construirApp(config, { pool, logStream, filas, asaas, pedidos } 
   app.register(rotasPrecos, { prefix: '/api' })
   // ADR 0014: desligada, a rota nem é registrada (404). Sem `pedidosHabilitado` na
   // config (montada à mão), vale o padrão de `carregarConfig`: desligada só em produção.
-  // Sem adaptador nem chave (fora de produção), a rota responde 503.
+  // Sem adaptador nem chave (fora de produção), a rota responde 503; a de status (ADR 0016),
+  // registrada no mesmo plugin, só usa o banco e responde mesmo assim.
   if (config.pedidosHabilitado ?? config.nodeEnv !== 'production') {
     // CIT-62: `TERMOS_MINUTA_ACEITA=true` liberou a produção com aceite provisório (só homologação).
     if (config.aceiteLiberado) app.log.warn('aceite liberado com termos em minuta ou política provisória')

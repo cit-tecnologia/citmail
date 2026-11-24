@@ -91,14 +91,42 @@ export async function temPosse(executor, pedidoId, posse) {
   return resultado.rows.length > 0
 }
 
-// false = posse perdida para uma retomada.
-export async function concluirPedido(executor, pedidoId, posse, faturaRetida = false) {
+// false = posse perdida para uma retomada (nenhum `token_hash` gravado: a retomada grava o seu).
+export async function concluirPedido(executor, pedidoId, posse, faturaRetida, tokenHash) {
   const resultado = await executor.query(
-    `UPDATE pedido SET estado = 'aguardando_pagamento', criando_desde = NULL, fatura_retida = $3
+    `UPDATE pedido SET estado = 'aguardando_pagamento', criando_desde = NULL, fatura_retida = $3, token_hash = $4
       WHERE id = $1 AND estado = 'criando' AND criando_desde = $2::timestamptz`,
-    [pedidoId, posse, faturaRetida]
+    [pedidoId, posse, faturaRetida, tokenHash]
   )
   return resultado.rowCount > 0
+}
+
+// Reenvio pela mesma chave (ADR 0016): o token novo substitui o anterior num único UPDATE,
+// e o 201 é montado do retorno (estado e token coerentes). null se o pedido ainda está em
+// `criando` ou falhou.
+export async function rotacionarToken(executor, pedidoId, tokenHash) {
+  const resultado = await executor.query(
+    `UPDATE pedido SET token_hash = $2
+      WHERE id = $1 AND estado NOT IN ('criando', 'falhou_na_criacao')
+      RETURNING estado, fatura_retida`,
+    [pedidoId, tokenHash]
+  )
+  return resultado.rows[0] ?? null
+}
+
+// Consulta do status (ADR 0016): só o necessário para a lista branca da resposta.
+// null se nenhum pedido tem o hash.
+export async function buscarStatusPorToken(executor, tokenHash) {
+  const resultado = await executor.query(
+    `SELECT p.estado, p.fatura_retida, (p.dominio_pago_em IS NULL) AS dominio_em_aberto,
+            EXISTS (SELECT 1 FROM pedido_dominio d WHERE d.pedido_id = p.id AND d.tipo = 'novo') AS dominio_novo,
+            (SELECT a.url_primeira_fatura FROM assinatura a WHERE a.pedido_id = p.id AND a.tipo = 'contas') AS url_contas,
+            (SELECT a.url_primeira_fatura FROM assinatura a WHERE a.pedido_id = p.id AND a.tipo = 'dominios') AS url_dominios
+       FROM pedido p
+      WHERE p.token_hash = $1`,
+    [tokenHash]
+  )
+  return resultado.rows[0] ?? null
 }
 
 export async function marcarFalha(executor, pedidoId, posse, motivo) {
