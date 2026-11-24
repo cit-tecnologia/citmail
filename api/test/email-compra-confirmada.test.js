@@ -240,7 +240,8 @@ async function semEnvio({ ajuste, motivo }) {
   assert.equal(gravada.erro_codigo, 'SEM_DESTINATARIO');
   const registro = captura.linhas().find((l) => l.msg === 'compra confirmada sem envio');
   assert.equal(registro.motivo, motivo);
-  assert.deepEqual(Object.keys(registro).filter((k) => ['pedidoId', 'motivo', 'envioId'].includes(k)).sort(), ['motivo', 'pedidoId']);
+  assert.deepEqual(Object.keys(registro).filter((k) => ['pedidoId', 'motivo', 'envioId'].includes(k)).sort(), ['envioId', 'motivo', 'pedidoId']);
+  assert.equal(registro.envioId, gravada.id);
 }
 
 test('CA4: fatura retida não envia e registra o motivo fatura_retida', () => semEnvio({
