@@ -141,8 +141,8 @@ function lerWebhook(env, nodeEnv) {
 
 // E-mail transacional no worker (ADR 0010; CIT-65). `EMAIL_TRANSPORTE` nasce `desligado`
 // em todos os ambientes até haver credencial (#57): o job grava `nao_enviado` (em produção,
-// a partida do worker loga `warn`). `smtp` exige host, usuário e senha; em produção, exige
-// TLS (`requireTLS`) e recusa host de loopback. Remetente e Reply-To não aceitam
+// a partida do worker loga `warn`). `smtp` exige host, usuário e senha; exige TLS
+// (`requireTLS`) sempre que o host não for de loopback, e em produção recusa host de loopback. Remetente e Reply-To não aceitam
 // caractere de controle (CR/LF quebrariam o cabeçalho).
 const TRANSPORTES_EMAIL = ['desligado', 'smtp']
 const REMETENTE_PADRAO = 'CITMail <naoresponda@citmail.com.br>'
