@@ -58,6 +58,50 @@ test.describe('CIT-70 modo API', { tag: '@CIT-70' }, () => {
     });
   });
 
+  test.describe('CA1/CA4 — opções do fetch', () => {
+    /** Registra em window.__fetches as opções de cada fetch para /api/painel/*. Chamar antes do goto. @param {import('@playwright/test').Page} page */
+    async function registrarFetches(page) {
+      await page.addInitScript(() => {
+        const original = window.fetch;
+        // @ts-ignore
+        window.__fetches = [];
+        window.fetch = function (entrada, init) {
+          // @ts-ignore
+          window.__fetches.push({ url: String(entrada), credentials: init?.credentials, cache: init?.cache, method: init?.method });
+          return original.call(this, entrada, init);
+        };
+      });
+    }
+    const fetches = (/** @type {import('@playwright/test').Page} */ page) =>
+      page.evaluate(() => /** @type {any} */ (window).__fetches.filter(f => f.url.includes('/api/painel/')));
+
+    test('CA1 login envia o cookie (credentials include) e não usa cache', async ({ page, erros }) => {
+      await mockarPainel(page, { login: 401 });
+      await registrarFetches(page);
+      await page.goto('login.html');
+      await entrar(page);
+      await expect(page.locator('#alertError')).toBeVisible();
+      const [login] = await fetches(page);
+      expect(login).toMatchObject({ method: 'POST', credentials: 'include' });
+      expect(login.url).toMatch(/\/api\/painel\/login$/);
+      descartarPainel(erros);
+    });
+
+    test('CA4 sessão e logout enviam o cookie (credentials include) e não usam cache', async ({ page, erros }) => {
+      await mockarPainel(page, { sessao: 200, logout: 403 });
+      await registrarFetches(page);
+      await page.goto('painel.html');
+      await expect(page.locator('#painelEmail')).toHaveText(EMAIL);
+      await abrirMenuSeMobile(page);
+      await page.locator('.sidebar-logout').click();
+      await expect(page.locator('#toastWrap .toast', { hasText: MSG_SAIR })).toBeVisible();
+      const chamadas = await fetches(page);
+      expect(chamadas.map(f => f.method)).toEqual(['GET', 'POST']);
+      for (const f of chamadas) expect(f, f.url).toMatchObject({ credentials: 'include', cache: 'no-store' });
+      descartarPainel(erros);
+    });
+  });
+
   test.describe('CA2 — mensagem genérica e falhas', () => {
     test('CA2 credenciais inválidas mostram a mensagem genérica, limpam a senha e não navegam', async ({ page, erros }) => {
       const estado = await mockarPainel(page, { login: 401 });
@@ -104,8 +148,7 @@ test.describe('CIT-70 modo API', { tag: '@CIT-70' }, () => {
   });
 
   test.describe('CA4 — sair', () => {
-    test('CA4 Sair encerra a sessão, vai para o login e voltar não mostra o painel nem os dados', async ({ page, erros }) => {
-      const vistos = await observarAppVisivel(page);
+    test('CA4 Sair encerra a sessão com POST e vai para o login (a entrada do painel sai do histórico)', async ({ page, erros }) => {
       const estado = await mockarPainel(page, { sessao: 200 });
       await page.goto('painel.html');
       await expect(page.locator('#painelEmail')).toHaveText(EMAIL);
@@ -115,14 +158,24 @@ test.describe('CIT-70 modo API', { tag: '@CIT-70' }, () => {
       await page.locator('.sidebar-logout').click();
       await expect(page).toHaveURL(/\/login\.html$/);
       expect(estado.reqs.filter(r => r.rota === 'logout').map(r => r.metodo)).toEqual(['POST']);
+      expect(estado.sessao, 'o mock encerrou a sessão').toBe(401);
+      descartarPainel(erros);
+    });
 
-      vistos.length = 0; // a partir daqui o painel não pode mais aparecer
+    test('CA4 voltar ao painel depois de a sessão acabar consulta de novo, volta ao login e nunca mostra o painel nem o e-mail', async ({ page, erros }) => {
+      const vistos = await observarAppVisivel(page);
+      const estado = await mockarPainel(page, { sessao: 200 });
+      await page.goto('login.html');
+      await page.goto('painel.html');
+      await expect(page.locator('#painelEmail')).toHaveText(EMAIL);
+      await page.goto('login.html'); // sai do painel sem encerrar a sessão no navegador
+
+      estado.sessao = 401; // a sessão acaba no servidor (sair em outra aba, expiração)
+      vistos.length = 0;
       await page.goBack();
-      // o painel volta a consultar a sessão (agora 401) e devolve ao login
-      await expect.poll(() => chamadas(estado, 'sessao')).toBeGreaterThanOrEqual(2);
       await expect(page).toHaveURL(/\/login\.html$/);
-      expect(vistos, '.app visível depois de sair (com o e-mail mostrado)').toEqual([]);
-      await expect(page.locator('#painelEmail')).toHaveCount(0);
+      expect(chamadas(estado, 'sessao'), 'o painel reconsultou GET /sessao').toBe(2);
+      expect(vistos, '.app visível depois de a sessão acabar').toEqual([]);
       descartarPainel(erros);
     });
 
@@ -156,7 +209,7 @@ test.describe('CIT-70 modo API', { tag: '@CIT-70' }, () => {
   test.describe('CA5 — painel sem sessão', () => {
     test('CA5 GET /sessao 401 leva ao login sem nunca mostrar o painel nem o e-mail', async ({ page, erros }) => {
       const vistos = await observarAppVisivel(page);
-      const estado = await mockarPainel(page, { sessao: 401 });
+      const estado = await mockarPainel(page, { sessao: 401, atrasoSessao: 400 }); // atraso: dá tempo de um painel pintado cedo aparecer
       await page.goto('painel.html');
 
       await expect(page).toHaveURL(/\/login\.html$/);

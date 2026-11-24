@@ -18,6 +18,7 @@ export const CONTRA_SITE_PUBLICADO = !!process.env.CITMAIL_BASE_URL;
  * @property {number|'abort'} login    resposta de POST /api/painel/login (204 passa a sessão para 200)
  * @property {number|'abort'} logout   resposta de POST /api/painel/logout (204 passa a sessão para 401)
  * @property {string} email            e-mail devolvido por GET /sessao
+ * @property {number} [atrasoSessao]   atraso (ms) da resposta de GET /sessao, para o painel ter tempo de (não) pintar
  * @property {{ rota: string, metodo: string, corpo: any }[]} reqs  requisições recebidas, em ordem
  */
 
@@ -50,8 +51,9 @@ export async function mockarPainel(page, inicial = {}) {
     estado.reqs.push({ rota, metodo: req.method(), corpo });
   };
 
-  await page.route('**/api/painel/sessao', route => {
+  await page.route('**/api/painel/sessao', async route => {
     registrar('sessao', route.request());
+    if (estado.atrasoSessao) await new Promise(resolve => setTimeout(resolve, estado.atrasoSessao));
     if (estado.sessao === 200) return responder(route, 200, { email: estado.email });
     return responder(route, estado.sessao, CORPO_ERRO.sessao[/** @type {number} */ (estado.sessao)]);
   });
@@ -102,6 +104,8 @@ export async function observarAppVisivel(page) {
     const checar = () => {
       const app = document.querySelector('.app');
       if (!app) return;
+      // antes de assets/painel.css carregar, .app ainda não tem o display:none da classe sessao-pendente (falso positivo)
+      if (![...document.styleSheets].some(f => f.href && f.href.includes('/painel.css'))) return;
       const cs = getComputedStyle(app);
       if (cs.display !== 'none' && cs.visibility !== 'hidden') {
         // @ts-ignore
@@ -112,6 +116,10 @@ export async function observarAppVisivel(page) {
     document.addEventListener('DOMContentLoaded', checar);
     window.addEventListener('load', checar);
     window.addEventListener('pageshow', checar);
+    // quadro a quadro durante a carga: pega o painel pintado antes de qualquer mutação do DOM
+    const fim = Date.now() + 3000;
+    const quadro = () => { checar(); if (Date.now() < fim) requestAnimationFrame(quadro); };
+    requestAnimationFrame(quadro);
   });
   return vistos;
 }
