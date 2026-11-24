@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="assets/fonts.css" />
   <link rel="stylesheet" href="assets/tokens.css" />
 
-  <link rel="stylesheet" href="assets/checkout.css?v=4" />
+  <link rel="stylesheet" href="assets/checkout.css?v=5" />
 </head>
 
 <body>
@@ -19,7 +19,7 @@
   <!-- LOADING OVERLAY -->
   <div class="loading-overlay" id="loadingOverlay">
     <div class="spinner"></div>
-    <div class="loading-text" id="loadingText">Processando pagamento…</div>
+    <div class="loading-text" id="loadingText">Gerando sua fatura…</div>
   </div>
 
   <!-- HEADER -->
@@ -37,6 +37,8 @@
 
     <!-- LEFT COLUMN -->
     <div class="main-col">
+
+      <h1 class="checkout-title">Contrate o CITMail</h1>
 
       <!-- STEPS BAR -->
       <div class="steps-bar" id="stepsBar">
@@ -62,12 +64,7 @@
         <div class="step-connector" id="conn4"></div>
         <div class="step-item">
           <div class="step-circle" id="sc5">5</div>
-          <span class="step-label" id="sl5">Pagamento</span>
-        </div>
-        <div class="step-connector" id="conn5"></div>
-        <div class="step-item">
-          <div class="step-circle" id="sc6"><svg class="icon icon--step-check" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg></div>
-          <span class="step-label" id="sl6">Acesso</span>
+          <span class="step-label" id="sl5">Revisão</span>
         </div>
       </div>
 
@@ -77,7 +74,12 @@
 
       <!-- ========== STEP 1: PLANO ========== -->
       <div class="step-panel active card" id="step1">
-        <div class="card-title"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#calculator"></use></svg> Selecione suas Contas de E-mail</div>
+        <h2 class="card-title"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#calculator"></use></svg> Selecione suas Contas de E-mail</h2>
+
+        <div class="alert-box alert-warn" id="avisoEmBreve" hidden>
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#info"></use></svg>
+          <span><strong>Contratação online em breve.</strong> Para contratar agora, fale com a nossa equipe em <a href="mailto:comercial@citmail.com.br">comercial@citmail.com.br</a>.</span>
+        </div>
 
         <p class="step-intro">
           Escolha a quantidade de contas de cada tipo. Mínimo de 2 contas no plano de 5 GB. Desconto de 5% a partir de 5 contas do mesmo tipo (não se aplica ao plano anual).
@@ -166,9 +168,9 @@
 
       <!-- ========== STEP 2: DOMÍNIO ========== -->
       <div class="step-panel card" id="step2">
-        <div class="card-title"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#globe"></use></svg> Configuração de Domínio</div>
+        <h2 class="card-title"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#globe"></use></svg> Configuração de Domínio</h2>
         <p class="step-intro">
-          O domínio é registrado anualmente e pago separadamente via Pix. Se já tiver um domínio, basta conectá-lo.
+          O domínio é registrado anualmente e cobrado em fatura própria. Se já tiver um domínio, basta conectá-lo.
         </p>
 
         <!-- Domain type selector -->
@@ -183,7 +185,7 @@
             </div>
             <div class="opt-price-col">
               <div class="opt-price" id="doptBrPreco"></div>
-              <div class="opt-price-note">/ano · pagamento via Pix</div>
+              <div class="opt-price-note">/ano · cobrado na fatura</div>
             </div>
           </label>
 
@@ -200,7 +202,7 @@
           </label>
         </div>
 
-        <!-- Panel: new domain name input + PIX -->
+        <!-- Panel: new domain name input -->
         <div id="domainNewPanel" class="is-hidden">
           <div class="field mb-16">
             <label for="fDomNew">Nome do domínio desejado <span class="req">*</span></label>
@@ -213,27 +215,9 @@
             <span class="field-error" id="err-dom-new"></span>
           </div>
 
-          <!-- PIX for domain -->
-          <div class="pix-box" id="domPixBox">
-            <div class="pix-box-title">
-              <svg class="icon icon-pix mr-6" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg>Pagamento anual do domínio via Pix
-            </div>
-            <div class="pix-box-desc" id="domPixDesc">Registrar domínio .com.br</div>
-            <div class="pix-qr">
-              <span class="pix-qr-placeholder"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#qr-code"></use></svg></span>
-            </div>
-            <div class="pix-copy-label">Ou copie o código Pix:</div>
-            <div class="pix-code-box">
-              <div class="pix-code" id="domPixCode">aguardando geração…</div>
-              <button class="pix-copy" id="btnCopyDomPix"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#copy"></use></svg> Copiar</button>
-            </div>
-            <p class="copia-aviso" id="domPixCopiaAviso" role="status"></p>
-            <div class="pix-timer">
-              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#clock"></use></svg>
-              <span id="domPixCountdown">Pix válido por 30:00</span>
-            </div>
-            <div class="pix-status" id="domPixStatus"></div>
-            <p class="pix-note">O serviço será habilitado após a confirmação do Pix. Continue enquanto aguarda.</p>
+          <div class="alert-box alert-warn" id="avisoDominioNovo">
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#info"></use></svg>
+            <span>O registro do domínio .com.br é feito pela nossa equipe depois do pagamento e pode levar alguns dias úteis. Seu e-mail é ativado quando o domínio estiver registrado.</span>
           </div>
         </div>
 
@@ -448,7 +432,7 @@
                   <span class="addon-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#globe"></use></svg></span>
                   <div class="addon-info">
                     <div class="addon-name">Domínio .com.br extra</div>
-                    <div class="addon-desc">Domínios adicionais — cobrança anual via Pix separado</div>
+                    <div class="addon-desc">Domínios adicionais — cobrança anual na fatura de domínios</div>
                     <div class="addon-price" data-preco="extraDom"></div>
                   </div>
                   <div class="addon-ctrl">
@@ -463,21 +447,8 @@
                     </div>
                   </div>
                 </div>
-                <!-- Extra domain PIX panel -->
-                <div id="extraDomPixPanel" class="pix-box pix-box--sm is-hidden">
-                  <div class="pix-box-title">
-                    <svg class="icon icon-pix mr-6" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg>Pix para domínios extras — <span id="extraDomPixTotal">R$ 0,00</span>/ano
-                  </div>
-                  <div class="pix-qr pix-qr--sm">
-                    <span class="pix-qr-placeholder"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#qr-code"></use></svg></span>
-                  </div>
-                  <div class="pix-code-box">
-                    <div class="pix-code" id="extraDomPixCode">aguardando geração…</div>
-                    <button class="pix-copy" id="btnCopyExtraDomPix"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#copy"></use></svg> Copiar</button>
-                  </div>
-                  <p class="copia-aviso" id="extraDomPixCopiaAviso" role="status"></p>
-                  <p class="pix-note">Continue para a próxima etapa enquanto o Pix é processado.</p>
-                </div>
+                <!-- Nomes dos domínios extras (um campo por unidade, criados pelo JS) -->
+                <div class="dom-extras" id="domExtrasCampos" hidden></div>
               </div>
             </div>
           </div>
@@ -516,7 +487,7 @@
         </div>
 
         <div class="btn-row">
-          <button class="btn btn-primary" data-ir-passo="4">
+          <button class="btn btn-primary" id="btnStep3Next">
             Continuar para Cadastro <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#arrow-right"></use></svg>
           </button>
           <button class="btn-back-row" data-ir-passo="2">
@@ -527,7 +498,7 @@
 
       <!-- ========== STEP 4: CADASTRO ========== -->
       <div class="step-panel card" id="step4">
-        <div class="card-title"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#user"></use></svg> Dados Cadastrais</div>
+        <h2 class="card-title"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#user"></use></svg> Dados Cadastrais</h2>
 
         <div class="field-group-title">Informações Pessoais</div>
 
@@ -549,12 +520,6 @@
             <label>Telefone / WhatsApp <span class="req">*</span></label>
             <input type="tel" id="fTelefone" placeholder="(11) 99999-9999" maxlength="15" autocomplete="tel" />
             <span class="field-error" id="err-telefone">Informe um telefone válido.</span>
-          </div>
-          <div class="field">
-            <label>Senha de acesso ao Painel <span class="req">*</span></label>
-            <input type="password" id="fSenha" placeholder="Mínimo 8 caracteres" autocomplete="new-password" />
-            <span class="field-hint">Use letras, números e símbolos.</span>
-            <span class="field-error" id="err-senha">Mínimo 8 caracteres.</span>
           </div>
         </div>
 
@@ -651,9 +616,14 @@
           </label>
         </div>
 
+        <div class="alert-box alert-warn" id="avisoEmBreveCadastro" hidden>
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#info"></use></svg>
+          <span><strong>Contratação online em breve.</strong> Para contratar agora, fale com a nossa equipe em <a href="mailto:comercial@citmail.com.br">comercial@citmail.com.br</a>.</span>
+        </div>
+
         <div class="btn-row">
           <button class="btn btn-primary" id="btnSubmitCadastro">
-            Continuar para Pagamento <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#arrow-right"></use></svg>
+            Continuar para revisão <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#arrow-right"></use></svg>
           </button>
           <button class="btn-back-row" data-ir-passo="3">
             <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#arrow-left"></use></svg> Voltar
@@ -661,199 +631,68 @@
         </div>
       </div>
 
-      <!-- ========== STEP 5: PAGAMENTO ========== -->
+      <!-- ========== STEP 5: REVISÃO ========== -->
       <div class="step-panel card" id="step5">
-        <div class="card-title"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#credit-card"></use></svg> Forma de Pagamento</div>
+        <h2 class="card-title"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#receipt"></use></svg> Revisão do pedido</h2>
+        <p class="step-intro">
+          Confira os dados abaixo e o total no resumo do pedido.
+        </p>
 
-        <div class="payment-methods">
+        <dl class="revisao-resumo" id="revisaoResumo"></dl>
 
-          <!-- PIX -->
-          <div class="payment-option pix-method selected" id="payPix" data-pagamento="pix">
-            <div class="payment-option-header">
-              <div class="payment-radio"><div class="payment-radio-dot"></div></div>
-              <div class="payment-icon">
-                <svg class="icon icon-pix" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg>
-              </div>
-              <div>
-                <div class="payment-name">Pix</div>
-                <div class="payment-desc">Confirmação em segundos</div>
-              </div>
-              <span class="payment-badge badge-blue">Recomendado</span>
-            </div>
-            <div class="pix-panel">
-              <div class="pix-inner">
-                <p>
-                  Escaneie o QR Code ou copie o código Pix. O pagamento é confirmado em segundos.
-                </p>
-                <div class="pix-qr">
-                  <span class="pix-qr-placeholder"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#qr-code"></use></svg></span>
-                </div>
-                <div class="pix-copy-label">Ou copie o código Pix:</div>
-                <div class="pix-code-box">
-                  <div class="pix-code" id="pixCode">00020126580014br.gov.bcb.pix0136…aguardando geração</div>
-                  <button class="pix-copy" id="btnCopyPix">
-                    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#copy"></use></svg> Copiar
-                  </button>
-                </div>
-                <p class="copia-aviso" id="pixCopiaAviso" role="status"></p>
-                <div class="pix-timer" id="pixTimer">
-                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#clock"></use></svg> <span id="pixCountdown">QR Code válido por 30:00</span>
-                </div>
-                <p class="pix-note">
-                  Após confirmar o pagamento, seu serviço será ativado automaticamente.
-                </p>
-              </div>
+        <div class="alert-box alert-warn" id="revisaoAvisoDominio" hidden>
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#info"></use></svg>
+          <span>O registro do domínio .com.br é feito pela nossa equipe depois do pagamento e pode levar alguns dias úteis. Seu e-mail é ativado quando o domínio estiver registrado.</span>
+        </div>
+
+        <div class="alert-box alert-warn" id="revisaoEmBreve" hidden>
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#info"></use></svg>
+          <span><strong>Contratação online em breve.</strong> Para contratar agora, fale com a nossa equipe em <a href="mailto:comercial@citmail.com.br">comercial@citmail.com.br</a>.</span>
+        </div>
+
+        <p class="pedido-progresso" id="pedidoProgresso" role="status" hidden>Gerando sua fatura…</p>
+
+        <div class="alert-box alert-warn" id="pedidoAmbiguoAviso" role="alert" hidden>
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#triangle-alert"></use></svg>
+          <span>Seu pedido pode já ter sido criado. Tente de novo para recuperar a fatura; não altere os dados.</span>
+        </div>
+
+        <div class="alert-box alert-err pedido-erro" id="pedidoErro" role="alert" hidden>
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#triangle-alert"></use></svg>
+          <div class="pedido-erro-corpo">
+            <span id="pedidoErroTexto">Não foi possível gerar a fatura agora. Tente novamente.</span>
+            <div class="pedido-erro-acoes">
+              <button class="btn btn-outline pedido-acao" id="btnPedidoRetry" type="button">
+                <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#refresh-cw"></use></svg> Tentar novamente
+              </button>
+              <button class="btn btn-outline pedido-acao" id="btnPedidoRevisar" type="button" hidden>
+                <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#pencil"></use></svg> Revisar dados
+              </button>
             </div>
           </div>
+        </div>
 
-          <!-- BOLETO -->
-          <div class="payment-option boleto-method" id="payBoleto" data-pagamento="boleto">
-            <div class="payment-option-header">
-              <div class="payment-radio"><div class="payment-radio-dot"></div></div>
-              <div class="payment-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#receipt"></use></svg></div>
-              <div>
-                <div class="payment-name">Boleto Bancário</div>
-                <div class="payment-desc">Compensação em até 3 dias úteis</div>
-              </div>
-              <span class="payment-badge badge-neutral">3 dias úteis</span>
-            </div>
-            <div class="boleto-panel">
-              <div class="boleto-inner">
-                <div class="boleto-barcode" id="boletoCode">
-                  34191.09008 05487.010103 08000.000000 5 00000000000000
-                </div>
-                <div class="boleto-actions">
-                  <button class="btn btn-outline btn-sm" id="btnCopyBoleto">
-                    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#copy"></use></svg> Copiar código
-                  </button>
-                  <button class="btn btn-outline btn-sm" id="downloadBoleto">
-                    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#file-down"></use></svg> Baixar PDF
-                  </button>
-                </div>
-                <p class="copia-aviso" id="boletoCopiaAviso" role="status"></p>
-                <div class="alert-box alert-warn">
-                  <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#triangle-alert"></use></svg>
-                  <span>O serviço será ativado <strong>após a compensação do boleto</strong> (1–3 dias úteis).</span>
-                </div>
-              </div>
-            </div>
-          </div>
+        <p class="alert-box alert-info" id="pedidoAviso" role="status" hidden>Pedido recebido.</p>
 
-          <!-- CARTÃO -->
-          <div class="payment-option card-method" id="payCard" data-pagamento="card">
-            <div class="payment-option-header">
-              <div class="payment-radio"><div class="payment-radio-dot"></div></div>
-              <div class="payment-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#credit-card"></use></svg></div>
-              <div>
-                <div class="payment-name">Cartão de Crédito</div>
-                <div class="payment-desc">Visa, Mastercard, Elo, Amex</div>
-              </div>
-              <span class="payment-badge badge-neutral">Parcelado</span>
-            </div>
-            <div class="card-panel">
-              <div class="form-row full mb-14">
-                <div class="field card-number-field">
-                  <label>Número do Cartão <span class="req">*</span></label>
-                  <input type="text" id="fCardNum" placeholder="0000 0000 0000 0000" maxlength="19" />
-                  <span class="card-brand-icon" id="cardBrandIcon" data-brand=""><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#credit-card"></use></svg></span>
-                </div>
-              </div>
-              <div class="form-row mb-14">
-                <div class="field">
-                  <label>Nome no Cartão <span class="req">*</span></label>
-                  <input type="text" id="fCardName" placeholder="JOAO DA SILVA" class="text-uppercase" />
-                </div>
-              </div>
-              <div class="form-row mb-14">
-                <div class="field">
-                  <label>Validade <span class="req">*</span></label>
-                  <input type="text" id="fCardExp" placeholder="MM/AA" maxlength="5" />
-                </div>
-                <div class="field">
-                  <label>CVV <span class="req">*</span></label>
-                  <input type="text" id="fCardCvv" placeholder="123" maxlength="4" />
-                </div>
-              </div>
-              <div class="field mb-14">
-                <label>Parcelamento</label>
-                <select class="installments-select" id="fInstallments">
-                  <option value="1">1× de R$ 59,00 (sem juros)</option>
-                  <option value="2">2× de R$ 29,50 (sem juros)</option>
-                  <option value="3">3× de R$ 19,67 (sem juros)</option>
-                  <option value="6">6× de R$ 9,83 (sem juros)</option>
-                  <option value="12">12× de R$ 4,92 (sem juros)</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
+        <div class="pedido-faturas" id="pedidoFaturas" hidden>
+          <p class="pedido-faturas-texto" id="pedidoFaturasTexto">Pedido recebido. Abra as faturas abaixo para pagar; a que não aparecer foi enviada para o seu e-mail.</p>
+          <a class="btn btn-primary" id="linkFaturaContas" target="_blank" rel="noopener noreferrer" hidden>
+            Fatura das contas de e-mail<span class="sr-only"> (abre em nova aba)</span> <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#external-link"></use></svg>
+          </a>
+          <a class="btn btn-outline" id="linkFaturaDominios" target="_blank" rel="noopener noreferrer" hidden>
+            Fatura do domínio<span class="sr-only"> (abre em nova aba)</span> <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#external-link"></use></svg>
+          </a>
         </div>
 
         <div class="btn-row">
-          <button class="btn btn-primary" id="btnPagar">
-            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg> <span id="btnPagarLabel">Confirmar Pagamento</span>
+          <button class="btn btn-primary" id="btnIrPagamento" type="button" hidden>
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg> Ir para pagamento
           </button>
-        </div>
-
-        <div class="asaas-notice">
-          <svg class="icon text-success" aria-hidden="true"><use href="assets/icons.svg#shield-check"></use></svg>
-          Pagamento processado com segurança pelo
-          <strong>Asaas</strong>
-          — PCI DSS Compliant
         </div>
 
         <button class="btn-back-row" data-ir-passo="4">
           <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#arrow-left"></use></svg> Voltar ao cadastro
         </button>
-      </div>
-
-      <!-- ========== STEP 6: ACESSO ========== -->
-      <div class="step-panel card" id="step6">
-        <div class="success-page success-page--visivel">
-          <div class="success-icon">
-            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg>
-          </div>
-          <h2>Pagamento Confirmado</h2>
-          <p>Seu e-mail corporativo está sendo configurado.<br/>Você receberá as credenciais no e-mail cadastrado.</p>
-
-          <div class="access-card">
-            <h4><svg class="icon mr-6" aria-hidden="true"><use href="assets/icons.svg#key-round"></use></svg> Seus acessos</h4>
-            <div class="access-item">
-              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#mail"></use></svg>
-              <div>
-                <div class="access-label">Webmail</div>
-                <div class="access-value" id="successWebmail">webmail.seudominio.com.br</div>
-              </div>
-            </div>
-            <div class="access-item">
-              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#layout-dashboard"></use></svg>
-              <div>
-                <div class="access-label">Painel do Cliente</div>
-                <div class="access-value">painel.citmail.com.br</div>
-              </div>
-            </div>
-            <div class="access-item">
-              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#mail-check"></use></svg>
-              <div>
-                <div class="access-label">Credenciais enviadas para</div>
-                <div class="access-value" id="successEmail">seu@email.com</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="success-actions">
-            <a href="https://painel.citmail.com.br" class="btn btn-primary">
-              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#layout-dashboard"></use></svg> Acessar Painel do Cliente
-            </a>
-            <a href="index.html" class="btn btn-outline">
-              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#house"></use></svg> Voltar ao início
-            </a>
-          </div>
-
-          <p class="success-help">
-            Dúvidas? <a href="mailto:suporte@citmail.com.br">suporte@citmail.com.br</a>
-          </p>
-        </div>
       </div>
 
     </div><!-- /main-col -->
@@ -917,7 +756,7 @@
         <div class="secure-badges">
           <div class="secure-badge"><svg class="icon text-success" aria-hidden="true"><use href="assets/icons.svg#shield-check"></use></svg> Pagamento processado pelo Asaas</div>
           <div class="secure-badge"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#rotate-ccw"></use></svg> Cancele quando quiser</div>
-          <div class="secure-badge"><svg class="icon icon-pix" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg> Pix, boleto e cartão</div>
+          <div class="secure-badge"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#credit-card"></use></svg> Pague na fatura: Pix, boleto ou cartão</div>
         </div>
       </div>
     </aside>
@@ -925,7 +764,7 @@
   </div><!-- /checkout-wrapper -->
 
   <script src="assets/precos.js?v=26"></script>
-  <script src="assets/checkout.js?v=8"></script>
+  <script src="assets/checkout.js?v=9"></script>
 
 </body>
 </html>
