@@ -214,11 +214,14 @@ async function pagamentoJaVisto(cliente, bruto) {
   return { situacao: 'ignorado', codigo: repetido ? 'pagamento_repetido' : 'pagamento_seguinte' }
 }
 
-// Pago, assinatura de contas: só o 1º pagamento (pedido em `aguardando_pagamento`).
+// Pago, assinatura de contas: só o 1º pagamento (pedido em `aguardando_pagamento`). Com
+// domínio novo já pago e registrado pela equipe (CIT-77, registro antes das contas), vai
+// direto a `pago` e emite também `dominio_registrado`, na mesma transação.
 async function aplicarContasPagas(cliente, { bruto, assinatura, pedidoId, requestId }, pedido) {
   if (pedido.estado !== 'aguardando_pagamento') return pagamentoJaVisto(cliente, bruto)
   const temDominioNovo = pedido.tem_dominio_novo
-  const novoEstado = !temDominioNovo
+  const dominioRegistrado = temDominioNovo && pedido.dominio_pago_em !== null && pedido.dominio_registrado_em !== null
+  const novoEstado = !temDominioNovo || dominioRegistrado
     ? 'pago'
     : pedido.dominio_pago_em === null ? 'aguardando_pagamento_do_dominio' : 'aguardando_registro_de_dominio'
   await mudarEstadoDoPedido(cliente, pedidoId, novoEstado)
@@ -231,6 +234,15 @@ async function aplicarContasPagas(cliente, { bruto, assinatura, pedidoId, reques
     },
     requestId
   })
+  if (dominioRegistrado) {
+    await registrarEvento(cliente, {
+      nome: 'dominio_registrado',
+      agregado: { tipo: 'pedido', id: pedidoId },
+      chaveIdempotencia: `dominio_registrado-${pedidoId}`,
+      payload: { pedidoId, clienteId: pedido.cliente_id },
+      requestId
+    })
+  }
 
   // Conta do titular (decisão 9): com a fatura retida, não nasce; a equipe resolve o contato.
   if (pedido.fatura_retida) {

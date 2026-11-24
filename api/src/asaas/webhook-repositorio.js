@@ -111,10 +111,11 @@ export async function buscarEstadoDoPedido(executor, pedidoId) {
   return resultado.rows[0]?.estado ?? null
 }
 
-// Trava do pedido na transação do efeito, relendo o estado.
+// Trava do pedido na transação do efeito, relendo o estado. Também a CLI de tarefas de
+// domínio (CIT-77) trava o pedido por aqui, antes da tarefa: mesma ordem de trava.
 export async function travarPedido(executor, pedidoId) {
   const resultado = await executor.query(
-    `SELECT id, cliente_id, estado, ciclo, fatura_retida, dominio_pago_em, contato_email,
+    `SELECT id, cliente_id, estado, ciclo, fatura_retida, dominio_pago_em, dominio_registrado_em, contato_email,
             EXISTS (SELECT 1 FROM pedido_dominio WHERE pedido_id = pedido.id AND tipo = 'novo') AS tem_dominio_novo
        FROM pedido WHERE id = $1 FOR UPDATE`,
     [pedidoId]
