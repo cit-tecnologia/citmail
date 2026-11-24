@@ -61,24 +61,6 @@ async function mockarViaCep(page) {
   }));
 }
 
-/** Neutraliza w.print() do pop-up (senão trava o teste headless); não altera o código, só o teste.
- * Cada chamada de print() no pop-up incrementa window.__prints no opener (CIT-152: imprime uma vez só). */
-async function neutralizarPrintDoPopup(page) {
-  await page.addInitScript(() => {
-    // @ts-ignore
-    window.__prints = 0;
-    const abrirOriginal = window.open;
-    // @ts-ignore
-    window.open = function (...args) {
-      // @ts-ignore
-      const w = abrirOriginal.apply(window, args);
-      // @ts-ignore
-      if (w) w.print = () => { window.__prints++; };
-      return w;
-    };
-  });
-}
-
 /** Percorre os fluxos por clique da landing: quantidades, ciclo, FAQ, menu mobile, domínio, voltar ao topo. */
 async function percorrerLanding(page) {
   await page.goto('index.html', { waitUntil: 'networkidle' });
@@ -112,7 +94,7 @@ async function percorrerLanding(page) {
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
 }
 
-/** Percorre os passos 1 a 5 do checkout por clique: domínio, add-ons, CEP, formas de pagamento. */
+/** Percorre os passos 1 a 5 do checkout por clique: domínio, add-ons, CEP, revisão do pedido. */
 async function percorrerCheckout(page) {
   await mockarViaCep(page);
   await page.goto('checkout.html', { waitUntil: 'networkidle' });
@@ -145,7 +127,6 @@ async function percorrerCheckout(page) {
   await page.locator('#fNome').fill('Maria Fictícia');
   await page.locator('#fEmail').fill('maria@fixture.teste');
   await page.locator('#fTelefone').fill('11999998888');
-  await page.locator('#fSenha').fill('senhaFicticia1');
   await page.locator('#fCPF').fill('11122233344');
   await page.locator('#fCEP').fill('01310-000');
   await expect(page.locator('#fLogradouro')).toHaveValue('Rua Fictícia');
@@ -153,14 +134,6 @@ async function percorrerCheckout(page) {
   await page.locator('#termsCheck').check();
   await page.locator('#btnSubmitCadastro').click();
 
-  // passo 5 -> 6: formas de pagamento (Pix selecionado ao final) e confirmação
-  await page.locator('#payBoleto .payment-name').click();
-  await page.locator('#payCard .payment-name').click();
-  await page.locator('#fCardNum').fill('4111111111111111');
-  await page.locator('#payPix .payment-name').click();
-  await expect(page.locator('#payPix')).toHaveClass(/selected/);
-  await page.locator('#btnPagar').click();
-  await expect(page.locator('#step6')).toHaveClass(/active/, { timeout: 10000 });
 }
 
 test.describe('CSP — landing e checkout', { tag: '@CIT-49' }, () => {
@@ -229,45 +202,6 @@ test.describe('CSP — landing e checkout', { tag: '@CIT-49' }, () => {
     expect(await violacoesCsp(page), 'violações de CSP no checkout').toEqual([]);
   });
 
-  test('CA3 checkout: pop-up do boleto sem violação de CSP e com o título correto', async ({ page, erros }) => {
-    await neutralizarPrintDoPopup(page);
-    await mockarViaCep(page);
-    await page.goto('checkout.html', { waitUntil: 'networkidle' });
-
-    await page.locator('#ckCard5 .mini-qty-btn').last().click();
-    await page.locator('#step1 .btn-primary').click();
-    await page.locator('#doptBr').click();
-    await page.locator('#fDomNew').fill('minhaempresateste');
-    await page.locator('#step2 .btn-primary').click();
-    await page.locator('#step3 .btn-primary').click();
-    await page.locator('#fNome').fill('Maria Fictícia');
-    await page.locator('#fEmail').fill('maria@fixture.teste');
-    await page.locator('#fTelefone').fill('11999998888');
-    await page.locator('#fSenha').fill('senhaFicticia1');
-    await page.locator('#fCPF').fill('11122233344');
-    await page.locator('#fCEP').fill('01310-000');
-    await page.locator('#fNumero').fill('100');
-    await page.locator('#termsCheck').check();
-    await page.locator('#btnSubmitCadastro').click();
-    await page.locator('#payBoleto .payment-name').click();
-
-    // registrado antes do clique que abre o pop-up, sem corrida com a abertura.
-    const mensagens = [];
-    page.context().on('console', msg => mensagens.push(msg));
-    const popupPromise = page.waitForEvent('popup');
-    await page.locator('#downloadBoleto').click();
-    const popup = await popupPromise;
-
-    await expect(popup.locator('h1')).toHaveText('Boleto CITMail');
-
-    const mensagensDoPopup = mensagens
-      .filter(m => m.page() === popup && (m.type() === 'error' || /Content Security Policy/i.test(m.text())))
-      .map(m => m.text());
-    expect(mensagensDoPopup, 'violações de CSP no pop-up do boleto').toEqual([]);
-
-    await popup.close();
-  });
-
   for (const arquivo of ['index.html', 'checkout.html']) {
     testSemErros(`CA3 bloqueio: <script> injetado em ${arquivo} não executa e gera 1 violação de script-src`, async ({ page }) => {
       await registrarViolacoesCsp(page);
@@ -288,104 +222,6 @@ test.describe('CSP — landing e checkout', { tag: '@CIT-49' }, () => {
       expect(violacoes[0].violatedDirective).toMatch(/^script-src/);
     });
   }
-
-  test.describe('CA5 — aninhados e vínculos (checkout)', () => {
-    test.beforeEach(async ({ page }) => {
-      await neutralizarPrintDoPopup(page);
-      await page.goto('checkout.html', { waitUntil: 'networkidle' });
-      // O passo 5 (pagamento) não é o alvo destes testes (CA1/CA3 já provam a navegação por
-      // clique entre passos); ir direto a ele evita repetir os passos 1-4 em cada subteste.
-      await page.evaluate(() => goStep(5));
-    });
-
-    test('CA5 (a) com o cartão selecionado, copiar o Pix aciona o handler interno (clipboard) e seleciona #payPix por bubbling', { tag: '@CIT-153' }, async ({ page, context, erros }) => {
-      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-      await page.locator('#payCard .payment-name').click();
-      await expect(page.locator('#payCard')).toHaveClass(/selected/);
-
-      const codigoPix = await page.locator('#pixCode').textContent();
-
-      // #btnCopyPix fica oculto com o cartão selecionado (.pix-panel só é exibido com
-      // #payPix.selected); dispatchEvent ignora a checagem de visibilidade do Playwright, como o
-      // executor precisou fazer.
-      await page.locator('#btnCopyPix').dispatchEvent('click');
-
-      // o aviso "Copiado" aparece no próprio #btnCopyPix e não no botão do Pix do domínio (CIT-153);
-      // conferido antes da área de transferência porque dura só 2 s
-      await expect(page.locator('#btnCopyPix')).toContainText('Copiado');
-      await expect(page.locator('#btnCopyDomPix')).not.toContainText('Copiado');
-      // interno: o handler de #btnCopyPix copia o código Pix de pagamento (#pixCode) para a área de
-      // transferência — prova que o handler do próprio #btnCopyPix rodou (não só o bubbling).
-      await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(codigoPix);
-      // externo: bubbling até o listener de #payPix
-      await expect(page.locator('#payPix')).toHaveClass(/selected/);
-    });
-
-    test('CA5 (b) com o cartão selecionado, baixar o boleto seleciona #payBoleto por bubbling', async ({ page, erros }) => {
-      await page.locator('#payCard .payment-name').click();
-      await expect(page.locator('#payCard')).toHaveClass(/selected/);
-
-      // #downloadBoleto fica oculto com o cartão selecionado (.boleto-panel só é exibido com
-      // #payBoleto.selected); dispatchEvent ignora a checagem de visibilidade.
-      const popupPromise = page.waitForEvent('popup');
-      await page.locator('#downloadBoleto').dispatchEvent('click');
-      const popup = await popupPromise;
-      await expect(page.locator('#payBoleto')).toHaveClass(/selected/);
-      await popup.close();
-    });
-
-    test('CA5 (c) com o Pix selecionado, digitar no número do cartão seleciona #payCard', async ({ page, erros }) => {
-      await page.locator('#payPix .payment-name').click();
-      await expect(page.locator('#payPix')).toHaveClass(/selected/);
-
-      // #fCardNum fica oculto enquanto o cartão não está selecionado (.card-panel só aparece
-      // com #payCard.selected); dispatchEvent ignora a checagem de visibilidade só neste
-      // primeiro clique, que seleciona o cartão por bubbling e revela o campo.
-      await page.locator('#fCardNum').dispatchEvent('click');
-      await expect(page.locator('#payCard')).toHaveClass(/selected/);
-      await page.locator('#fCardNum').pressSequentially('4111111111111111');
-      await expect(page.locator('#fCardNum')).toHaveValue('4111 1111 1111 1111');
-    });
-  });
-
-  test('CA5 (e) vínculos restantes: cópia do Pix do domínio/extra e do boleto, validade do cartão', async ({ page, context, erros }) => {
-    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-    await mockarViaCep(page);
-    await page.goto('checkout.html?qty5=2', { waitUntil: 'networkidle' });
-
-    // passo 2: domínio novo — #btnCopyDomPix (escopado a #domPixBox .pix-copy, sem o bug do #btnCopyPix)
-    await page.evaluate(() => goStep(2));
-    await page.locator('#doptBr').click();
-    await page.locator('#fDomNew').fill('minhaempresateste');
-    const codigoDomPix = await page.locator('#domPixCode').textContent();
-    await page.locator('#btnCopyDomPix').click();
-    await expect(page.locator('#btnCopyDomPix')).toContainText('Copiado');
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(codigoDomPix);
-
-    // passo 3: domínio extra — #btnCopyExtraDomPix
-    await page.evaluate(() => goStep(3));
-    const secaoDominio = page.locator('#step3 .addon-sec-btn')
-      .filter({ has: page.locator('.addon-sec-nome', { hasText: /^Domínio secundário$/ }) });
-    await secaoDominio.click();
-    await page.locator('button[data-addon="extraDom"][data-addon-delta="1"]').click();
-    await expect(page.locator('#extraDomPixPanel')).toBeVisible();
-    const codigoExtraPix = await page.locator('#extraDomPixCode').textContent();
-    await page.locator('#btnCopyExtraDomPix').click();
-    await expect(page.locator('#btnCopyExtraDomPix')).toContainText('Copiado');
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(codigoExtraPix);
-
-    // passo 5: validade do cartão (#fCardExp) e cópia do código do boleto (#btnCopyBoleto, usa alert)
-    await page.evaluate(() => goStep(5));
-    await page.locator('#payCard .payment-name').click();
-    await page.locator('#fCardExp').fill('1225');
-    await expect(page.locator('#fCardExp')).toHaveValue('12/25');
-
-    await page.locator('#payBoleto .payment-name').click();
-    const codigoBoleto = (await page.locator('#boletoCode').textContent())?.trim();
-    page.once('dialog', d => d.accept());
-    await page.locator('#btnCopyBoleto').click();
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(codigoBoleto);
-  });
 
   test('CA5 (d) clicar em #scrollTop rola a página ao topo (landing)', async ({ page, erros }) => {
     await page.goto('index.html', { waitUntil: 'networkidle' });
@@ -962,8 +798,7 @@ test.describe('CSP — login e painel', { tag: '@CIT-158' }, () => {
   });
 });
 
-// CIT-152: style-src sem 'unsafe-inline' — CSS de cada página em assets/<página>.css, pop-up do boleto com
-// assets/boleto.css e nenhum estilo inline em HTML nem em markup montado por script.
+// CIT-152: style-src sem 'unsafe-inline' — CSS de cada página em assets/<página>.css, e nenhum estilo inline em HTML nem em markup montado por script.
 // Ver .omc/plans/CIT-152.md ("Critérios de aceite" e "Testes por critério").
 
 const PAGINAS_152 = ['index.html', 'checkout.html', 'login.html', 'painel.html'];
@@ -999,30 +834,6 @@ async function corDoToken(page, token) {
     sonda.remove();
     return cor;
   }, token);
-}
-
-/** Leva o checkout ao passo 5 com o boleto selecionado, por clique (mesmo caminho do CA3 do CIT-49). */
-async function checkoutAteBoleto(page) {
-  await mockarViaCep(page);
-  await page.goto('checkout.html', { waitUntil: 'networkidle' });
-  await page.locator('#ckCard5 .mini-qty-btn').last().click();
-  await page.locator('#step1 .btn-primary').click();
-  await page.locator('#doptBr').click();
-  await page.locator('#fDomNew').fill('minhaempresateste');
-  await page.locator('#step2 .btn-primary').click();
-  await page.locator('#step3 .btn-primary').click();
-  await page.locator('#fNome').fill('Maria Fictícia');
-  await page.locator('#fEmail').fill('maria@fixture.teste');
-  await page.locator('#fTelefone').fill('11999998888');
-  await page.locator('#fSenha').fill('senhaFicticia1');
-  await page.locator('#fCPF').fill('11122233344');
-  await page.locator('#fCEP').fill('01310-000');
-  await expect(page.locator('#fLogradouro')).toHaveValue('Rua Fictícia');
-  await page.locator('#fNumero').fill('100');
-  await page.locator('#termsCheck').check();
-  await page.locator('#btnSubmitCadastro').click();
-  await page.locator('#payBoleto .payment-name').click();
-  await expect(page.locator('#payBoleto')).toHaveClass(/selected/);
 }
 
 test.describe('CSP sem estilo inline', { tag: '@CIT-152' }, () => {
@@ -1062,17 +873,15 @@ test.describe('CSP sem estilo inline', { tag: '@CIT-152' }, () => {
       expect(head).not.toMatch(/<style\b/i);
     });
 
-    test('CA7 toda referência a assets/(landing|checkout|login|painel|boleto).css tem ?v=<número>', () => {
-      const RE_FOLHA = /assets\/(landing|checkout|login|painel|boleto)\.css[^"'`\s)>]*/g;
+    test('CA7 toda referência a assets/(landing|checkout|login|painel).css tem ?v=<número>', () => {
+      const RE_FOLHA = /assets\/(landing|checkout|login|painel)\.css[^"'`\s)>]*/g;
       const referencias = [...PAGINAS_152, 'assets/checkout.js']
         .flatMap(arquivo => [...lerFonte(arquivo).matchAll(RE_FOLHA)].map(m => ({ arquivo, ref: m[0], folha: m[1] })));
-      // cada página referencia a própria folha e o pop-up do boleto (checkout.js) referencia boleto.css
+      // cada página referencia a própria folha (o pop-up do boleto saiu na CIT-63)
       for (const arquivo of PAGINAS_152) {
         expect(referencias.some(r => r.arquivo === arquivo && r.folha === FOLHA_DA_PAGINA[arquivo]),
           `${arquivo} deveria referenciar assets/${FOLHA_DA_PAGINA[arquivo]}.css`).toBe(true);
       }
-      expect(referencias.some(r => r.arquivo === 'assets/checkout.js' && r.folha === 'boleto'),
-        'assets/checkout.js deveria referenciar assets/boleto.css').toBe(true);
       const semVersao = referencias.filter(r => !/\?v=\d+$/.test(r.ref)).map(r => `${r.arquivo}: ${r.ref}`);
       expect(semVersao, 'referência sem ?v=<número>').toEqual([]);
     });
@@ -1136,64 +945,6 @@ test.describe('CSP sem estilo inline', { tag: '@CIT-152' }, () => {
     expect(await violacoesCsp(page), 'violações de CSP no painel').toEqual([]);
   });
 
-  test('CA3/CA9 pop-up do boleto: folha assets/boleto.css aplicada, sem <style>, sem mensagem de CSP e print() uma vez', async ({ page, erros }) => {
-    await neutralizarPrintDoPopup(page);
-    await checkoutAteBoleto(page);
-    // O mock do ViaCEP (page.route) no opener deixa pendurada a requisição de assets/boleto.css do pop-up
-    // about:blank, que herda a interceptação sem handler; o CEP já foi usado, então a rota sai antes de abrir.
-    await page.unrouteAll({ behavior: 'wait' });
-
-    const mensagens = [];
-    page.context().on('console', msg => mensagens.push(msg));
-    const popupPromise = page.waitForEvent('popup');
-    await page.locator('#downloadBoleto').click();
-    const popup = await popupPromise;
-    await expect(popup.locator('h1')).toHaveText('Boleto CITMail');
-
-    // folha da mesma origem por <link>, com a URL absoluta calculada no checkout (D4)
-    await expect(popup.locator('link[rel="stylesheet"]')).toHaveCount(1);
-    const href = await popup.locator('link[rel="stylesheet"]').getAttribute('href');
-    expect(new URL(/** @type {string} */ (href)).pathname, 'href da folha do pop-up').toMatch(/\/assets\/boleto\.css$/);
-    await expect(popup.locator('style')).toHaveCount(0);
-
-    await expect(popup.locator('body')).toHaveCSS('padding-top', '40px');
-    await expect(popup.locator('h1')).toHaveCSS('font-size', '22px');
-    await expect(popup.locator('code')).toHaveCSS('font-size', '16px');
-
-    // print() só depois de a folha carregar, exatamente uma vez (guarda "impresso")
-    await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__prints)).toBe(1);
-    // janela maior que a reserva de 3 s do checkout.js: o setTimeout de reserva não pode imprimir de novo
-    await page.waitForTimeout(3500);
-    expect(await page.evaluate(() => /** @type {any} */ (window).__prints), 'print() chamado mais de uma vez').toBe(1);
-
-    const mensagensDoPopup = mensagens
-      .filter(m => m.page() === popup && (m.type() === 'error' || /Content Security Policy/i.test(m.text())))
-      .map(m => m.text());
-    expect(mensagensDoPopup, 'erro ou violação de CSP no pop-up do boleto').toEqual([]);
-    await popup.close();
-  });
-
-  test('CA3 pop-up do boleto: com a folha travada, imprime uma vez pela reserva de 3 s', async ({ page, erros }) => {
-    await neutralizarPrintDoPopup(page);
-    await checkoutAteBoleto(page);
-    await page.unrouteAll({ behavior: 'wait' });
-    // folha que nunca responde: nem load nem error; só a reserva de 3 s aciona a impressão
-    await page.context().route('**/assets/boleto.css*', () => {});
-
-    const popupPromise = page.waitForEvent('popup');
-    await page.locator('#downloadBoleto').click();
-    const popup = await popupPromise;
-    const inicio = Date.now();
-    await expect(popup.locator('h1')).toHaveText('Boleto CITMail');
-
-    await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__prints), { timeout: 6000 }).toBe(1);
-    expect(Date.now() - inicio, 'a impressão deveria vir da reserva de 3 s, não antes').toBeGreaterThanOrEqual(2500);
-    expect(await popup.evaluate(() => getComputedStyle(document.body).paddingTop), 'folha travada não aplica').not.toBe('40px');
-    await page.waitForTimeout(1000);
-    expect(await page.evaluate(() => /** @type {any} */ (window).__prints), 'print() chamado mais de uma vez').toBe(1);
-    await popup.close();
-  });
-
   test('CA8 login: Escape com o modal fechado não chama closeForgot; com o modal aberto, fecha', async ({ page, erros }) => {
     await page.goto('login.html', { waitUntil: 'networkidle' });
     await page.evaluate(() => {
@@ -1241,7 +992,7 @@ test.describe('CSP sem estilo inline', { tag: '@CIT-152' }, () => {
 
   test('CA8 checkout: painéis ocultos na carga aparecem e somem como hoje', async ({ page, erros }) => {
     await page.goto('checkout.html?qty5=2', { waitUntil: 'networkidle' });
-    for (const id of ['step1Error', 'domainNewPanel', 'domainExistPanel', 'step2Error', 'extraDomPixPanel', 'addonsSubtotal', 'cnpjRow']) {
+    for (const id of ['step1Error', 'domainNewPanel', 'domainExistPanel', 'step2Error', 'domExtrasCampos', 'addonsSubtotal', 'cnpjRow']) {
       await expect(page.locator(`#${id}`), `#${id} oculto na carga`).toBeHidden();
     }
 
@@ -1258,10 +1009,10 @@ test.describe('CSP sem estilo inline', { tag: '@CIT-152' }, () => {
       .filter({ has: page.locator('.addon-sec-nome', { hasText: /^Domínio secundário$/ }) });
     await secaoDominio.click();
     await page.locator('button[data-addon="extraDom"][data-addon-delta="1"]').click();
-    await expect(page.locator('#extraDomPixPanel')).toBeVisible();
+    await expect(page.locator('#domExtrasCampos')).toBeVisible();
     await page.locator('button[data-addon="extraDom"][data-addon-delta="-1"]').click();
-    await expect(page.locator('#extraDomPixPanel')).toBeHidden();
-    // subtotal só soma add-ons mensais (o domínio extra é anual, por Pix)
+    await expect(page.locator('#domExtrasCampos')).toBeHidden();
+    // subtotal só soma add-ons mensais (o domínio extra é anual, em fatura própria)
     await page.locator('button[data-addon="grupoEmail"][data-addon-delta="1"]').click();
     await expect(page.locator('#addonsSubtotal')).toBeVisible();
     await page.locator('button[data-addon="grupoEmail"][data-addon-delta="-1"]').click();

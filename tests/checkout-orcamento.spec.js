@@ -159,7 +159,6 @@ async function preencherCadastro(/** @type {import('@playwright/test').Page} */ 
   await page.locator('#fNome').fill('Maria Ficticia');
   await page.locator('#fEmail').fill('maria@exemplo.test');
   await page.locator('#fTelefone').fill('11999990000');
-  await page.locator('#fSenha').fill('senha-ficticia-1');
   await page.locator('#fCPF').fill('12345678901');
   await page.locator('#fCEP').fill('01001000');
   await page.locator('#termsCheck').check({ force: true });
@@ -193,7 +192,6 @@ test.describe('checkout-orcamento — CA1: origem fora do mapa (modo local)', { 
     await page.waitForTimeout(1000);
     await expect(page.locator('#sumTotal')).toHaveText('R$ 32,00');
     await expect(page.locator('#sumPeriod')).toHaveText('/mês');
-    await expect(page.locator('#fInstallments option').first()).toHaveText('1× de R$ 32,00 (sem juros)');
     await expect(page.locator('#orcamentoEstado')).toBeHidden();
 
     await page.locator('#cycleToggle').click();
@@ -241,11 +239,10 @@ test.describe('checkout-orcamento — CA2: orçamento confirmado', { tag: '@CIT-
     await expect(page.locator('#sumTotal')).toHaveText('R$ 123,45');
     await expect(page.locator('#sumEconomia')).toContainText('R$ 20,00');
     await expect(page.locator('#sumAccountLines')).toContainText('R$ 123,45');
-    await expect(page.locator('#fInstallments option').first()).toHaveText('1× de R$ 123,45 (sem juros)');
     descartar(erros, 'ERR_ABORTED');
   });
 
-  test('CA2 no passo 5 o Pix e o boleto usam o total do pedido confirmado pelo servidor', async ({ page, erros }) => {
+  test('CA2 no passo 5 a revisão usa o total do pedido confirmado pelo servidor', async ({ page, erros }) => {
     await abrir(page, (route, corpo) => responder200(route, corpo, { mensal: 12345, cicloMensal: 12345, avulso: 0 }));
     await mais25(page);
     await debounce(page);
@@ -254,9 +251,7 @@ test.describe('checkout-orcamento — CA2: orçamento confirmado', { tag: '@CIT-
     await preencherCadastro(page);
     await page.locator('#btnSubmitCadastro').click();
     await expect(page.locator('#step5')).toHaveClass(/active/);
-    await expect(page.locator('#pixCode')).toContainText('0123.45');
-    await expect(page.locator('#boletoCode')).toContainText('123.45');
-    await expect(page.locator('#boletoCode')).toContainText('00000000012345');
+    await expect(page.locator('#orderSummary')).toHaveAttribute('data-total-confirmado', '12345');
     descartar(erros, 'ERR_ABORTED');
   });
 
@@ -305,7 +300,7 @@ test.describe('checkout-orcamento — CA3: estado pendente', { tag: '@CIT-176' }
     await expect(page.locator('#sumTotal')).toHaveText('R$ 99,90');
     await page.locator('#btnSubmitCadastro').click();
     await expect(page.locator('#step5')).toHaveClass(/active/);
-    await expect(page.locator('#pixCode')).toContainText('0178.90');
+    await expect(page.locator('#orderSummary')).toHaveAttribute('data-total-confirmado', '17890');
     descartar(erros, 'ERR_ABORTED');
   });
 });
@@ -667,9 +662,9 @@ test.describe('checkout-orcamento — CA10: falha legível em 320, 375 e 1280 px
 /* ---------------- CA11: sem regressão (estático; as specs existentes rodam à parte) ---------------- */
 
 test.describe('checkout-orcamento — CA11: versões dos recursos', { tag: '@CIT-176' }, () => {
-  test('CA11 checkout.html referencia checkout.js?v=8 e checkout.css?v=4', async () => {
+  test('CA11 checkout.html referencia checkout.js?v=9 e checkout.css?v=5', async () => {
     const html = readFileSync(new URL('../checkout.html', import.meta.url), 'utf8');
-    expect(html).toContain('assets/checkout.js?v=8');
-    expect(html).toContain('assets/checkout.css?v=4');
+    expect(html).toContain('assets/checkout.js?v=9');
+    expect(html).toContain('assets/checkout.css?v=5');
   });
 });
