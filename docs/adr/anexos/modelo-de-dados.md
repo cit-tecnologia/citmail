@@ -55,7 +55,7 @@ Quem compra. Espelha o cliente do Asaas.
 
 Uma compra feita no checkout. Guarda o total calculado pelo servidor (ADR 0012).
 
-- **Chave:** `id`. Únicos: `token_publico` (link da página de status, imprevisível, E3-H5) e `chave_idempotencia` (enviada pelo checkout, E3-H2).
+- **Chave:** `id`. Únicos: `token_hash` (SHA-256 em hex do token do link da página de status; o token em claro nunca é gravado; nulável nos pedidos anteriores; E3-H5, [ADR 0016](../0016-status-do-pedido-por-token.md)) e `chave_idempotencia` (enviada pelo checkout, E3-H2).
 - **Atributos:**
   - `cliente_id`, `estado` (ver "Estados do pedido"), `ciclo` (`mensal` ou `anual`).
   - Itens: contas por tipo (`5gb`, `25gb`, `50gb`) com quantidade, add-ons com quantidade (hoje `talk`, `backup90`, `backup365`, `grupoEmail`, `skybox` 50 GB, 100 GB ou 1 TB, conforme `assets/precos.js`; lista final provisória (#48), E3-H8), domínio principal (`existente` ou `novo`) e domínios extras. Tabela filha ou coluna JSON: decisão da #53.
