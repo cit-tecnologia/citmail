@@ -26,7 +26,7 @@ export const CHAVES_PROIBIDAS = Object.freeze([
   'name', 'phone', 'mobilephone', 'company', 'postalcode', 'address', 'addressnumber', 'complement', 'province',
   'cityname', 'additionalemails', 'municipalinscription', 'stateinscription', 'creditcard', 'creditcardtoken',
   'ip', 'ip_origem', 'iporigem', 'ipcliente', 'ip_cliente', 'remoteaddress', 'remote_addr', 'x-forwarded-for',
-  'xforwardedfor', 'forwarded', 'x-real-ip'
+  'xforwardedfor', 'forwarded', 'x-real-ip', 'ipaceite', 'ip_aceite'
 ])
 
 // Trechos recusados em qualquer posição da chave (pega novaSenha, refresh_token, x-api-key,
