@@ -9,6 +9,9 @@ export const TERMOS_MINUTA = true
 // Provisória: a Política de Privacidade é externa e sem versão; o rótulo definitivo é
 // pendência do responsável/DPO.
 export const VERSAO_PRIVACIDADE = 'externa-2026-11-23'
+// Rótulo da Política ainda provisório: trava a produção como a minuta (config.js). Na 1.0,
+// trocar junto `TERMOS_MINUTA`, `PRIVACIDADE_PROVISORIA`, `VERSAO_PRIVACIDADE` e a página.
+export const PRIVACIDADE_PROVISORIA = true
 
 // IP do aceite a partir de `request.ip` (trustProxy do app.js, ADR 0013 item 3): sem o
 // sufixo de zona (`%eth0`) e com `::ffff:a.b.c.d` como IPv4 (pseudonimização /24
