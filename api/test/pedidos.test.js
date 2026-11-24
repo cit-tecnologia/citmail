@@ -10,6 +10,7 @@ import { criarClienteAsaas } from '../src/asaas/cliente.js';
 import { calcularOrcamento } from '../src/precos/servico.js';
 import { VERSAO } from '../src/precos/tabela.js';
 import { tipoPessoa } from '../src/pedidos/documento.js';
+import { VERSAO_PRIVACIDADE, VERSAO_TERMOS } from '../src/pedidos/aceite.js';
 import { construirAppTeste, criarCapturaDeLog, criarConfigTeste } from './auxiliares.js';
 import { criarStubAsaas, MARCADOR_CORPO } from './stub-asaas.js';
 
@@ -129,6 +130,7 @@ function montarCorpo(sobre = {}) {
     addons: {},
     dominio: { tipo: 'existente', nome: 'exemplo-ficticio.com' },
     cliente: { nome: 'Fulana de Teste', email: 'fulana@exemplo.test', telefone: '11999990000', documento: cpfUnico(), ...cliente },
+    aceite: { termos: true, versao_termos: VERSAO_TERMOS, versao_privacidade: VERSAO_PRIVACIDADE },
     ...resto,
   };
   if (corpo.total_exibido_centavos === undefined) corpo.total_exibido_centavos = totalDe(corpo);
@@ -146,9 +148,22 @@ function corpoComDominios(sobre = {}) {
   });
 }
 
-async function enviar(corpo, app = ambiente.app) {
-  const resposta = await app.inject({ method: 'POST', url: '/api/pedidos', payload: corpo });
+async function enviar(corpo, app = ambiente.app, rede = {}) {
+  const resposta = await app.inject({ method: 'POST', url: '/api/pedidos', payload: corpo, ...rede });
   return { status: resposta.statusCode, corpo: resposta.json() };
+}
+
+// Espera a chamada ao stub com teto: se o pedido nunca chegar ao Asaas, o teste falha em vez de travar.
+async function esperarChamadaComTeto(rotulo, n, tetoMs = 5000) {
+  let temporizador;
+  const teto = new Promise((_, rejeitar) => {
+    temporizador = setTimeout(() => rejeitar(new Error(`o stub não recebeu ${rotulo} #${n} em ${tetoMs} ms`)), tetoMs);
+  });
+  try {
+    await Promise.race([stub.esperarChamada(rotulo, n), teto]);
+  } finally {
+    clearTimeout(temporizador);
+  }
 }
 
 async function linhas(sql, parametros = []) {
@@ -721,7 +736,7 @@ test('CA9: original parado no POST e retomada que toma a posse: a retomada compl
   const { app: appRetomada } = appExtra({ pedidos: { prazoCriandoMs: 100 }, timeoutMs: 5000 });
 
   const original = enviar(corpo);
-  await stub.esperarChamada('POST /subscriptions', 1);
+  await esperarChamadaComTeto('POST /subscriptions', 1);
   await esperar(250);
   const retomada = await enviar(corpo, appRetomada);
   const respostaOriginal = await original;
@@ -743,7 +758,7 @@ test('CA9: original que falha depois de perder a posse responde 409, sem compens
   const { app: appRetomada } = appExtra({ pedidos: { prazoCriandoMs: 100 }, timeoutMs: 5000 });
 
   const original = enviar(corpo);
-  await stub.esperarChamada('POST /subscriptions', 2);
+  await esperarChamadaComTeto('POST /subscriptions', 2);
   await esperar(250);
   const retomada = await enviar(corpo, appRetomada);
   const respostaOriginal = await original;
@@ -1562,4 +1577,190 @@ test('A1: cadastro do Asaas que confere com a linha grava a flag true', async ()
   assert.equal(resposta.status, 201);
   assert.equal('aviso' in resposta.corpo, false);
   assert.equal((await clienteDe(documento)).asaas_contato_confere, true);
+});
+
+// ---------------------------------------------------------------------------
+// CIT-62: aceite dos termos. Os nomes CA<n> abaixo seguem os critérios do plano da CIT-62
+// (`.omc/plans/CIT-62.md`), não os da CIT-61 acima.
+// ---------------------------------------------------------------------------
+
+const IP_ACEITE = '203.0.113.7';
+const COLUNAS_ACEITE = `versao_termos, versao_privacidade, host(ip_aceite) AS ip, aceite_em, criado_em`;
+
+async function aceiteDe(chave) {
+  return (await linhas(`SELECT ${COLUNAS_ACEITE} FROM pedido WHERE chave_idempotencia = $1`, [chave]))[0];
+}
+
+async function contagemTotal() {
+  return (await linhas(`SELECT (SELECT count(*) FROM cliente)::int AS cliente,
+                               (SELECT count(*) FROM pedido)::int AS pedido,
+                               (SELECT count(*) FROM pedido_dominio)::int AS pedido_dominio`))[0];
+}
+
+// 'CA2' abaixo: o aceite inválido não deixa efeito algum.
+async function semEfeito(corpo, rede) {
+  const antes = await contagemTotal();
+  const chamadasAntes = stub.chamadas.length;
+  const resposta = await enviar(corpo, ambiente.app, rede);
+  assert.deepEqual(await contagemTotal(), antes, 'nenhuma linha nova em cliente, pedido e pedido_dominio');
+  assert.equal(stub.chamadas.length, chamadasAntes, 'nenhuma chamada ao Asaas');
+  return resposta;
+}
+
+test('CA1: o aceite grava as versões vistas, o IP da conexão e aceite_em igual a criado_em dentro da requisição', async () => {
+  const corpo = montarCorpo();
+  const antes = new Date();
+  const resposta = await enviar(corpo, ambiente.app, { remoteAddress: IP_ACEITE });
+  const depois = new Date();
+
+  assert.equal(resposta.status, 201);
+  const aceite = await aceiteDe(corpo.chave_idempotencia);
+  assert.equal(aceite.versao_termos, '0.1');
+  assert.equal(aceite.versao_privacidade, 'externa-2026-11-23');
+  assert.equal(aceite.ip, IP_ACEITE);
+  assert.equal(aceite.aceite_em.getTime(), aceite.criado_em.getTime());
+  assert.ok(aceite.aceite_em >= new Date(antes.getTime() - 2000) && aceite.aceite_em <= new Date(depois.getTime() + 2000));
+});
+
+const ACEITES_INVALIDOS = [
+  ['sem aceite', (corpo) => { delete corpo.aceite; }, 'aceite'],
+  ['termos false', (corpo) => { corpo.aceite.termos = false; }, 'aceite.termos'],
+  ['termos como texto "true"', (corpo) => { corpo.aceite.termos = 'true'; }, 'aceite.termos'],
+  ['sem versao_termos', (corpo) => { delete corpo.aceite.versao_termos; }, 'aceite.versao_termos'],
+  ['campo extra em aceite', (corpo) => { corpo.aceite.extra = 1; }, 'aceite.extra'],
+  ['aceite true em vez de objeto', (corpo) => { corpo.aceite = true; }, 'aceite'],
+];
+
+for (const [descricao, mutar, campo] of ACEITES_INVALIDOS) {
+  test(`CA2: ${descricao} responde 400 validacao com o campo ${campo}, sem gravar nem chamar o Asaas`, async () => {
+    const corpo = montarCorpo();
+    mutar(corpo);
+
+    const resposta = await semEfeito(corpo);
+
+    assert.equal(resposta.status, 400);
+    assert.equal(resposta.corpo.erro, 'validacao');
+    assert.ok(resposta.corpo.campos.some((c) => c.campo === campo), JSON.stringify(resposta.corpo.campos));
+  });
+}
+
+test('CA3: versao_termos divergente responde 409 com as versões vigentes, sem gravar nem chamar o Asaas', async () => {
+  const corpo = montarCorpo({ aceite: { termos: true, versao_termos: '0.0', versao_privacidade: VERSAO_PRIVACIDADE } });
+
+  const resposta = await semEfeito(corpo);
+
+  assert.deepEqual(resposta, {
+    status: 409,
+    corpo: { erro: 'versao_termos_divergente', versao_termos: '0.1', versao_privacidade: 'externa-2026-11-23' },
+  });
+});
+
+test('CA3: versao_privacidade divergente responde 409 com as versões vigentes, sem gravar nem chamar o Asaas', async () => {
+  const corpo = montarCorpo({ aceite: { termos: true, versao_termos: VERSAO_TERMOS, versao_privacidade: 'outra' } });
+
+  const resposta = await semEfeito(corpo);
+
+  assert.deepEqual(resposta, {
+    status: 409,
+    corpo: { erro: 'versao_termos_divergente', versao_termos: '0.1', versao_privacidade: 'externa-2026-11-23' },
+  });
+});
+
+test('CA3: versão e total errados no mesmo corpo respondem a versão primeiro', async () => {
+  const corpo = montarCorpo({
+    aceite: { termos: true, versao_termos: '0.0', versao_privacidade: VERSAO_PRIVACIDADE },
+    total_exibido_centavos: 1,
+  });
+
+  const resposta = await semEfeito(corpo);
+
+  assert.equal(resposta.status, 409);
+  assert.equal(resposta.corpo.erro, 'versao_termos_divergente');
+});
+
+test('CA3: com a versão certa e o total errado, o 409 segue total_divergente, sem as chaves de versão', async () => {
+  const resposta = await semEfeito(montarCorpo({ total_exibido_centavos: 1 }));
+
+  assert.equal(resposta.status, 409);
+  assert.equal(resposta.corpo.erro, 'total_divergente');
+  assert.equal('versao_termos' in resposta.corpo, false);
+  assert.equal('versao_privacidade' in resposta.corpo, false);
+});
+
+const CASOS_IP = [
+  ['IPv4 direto ignora o X-Forwarded-For', { remoteAddress: '203.0.113.7', headers: { 'x-forwarded-for': '198.51.100.9' } }, '203.0.113.7'],
+  ['conexão do loopback (Caddy) usa o X-Forwarded-For', { remoteAddress: '127.0.0.1', headers: { 'x-forwarded-for': '198.51.100.9' } }, '198.51.100.9'],
+  ['IPv4 mapeado em IPv6 vira IPv4', { remoteAddress: '::ffff:203.0.113.8' }, '203.0.113.8'],
+  ['IPv6 é gravado como veio', { remoteAddress: '2001:db8::1' }, '2001:db8::1'],
+  ['sufixo de zona é removido', { remoteAddress: 'fe80::1%eth0' }, 'fe80::1'],
+];
+
+for (const [descricao, rede, esperado] of CASOS_IP) {
+  test(`CA4: ${descricao} (ip_aceite ${esperado})`, async () => {
+    const corpo = montarCorpo();
+
+    const resposta = await enviar(corpo, ambiente.app, rede);
+
+    assert.equal(resposta.status, 201);
+    assert.equal((await aceiteDe(corpo.chave_idempotencia)).ip, esperado);
+  });
+}
+
+test('CA4: X-Forwarded-For inválido vindo do loopback responde 500 interno, sem gravar, sem Asaas e sem o valor no log', async () => {
+  const corpo = montarCorpo();
+
+  const resposta = await semEfeito(corpo, { remoteAddress: '127.0.0.1', headers: { 'x-forwarded-for': 'lixo' } });
+
+  assert.equal(resposta.status, 500);
+  assert.equal(resposta.corpo.erro, 'interno');
+  assert.equal(typeof resposta.corpo.requestId, 'string');
+  const linhasIp = ambiente.captura.linhas().filter((l) => l.msg === 'ip inválido');
+  assert.equal(linhasIp.length, 1);
+  assert.equal(linhasIp[0].level, 40);
+  assert.ok(!JSON.stringify(linhasIp[0]).includes('lixo'));
+});
+
+test('CA5: reenvio da mesma chave de outro IP devolve a resposta gravada e mantém ip_aceite e aceite_em', async () => {
+  const corpo = montarCorpo();
+  const primeira = await enviar(corpo, ambiente.app, { remoteAddress: IP_ACEITE });
+  const gravado = await aceiteDe(corpo.chave_idempotencia);
+
+  const reenvio = await enviar(corpo, ambiente.app, { remoteAddress: '198.51.100.20' });
+
+  assert.deepEqual(reenvio, primeira);
+  assert.deepEqual(await aceiteDe(corpo.chave_idempotencia), gravado);
+});
+
+test('CA5: reenvio da mesma chave com outra versao_termos responde 422 chave_reutilizada', async () => {
+  const corpo = montarCorpo();
+  assert.equal((await enviar(corpo)).status, 201);
+
+  const reenvio = await enviar({ ...corpo, aceite: { ...corpo.aceite, versao_termos: '0.2' } });
+
+  assert.deepEqual(reenvio, { status: 422, corpo: { erro: 'chave_reutilizada' } });
+});
+
+test('CA5: pedido em criando retomado mantém aceite_em, versões e IP do aceite original', async () => {
+  const corpo = montarCorpo();
+  const criado = await enviar(corpo, ambiente.app, { remoteAddress: IP_ACEITE });
+  assert.equal(criado.status, 201);
+  const original = await aceiteDe(corpo.chave_idempotencia);
+  await ambiente.pool.query('DELETE FROM assinatura WHERE pedido_id = $1', [criado.corpo.pedidoId]);
+  await ambiente.pool.query("UPDATE pedido SET estado = 'criando', criando_desde = now() - interval '1 hour' WHERE id = $1", [criado.corpo.pedidoId]);
+
+  const retomada = await enviar(corpo, ambiente.app, { remoteAddress: '198.51.100.21' });
+
+  assert.equal(retomada.status, 201);
+  assert.deepEqual(await aceiteDe(corpo.chave_idempotencia), original);
+});
+
+test('CA5: reenvio de pedido gravado depois que a versão vigente mudou devolve a resposta gravada, não o 409', async () => {
+  const corpo = montarCorpo();
+  const primeira = await enviar(corpo);
+  assert.equal(primeira.status, 201);
+  const { app: appNova } = appExtra({ pedidos: { versaoTermos: '0.2' } });
+
+  const reenvio = await enviar(corpo, appNova);
+
+  assert.deepEqual(reenvio, primeira);
 });

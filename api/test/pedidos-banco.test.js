@@ -1,5 +1,6 @@
 // CIT-61, CA7 (banco): tabelas `cliente`, `pedido`, `pedido_dominio` e `assinatura`
-// (migração `1795458432080_pedidos.sql`), contra um banco temporário migrado.
+// (migração `1795458432080_pedidos.sql`) e, da CIT-62, as 4 colunas do aceite dos termos
+// (`1795478712105_pedido-aceite.sql`), contra um banco temporário migrado.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -69,9 +70,11 @@ async function inserirPedido(clienteId, sobrescritas = {}) {
   };
   const { rows } = await banco.pool.query(
     `INSERT INTO pedido (cliente_id, chave_idempotencia, corpo_hash, estado, criando_desde, ciclo, itens,
-                         total_centavos, versao_tabela_precos, contato_nome, contato_email, contato_telefone, falha_motivo)
+                         total_centavos, versao_tabela_precos, contato_nome, contato_email, contato_telefone, falha_motivo,
+                         aceite_em, versao_termos, versao_privacidade, ip_aceite)
      VALUES ($1, $2, repeat('a', 64), $3, $4, 'mensal', '{}'::jsonb, 7250, '2026-11-07.1',
-             'Fulana de Teste', 'fulana@exemplo.test', '11999990000', $5) RETURNING id`,
+             'Fulana de Teste', 'fulana@exemplo.test', '11999990000', $5,
+             now(), '0.1', 'externa-2026-11-23', '203.0.113.7') RETURNING id`,
     [clienteId, dados.chave, dados.estado, dados.criando_desde, dados.falha_motivo]
   );
   return rows[0].id;
@@ -263,9 +266,11 @@ test('CA7: ON CONFLICT (chave_idempotencia) DO NOTHING não devolve linha na 2ª
   await inserirPedido(clienteId, { chave });
   const { rows } = await banco.pool.query(
     `INSERT INTO pedido (cliente_id, chave_idempotencia, corpo_hash, estado, ciclo, itens, total_centavos,
-                         versao_tabela_precos, contato_nome, contato_email, contato_telefone)
+                         versao_tabela_precos, contato_nome, contato_email, contato_telefone,
+                         aceite_em, versao_termos, versao_privacidade, ip_aceite)
      VALUES ($1, $2, repeat('b', 64), 'aguardando_pagamento', 'mensal', '{}'::jsonb, 100, 'v',
-             'Fulana de Teste', 'fulana@exemplo.test', '11999990000')
+             'Fulana de Teste', 'fulana@exemplo.test', '11999990000',
+             now(), '0.1', 'externa-2026-11-23', '203.0.113.7')
      ON CONFLICT (chave_idempotencia) DO NOTHING RETURNING id`,
     [clienteId, chave]
   );
@@ -296,7 +301,7 @@ const COLUNAS = {
   pedido: [
     'id', 'cliente_id', 'chave_idempotencia', 'corpo_hash', 'estado', 'criando_desde', 'ciclo', 'itens', 'total_centavos',
     'versao_tabela_precos', 'contato_nome', 'contato_email', 'contato_telefone', 'falha_motivo', 'request_id',
-    'fatura_retida', 'criado_em', 'atualizado_em'
+    'fatura_retida', 'aceite_em', 'versao_termos', 'versao_privacidade', 'ip_aceite', 'criado_em', 'atualizado_em'
   ],
   pedido_dominio: ['id', 'pedido_id', 'nome', 'tipo', 'papel', 'criado_em', 'atualizado_em'],
   assinatura: [
@@ -326,7 +331,8 @@ const INSERIVEIS = {
   cliente: ['tipo_pessoa', 'documento', 'nome', 'email', 'telefone'],
   pedido: [
     'cliente_id', 'chave_idempotencia', 'corpo_hash', 'estado', 'criando_desde', 'ciclo', 'itens', 'total_centavos',
-    'versao_tabela_precos', 'contato_nome', 'contato_email', 'contato_telefone', 'request_id'
+    'versao_tabela_precos', 'contato_nome', 'contato_email', 'contato_telefone', 'request_id',
+    'aceite_em', 'versao_termos', 'versao_privacidade', 'ip_aceite'
   ],
   pedido_dominio: ['pedido_id', 'nome', 'tipo', 'papel'],
   assinatura: ['pedido_id', 'cliente_id', 'tipo', 'ciclo', 'valor_centavos', 'asaas_assinatura_id', 'url_primeira_fatura']
@@ -416,8 +422,9 @@ test('CA7: o down com registros é recusado com P0001 e as tabelas continuam', a
         `INSERT INTO cliente (tipo_pessoa, documento, nome, email, telefone)
          VALUES ('fisica', '52998224725', 'Fulana de Teste', 'fulana@exemplo.test', '11999990000')`
       );
-      // `1795458432080_pedidos` é a última migração: o down de 1 passo a desfaz.
-      await assert.rejects(aplicarMigracoes(url, 'down', 1), /pedidos com registros: down recusado/);
+      // `1795458432080_pedidos` é a penúltima migração (a última é a do aceite, CIT-62, que
+      // desfaz sem erro com `pedido` vazio): o down de 2 passos chega a ela.
+      await assert.rejects(aplicarMigracoes(url, 'down', 2), /pedidos com registros: down recusado/);
       const { rows } = await pool.query("SELECT to_regclass('cliente') AS cliente, to_regclass('assinatura') AS assinatura");
       assert.notEqual(rows[0].cliente, null);
       assert.notEqual(rows[0].assinatura, null);
@@ -433,7 +440,7 @@ test('CA7: o down com as tabelas vazias remove as 4 tabelas e o up seguinte as r
   const { nomeBanco, url } = await criarBancoTemporario();
   try {
     await aplicarMigracoes(url);
-    await aplicarMigracoes(url, 'down', 1);
+    await aplicarMigracoes(url, 'down', 2);
     const pool = new Pool({ connectionString: url, max: 2 });
     try {
       const sem = await pool.query(
@@ -450,4 +457,162 @@ test('CA7: o down com as tabelas vazias remove as 4 tabelas e o up seguinte as r
   } finally {
     await removerBancoTemporario(nomeBanco);
   }
+});
+
+// ---------------------------------------------------------------------------
+// CIT-62: aceite dos termos no pedido (os nomes CA<n> seguem o plano da CIT-62)
+// ---------------------------------------------------------------------------
+
+const INSERT_PEDIDO_BASE = `
+  INSERT INTO pedido (cliente_id, chave_idempotencia, corpo_hash, estado, ciclo, itens, total_centavos,
+                      versao_tabela_precos, contato_nome, contato_email, contato_telefone`;
+
+// Pedido com as colunas da migração anterior; só o `INSERT` direto, sem as do aceite.
+function inserirPedidoSemAceite(executor, clienteId) {
+  return executor.query(
+    `${INSERT_PEDIDO_BASE})
+     VALUES ($1, $2, repeat('c', 64), 'aguardando_pagamento', 'mensal', '{}'::jsonb, 100, 'v',
+             'Fulana de Teste', 'fulana@exemplo.test', '11999990000') RETURNING id`,
+    [clienteId, randomUUID()]
+  );
+}
+
+function inserirPedidoComAceite(versaoTermos, versaoPrivacidade) {
+  return async (clienteId) => banco.pool.query(
+    `${INSERT_PEDIDO_BASE}, aceite_em, versao_termos, versao_privacidade, ip_aceite)
+     VALUES ($1, $2, repeat('d', 64), 'aguardando_pagamento', 'mensal', '{}'::jsonb, 100, 'v',
+             'Fulana de Teste', 'fulana@exemplo.test', '11999990000', now(), $3, $4, '203.0.113.7')`,
+    [clienteId, randomUUID(), versaoTermos, versaoPrivacidade]
+  );
+}
+
+test('CA6: INSERT direto sem as colunas do aceite é recusado pelo NOT NULL (23502)', async () => {
+  const clienteId = await inserirCliente();
+  assert.equal(await codigoDeErro(inserirPedidoSemAceite(banco.pool, clienteId)), '23502');
+});
+
+for (const [rotulo, termos, privacidade] of [
+  ['versao_termos com espaço', '0 1', 'externa-2026-11-23'],
+  ['versao_termos vazia', '', 'externa-2026-11-23'],
+  ['versao_termos com 33 caracteres', 'a'.repeat(33), 'externa-2026-11-23'],
+  ['versao_privacidade com barra', '0.1', 'a/b'],
+  ['versao_privacidade com 65 caracteres', '0.1', 'a'.repeat(65)],
+]) {
+  test(`CA6: ${rotulo} é recusada pelo CHECK (23514)`, async () => {
+    const clienteId = await inserirCliente();
+    assert.equal(await codigoDeErro(inserirPedidoComAceite(termos, privacidade)(clienteId)), '23514');
+  });
+}
+
+test('CA6: versões nos limites (32 e 64 caracteres, com . _ -) são aceitas', async () => {
+  const clienteId = await inserirCliente();
+  await inserirPedidoComAceite('a'.repeat(31) + '.', 'B'.repeat(61) + '._-')(clienteId);
+});
+
+test('CA6: ip_aceite é inet: texto que não é IP é recusado (22P02)', async () => {
+  const clienteId = await inserirCliente();
+  const erro = await codigoDeErro(banco.pool.query(
+    `${INSERT_PEDIDO_BASE}, aceite_em, versao_termos, versao_privacidade, ip_aceite)
+     VALUES ($1, $2, repeat('e', 64), 'aguardando_pagamento', 'mensal', '{}'::jsonb, 100, 'v',
+             'Fulana de Teste', 'fulana@exemplo.test', '11999990000', now(), '0.1', 'x', 'lixo')`,
+    [clienteId, randomUUID()]
+  ));
+  assert.equal(erro, '22P02');
+});
+
+test('CA6: o papel <banco>_aplicacao insere as 4 colunas do aceite e não atualiza nenhuma', async () => {
+  for (const coluna of ['aceite_em', 'versao_termos', 'versao_privacidade', 'ip_aceite']) {
+    assert.equal(await privilegioDeColuna('pedido', coluna, 'INSERT'), true, `INSERT pedido.${coluna}`);
+    assert.equal(await privilegioDeColuna('pedido', coluna, 'UPDATE'), false, `UPDATE pedido.${coluna}`);
+  }
+});
+
+for (const [coluna, valor] of [['ip_aceite', "'198.51.100.1'"], ['aceite_em', 'now()']]) {
+  test(`CA6: UPDATE de ${coluna} como o papel <banco>_aplicacao é negado (42501)`, async () => {
+    const clienteId = await inserirCliente();
+    const pedidoId = await inserirPedido(clienteId);
+    const conexao = await banco.pool.connect();
+    try {
+      await conexao.query(`SET ROLE "${banco.nomeBanco}_aplicacao"`);
+      assert.equal(await codigoDeErro(conexao.query(`UPDATE pedido SET ${coluna} = ${valor} WHERE id = $1`, [pedidoId])), '42501');
+    } finally {
+      await conexao.query('RESET ROLE');
+      conexao.release();
+    }
+  });
+}
+
+async function comBancoAte(migracoes, corpo) {
+  const { nomeBanco, url } = await criarBancoTemporario();
+  try {
+    await aplicarMigracoes(url, 'up', migracoes);
+    const pool = new Pool({ connectionString: url, max: 2 });
+    try {
+      await corpo(url, pool);
+    } finally {
+      await pool.end();
+    }
+  } finally {
+    await removerBancoTemporario(nomeBanco);
+  }
+}
+
+test('CA6: o up do aceite com um pedido já existente é recusado (P0001) e nada é alterado', async () => {
+  // As 4 primeiras migrações (funcao, auditoria, eventos, pedidos) deixam o banco sem as colunas.
+  await comBancoAte(4, async (url, pool) => {
+    const { rows } = await pool.query(
+      `INSERT INTO cliente (tipo_pessoa, documento, nome, email, telefone)
+       VALUES ('fisica', '52998224725', 'Fulana de Teste', 'fulana@exemplo.test', '11999990000') RETURNING id`
+    );
+    await inserirPedidoSemAceite(pool, rows[0].id);
+
+    await assert.rejects(aplicarMigracoes(url, 'up', 1), (erro) => {
+      assert.match(erro.message, /pedido sem aceite: limpe os pedidos de teste antes de aplicar \(CIT-62\)/);
+      assert.equal(erro.code, 'P0001');
+      return true;
+    });
+    const colunas = await pool.query(
+      "SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name = 'pedido' AND column_name = 'ip_aceite'"
+    );
+    assert.equal(colunas.rows[0].n, 0);
+  });
+});
+
+test('CA6: o down do aceite com um pedido é recusado (P0001) e as colunas continuam', async () => {
+  await comBancoAte(Infinity, async (url, pool) => {
+    const clienteId = (await pool.query(
+      `INSERT INTO cliente (tipo_pessoa, documento, nome, email, telefone)
+       VALUES ('fisica', '52998224725', 'Fulana de Teste', 'fulana@exemplo.test', '11999990000') RETURNING id`
+    )).rows[0].id;
+    await pool.query(
+      `${INSERT_PEDIDO_BASE}, aceite_em, versao_termos, versao_privacidade, ip_aceite)
+       VALUES ($1, $2, repeat('f', 64), 'aguardando_pagamento', 'mensal', '{}'::jsonb, 100, 'v',
+               'Fulana de Teste', 'fulana@exemplo.test', '11999990000', now(), '0.1', 'x', '203.0.113.7')`,
+      [clienteId, randomUUID()]
+    );
+
+    await assert.rejects(aplicarMigracoes(url, 'down', 1), (erro) => {
+      assert.match(erro.message, /pedidos com aceite: down recusado/);
+      assert.equal(erro.code, 'P0001');
+      return true;
+    });
+    const colunas = await pool.query(
+      "SELECT count(*)::int AS n FROM information_schema.columns WHERE table_name = 'pedido' AND column_name = 'ip_aceite'"
+    );
+    assert.equal(colunas.rows[0].n, 1);
+  });
+});
+
+test('CA6: o aceite sobe e desce em banco vazio, e o up seguinte o recria', async () => {
+  await comBancoAte(Infinity, async (url, pool) => {
+    const contarColunas = async () => (await pool.query(
+      `SELECT count(*)::int AS n FROM information_schema.columns
+        WHERE table_name = 'pedido' AND column_name IN ('aceite_em', 'versao_termos', 'versao_privacidade', 'ip_aceite')`
+    )).rows[0].n;
+    assert.equal(await contarColunas(), 4);
+    await aplicarMigracoes(url, 'down', 1);
+    assert.equal(await contarColunas(), 0);
+    await aplicarMigracoes(url, 'up', 1);
+    assert.equal(await contarColunas(), 4);
+  });
 });

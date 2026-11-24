@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { carregarConfig, carregarConfigFila, carregarConfigWorker } from '../src/config.js';
 import { construirApp } from '../src/app.js';
+import { TERMOS_MINUTA } from '../src/pedidos/aceite.js';
 import { criarCapturaDeLog } from './auxiliares.js';
 
 // `carregarConfig(env = process.env)`: aceita um objeto de ambiente
@@ -258,7 +259,7 @@ test('CA16: produção sem PEDIDOS_HABILITADO carrega sem chave nem URL do Asaas
 });
 
 test('CA16: produção com PEDIDOS_HABILITADO=true, chave e URL https carrega e expõe a configuração', () => {
-  const config = carregarConfig({ ...AMBIENTE_PRODUCAO, ...AMBIENTE_ASAAS });
+  const config = carregarConfig({ ...AMBIENTE_PRODUCAO, ...AMBIENTE_ASAAS }, { termosMinuta: false });
   assert.equal(config.pedidosHabilitado, true);
   assert.equal(config.asaasApiKey, 'CHAVE-FICTICIA-ASAAS');
   assert.equal(config.asaasBaseUrl, 'https://api.asaas.com/v3');
@@ -294,7 +295,7 @@ test('CA16: produção com ASAAS_BASE_URL http:// lança erro citando o nome, se
 
 test('CA16: produção aceita os hosts api.asaas.com e api-sandbox.asaas.com', () => {
   for (const url of ['https://api.asaas.com', 'https://api.asaas.com/v3', 'https://api-sandbox.asaas.com/v3']) {
-    const config = carregarConfig({ ...AMBIENTE_PRODUCAO, ...AMBIENTE_ASAAS, ASAAS_BASE_URL: url });
+    const config = carregarConfig({ ...AMBIENTE_PRODUCAO, ...AMBIENTE_ASAAS, ASAAS_BASE_URL: url }, { termosMinuta: false });
     assert.equal(config.asaasBaseUrl, url);
   }
 });
@@ -377,4 +378,49 @@ test('CA16: ASAAS_TIMEOUT_MS ausente ou vazia usa 10000 e aceita os limites 1000
   assert.equal(carregarConfig({ ...AMBIENTE_BASE, ASAAS_TIMEOUT_MS: '' }).asaasTimeoutMs, 10000);
   assert.equal(carregarConfig({ ...AMBIENTE_BASE, ASAAS_TIMEOUT_MS: '1000' }).asaasTimeoutMs, 1000);
   assert.equal(carregarConfig({ ...AMBIENTE_BASE, ASAAS_TIMEOUT_MS: '30000' }).asaasTimeoutMs, 30000);
+});
+
+// CIT-62 (CA7 do plano): com os termos em minuta, a produção não sobe com pedidos ligados,
+// salvo a liberação explícita `TERMOS_MINUTA_ACEITA=true` (só homologação).
+test('CA7: produção com pedidos ligados e termos em minuta lança erro citando PEDIDOS_HABILITADO, minuta e TERMOS_MINUTA_ACEITA', () => {
+  assert.throws(
+    () => carregarConfig({ ...AMBIENTE_PRODUCAO, ...AMBIENTE_ASAAS }, { termosMinuta: true }),
+    (erro) => {
+      assert.match(erro.message, /PEDIDOS_HABILITADO/);
+      assert.match(erro.message, /minuta/);
+      assert.match(erro.message, /TERMOS_MINUTA_ACEITA/);
+      return true;
+    },
+  );
+});
+
+test('CA7: TERMOS_MINUTA_ACEITA=true libera a partida em produção com os termos em minuta', () => {
+  const config = carregarConfig({ ...AMBIENTE_PRODUCAO, ...AMBIENTE_ASAAS, TERMOS_MINUTA_ACEITA: 'true' }, { termosMinuta: true });
+  assert.equal(config.pedidosHabilitado, true);
+});
+
+test('CA7: TERMOS_MINUTA_ACEITA=sim lança erro citando a variável', () => {
+  assert.throws(
+    () => carregarConfig({ ...AMBIENTE_PRODUCAO, ...AMBIENTE_ASAAS, TERMOS_MINUTA_ACEITA: 'sim' }, { termosMinuta: true }),
+    (erro) => { assert.match(erro.message, /TERMOS_MINUTA_ACEITA/); return true; },
+  );
+});
+
+test('CA7: produção com pedidos ligados e termos finais (sem minuta) sobe sem liberação', () => {
+  assert.equal(carregarConfig({ ...AMBIENTE_PRODUCAO, ...AMBIENTE_ASAAS }, { termosMinuta: false }).pedidosHabilitado, true);
+});
+
+test('CA7: produção com a rota desligada sobe com os termos em minuta', () => {
+  assert.equal(carregarConfig(AMBIENTE_PRODUCAO, { termosMinuta: true }).pedidosHabilitado, false);
+});
+
+test('CA7: fora de produção, pedidos ligados sobem com os termos em minuta', () => {
+  const config = carregarConfig({ ...AMBIENTE_BASE, NODE_ENV: 'development', ...AMBIENTE_ASAAS }, { termosMinuta: true });
+  assert.equal(config.pedidosHabilitado, true);
+});
+
+test('CA7: o padrão de termosMinuta é a constante de pedidos/aceite.js', () => {
+  const ambiente = { ...AMBIENTE_PRODUCAO, ...AMBIENTE_ASAAS };
+  if (TERMOS_MINUTA) assert.throws(() => carregarConfig(ambiente), /TERMOS_MINUTA_ACEITA/);
+  else assert.equal(carregarConfig(ambiente).pedidosHabilitado, true);
 });
