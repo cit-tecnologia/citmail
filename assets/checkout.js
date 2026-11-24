@@ -1007,6 +1007,7 @@ const VERSAO_PRIVACIDADE = 'externa-2026-11-23';
 const HOSTS_FATURA = Object.freeze(['www.asaas.com', 'sandbox.asaas.com']);
 const PEDIDO_TIMEOUT_MS = 90000;
 const CONTATO_COMERCIAL = 'comercial@citmail.com.br';
+const PADRAO_TOKEN_PEDIDO = /^[A-Za-z0-9_-]{43}$/;   // token de acompanhamento do 201 (CIT-69, ADR 0016)
 const MSG_PEDIDO_GENERICA = 'Não foi possível gerar a fatura agora. Tente novamente.';
 const MSG_PEDIDO_AMBIGUO = 'Seu pedido pode já ter sido criado. Tente de novo para recuperar a fatura; não altere os dados.';
 
@@ -1269,22 +1270,48 @@ function revisarDadosPedido() {
   if (marcado) marcado.focus();
 }
 
-// 201: só a fatura das contas (segura) → vai para ela; com a de domínios → links em nova aba; sem URL segura → aviso.
+// Bloco "Acompanhar pedido" (CIT-69): link para pedido.html#t=<token>, na mesma aba, e cópia da URL absoluta.
+function mostrarAcompanhamento(token) {
+  const link = document.getElementById('linkAcompanharPedido');
+  link.setAttribute('href', `pedido.html#t=${token}`);
+  document.getElementById('acompanharPedido').hidden = false;
+}
+
+async function copiarAcompanhamento() {
+  const link = document.getElementById('linkAcompanharPedido');
+  const botao = document.getElementById('btnCopiarAcompanhamento');
+  const url = link.href;   // absoluta
+  try {
+    await navigator.clipboard.writeText(url);
+    botao.querySelector('span').textContent = 'Link copiado';
+  } catch {
+    // Sem área de transferência: mostra a URL no próprio link e a seleciona para cópia manual.
+    link.textContent = url;
+    const selecao = window.getSelection();
+    if (selecao) selecao.selectAllChildren(link);
+  }
+}
+
+// 201 sem token (CIT-63): só a fatura das contas (segura) → vai para ela; com a de domínios → links em nova aba; sem
+// URL segura → aviso. Com token (CIT-69) não redireciona: painel com as faturas e, se o token for válido, o bloco
+// "Acompanhar pedido" em todos os ramos.
 function mostrarResultadoPedido(d) {
   const contas = d.faturas.find(f => f.tipo === 'contas');
   const dominios = d.faturas.find(f => f.tipo === 'dominios');
   const urlContas = contas ? urlFaturaSegura(contas.url) : null;
+  const comToken = d.token !== undefined;
   limparErroPedido();
+  if (typeof d.token === 'string' && PADRAO_TOKEN_PEDIDO.test(d.token)) mostrarAcompanhamento(d.token);
   if (d.aviso === 'fatura_pendente' || !urlContas) {
     document.getElementById('pedidoAviso').textContent =
       `Pedido recebido. Número do pedido: ${d.pedidoId}. Se não receber a fatura por e-mail, fale com ${CONTATO_COMERCIAL}.`;
     return;
   }
-  if (!dominios) {
+  if (!dominios && !comToken) {
     location.assign(urlContas);
     return;
   }
-  const urlDominios = urlFaturaSegura(dominios.url);
+  const urlDominios = dominios ? urlFaturaSegura(dominios.url) : null;
   const linkContas = document.getElementById('linkFaturaContas');
   const linkDominios = document.getElementById('linkFaturaDominios');
   linkContas.href = urlContas;
@@ -1292,9 +1319,10 @@ function mostrarResultadoPedido(d) {
   if (urlDominios) linkDominios.href = urlDominios;
   else linkDominios.removeAttribute('href');
   linkDominios.hidden = !urlDominios;
-  document.getElementById('pedidoFaturasTexto').textContent = urlDominios
-    ? `Pedido recebido (número ${d.pedidoId}). Abra as faturas abaixo para pagar.`
-    : `Pedido recebido (número ${d.pedidoId}). Abra a fatura das contas abaixo para pagar; a do domínio foi enviada para o seu e-mail.`;
+  let textoFaturas = `Pedido recebido (número ${d.pedidoId}). Abra a fatura das contas abaixo para pagar.`;
+  if (urlDominios) textoFaturas = `Pedido recebido (número ${d.pedidoId}). Abra as faturas abaixo para pagar.`;
+  else if (dominios) textoFaturas = `Pedido recebido (número ${d.pedidoId}). Abra a fatura das contas abaixo para pagar; a do domínio foi enviada para o seu e-mail.`;
+  document.getElementById('pedidoFaturasTexto').textContent = textoFaturas;
   document.getElementById('pedidoFaturas').hidden = false;
   linkContas.focus();
 }
@@ -1340,6 +1368,7 @@ document.getElementById('btnSubmitCadastro').addEventListener('click', () => sub
 document.getElementById('btnIrPagamento').addEventListener('click', () => enviarPedido());
 document.getElementById('btnPedidoRetry').addEventListener('click', () => enviarPedido());
 document.getElementById('btnPedidoRevisar').addEventListener('click', () => revisarDadosPedido());
+document.getElementById('btnCopiarAcompanhamento').addEventListener('click', () => copiarAcompanhamento());
 document.getElementById('btnOrcamentoRetry').addEventListener('click', () => tentarOrcamentoDeNovo());
 // aria-invalid posto por um 400 da API só sai quando o usuário mexe no próprio campo (digitando ou nos botões − / +).
 document.querySelectorAll('input[data-qtd-conta], input[data-addon]').forEach(el => {

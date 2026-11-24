@@ -20,6 +20,8 @@ const CSP_INDEX = "default-src 'self'; script-src 'self'; style-src 'self'; font
 const CSP_CHECKOUT = "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self' https://viacep.com.br; object-src 'none'; base-uri 'none'; form-action 'self'";
 // CIT-158: mesma política do index (sem API própria ainda; connect-src ganha a origem quando o painel chamar a API — ADR 0013 item 5).
 const CSP_LOGIN_PAINEL = CSP_INDEX;
+// CIT-69: pedido.html consulta só a própria origem (connect-src 'self'; revisar quando a API mudar de origem, #57) e não tem formulário.
+const CSP_PEDIDO = "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'";
 
 function lerFonte(nome) {
   return readFileSync(new URL(nome, RAIZ), 'utf8');
@@ -801,9 +803,9 @@ test.describe('CSP — login e painel', { tag: '@CIT-158' }, () => {
 // CIT-152: style-src sem 'unsafe-inline' — CSS de cada página em assets/<página>.css, e nenhum estilo inline em HTML nem em markup montado por script.
 // Ver .omc/plans/CIT-152.md ("Critérios de aceite" e "Testes por critério").
 
-const PAGINAS_152 = ['index.html', 'checkout.html', 'login.html', 'painel.html'];
-const CSP_POR_PAGINA_152 = { 'index.html': CSP_INDEX, 'checkout.html': CSP_CHECKOUT, 'login.html': CSP_LOGIN_PAINEL, 'painel.html': CSP_LOGIN_PAINEL };
-const FOLHA_DA_PAGINA = { 'index.html': 'landing', 'checkout.html': 'checkout', 'login.html': 'login', 'painel.html': 'painel' };
+const PAGINAS_152 = ['index.html', 'checkout.html', 'login.html', 'painel.html', 'pedido.html'];
+const CSP_POR_PAGINA_152 = { 'index.html': CSP_INDEX, 'checkout.html': CSP_CHECKOUT, 'login.html': CSP_LOGIN_PAINEL, 'painel.html': CSP_LOGIN_PAINEL, 'pedido.html': CSP_PEDIDO };
+const FOLHA_DA_PAGINA = { 'index.html': 'landing', 'checkout.html': 'checkout', 'login.html': 'login', 'painel.html': 'painel', 'pedido.html': 'pedido' };
 const SCRIPTS_152 = readdirSync(new URL('assets/', RAIZ)).filter(n => n.endsWith('.js')).map(n => `assets/${n}`);
 
 /** Estilo inline proibido (CA1): <style>, atributo style= dentro de uma tag (HTML ou string/template JS;
@@ -874,7 +876,7 @@ test.describe('CSP sem estilo inline', { tag: '@CIT-152' }, () => {
     });
 
     test('CA7 toda referência a assets/(landing|checkout|login|painel).css tem ?v=<número>', () => {
-      const RE_FOLHA = /assets\/(landing|checkout|login|painel)\.css[^"'`\s)>]*/g;
+      const RE_FOLHA = /assets\/(landing|checkout|login|painel|pedido)\.css[^"'`\s)>]*/g;
       const referencias = [...PAGINAS_152, 'assets/checkout.js']
         .flatMap(arquivo => [...lerFonte(arquivo).matchAll(RE_FOLHA)].map(m => ({ arquivo, ref: m[0], folha: m[1] })));
       // cada página referencia a própria folha (o pop-up do boleto saiu na CIT-63)

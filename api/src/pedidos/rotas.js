@@ -3,9 +3,13 @@
 // `dominio.nome`, mais `dominios_extras`, `cliente`, `chave_idempotencia`,
 // `versao_tabela`, `total_exibido_centavos` e `aceite` (CIT-62); todo objeto é fechado
 // (campo de cartão → 400).
+// POST /api/pedidos/status (ADR 0016; CIT-69): consulta pelo token de acompanhamento, só
+// com o pool; responde mesmo sem adaptador do Asaas (fora do 503).
 import { criarCorpoOrcamento } from '../precos/rotas.js'
 import { LIMITES } from '../precos/tabela.js'
+import { buscarStatusPorToken } from './repositorio.js'
 import { AVISO_FATURA_PENDENTE, criarServicoPedidos } from './servico.js'
+import { hashDoToken, tokenValido } from './token.js'
 
 function objetoFechado(properties, required = Object.keys(properties)) {
   return { type: 'object', additionalProperties: false, required, properties }
@@ -62,8 +66,9 @@ const respostas = {
         url: { type: ['string', 'null'] }
       })
     },
-    aviso: { type: 'string', enum: [AVISO_FATURA_PENDENTE] }
-  }, ['pedidoId', 'estado', 'faturas']),
+    aviso: { type: 'string', enum: [AVISO_FATURA_PENDENTE] },
+    token: tipoTexto
+  }, ['pedidoId', 'estado', 'faturas', 'token']),
   409: objetoFechado({
     erro: tipoTexto,
     total_centavos: { type: 'integer' },
@@ -77,7 +82,76 @@ const respostas = {
   504: respostaAsaas
 }
 
+// Estado → etapa exposta (ADR 0016): o estado cru nunca sai na resposta.
+const ETAPAS = {
+  criando: 'aguardando_confirmacao',
+  aguardando_pagamento: 'aguardando_confirmacao',
+  aguardando_pagamento_do_dominio: 'dominio_pendente',
+  aguardando_registro_de_dominio: 'registro_dominio',
+  pago: 'ativando',
+  falha_no_provisionamento: 'ativando',
+  ativo: 'ativo',
+  falhou_na_criacao: 'erro_criacao',
+  cancelado: 'cancelado'
+}
+const ETAPA_DESCONHECIDA = 'em_analise'
+
+// Corpo fechado; token fora do padrão responde o mesmo 404 do inexistente.
+export const corpoStatus = objetoFechado({ token: { type: 'string', maxLength: 128 } })
+
+const respostasStatus = {
+  200: objetoFechado({
+    etapa: { type: 'string', enum: [...new Set([...Object.values(ETAPAS), ETAPA_DESCONHECIDA])] },
+    dominioNovo: { type: 'boolean' },
+    faturaContasUrl: tipoTexto,
+    faturaDominioUrl: tipoTexto
+  }, ['etapa', 'dominioNovo']),
+  404: respostaErro
+}
+
+// Mesma regra de `urlFaturaSegura` do checkout: `https:`, host exato do Asaas, sem porta
+// nem credenciais. null se a URL não passa.
+const HOSTS_FATURA = ['www.asaas.com', 'sandbox.asaas.com']
+export function urlFaturaSegura(url) {
+  if (typeof url !== 'string') return null
+  let u
+  try {
+    u = new URL(url)
+  } catch {
+    return null
+  }
+  if (u.protocol !== 'https:' || !HOSTS_FATURA.includes(u.hostname) || u.port !== '' || u.username !== '' ||
+      u.password !== '') return null
+  return u.href
+}
+
+// Lista branca (ADR 0016): etapa, domínio novo e as URLs das faturas em aberto, nunca com
+// fatura retida. Sem id, nome, e-mail, domínio, valores nem datas.
+function corpoDoStatus(linha) {
+  const etapa = ETAPAS[linha.estado] ?? ETAPA_DESCONHECIDA
+  const corpo = { etapa, dominioNovo: linha.dominio_novo }
+  if (linha.fatura_retida) return corpo
+  const urlContas = etapa === 'aguardando_confirmacao' ? urlFaturaSegura(linha.url_contas) : null
+  const dominioEmAberto = etapa === 'dominio_pendente' ||
+    (etapa === 'aguardando_confirmacao' && linha.dominio_novo && linha.dominio_em_aberto)
+  const urlDominio = dominioEmAberto ? urlFaturaSegura(linha.url_dominios) : null
+  if (urlContas) corpo.faturaContasUrl = urlContas
+  if (urlDominio) corpo.faturaDominioUrl = urlDominio
+  return corpo
+}
+
+const NAO_ENCONTRADO = { erro: 'nao_encontrado' }
+
 export default async function rotasPedidos(app, opcoes) {
+  // Antes do ramo do 503: só o pool. O token vai no corpo, que não é logado (ADR 0013).
+  app.post('/pedidos/status', { schema: { body: corpoStatus, response: respostasStatus } }, async (request, reply) => {
+    reply.header('cache-control', 'no-store').header('referrer-policy', 'no-referrer')
+    const { token } = request.body
+    const linha = tokenValido(token) ? await buscarStatusPorToken(app.banco, hashDoToken(token)) : null
+    if (!linha) return reply.code(404).send(NAO_ENCONTRADO)
+    return reply.code(200).send(corpoDoStatus(linha))
+  })
+
   const {
     asaas, asaasTimeoutMs, agora, versaoTabela, versaoTermos, versaoPrivacidade, prazoPedidoMs, prazoCriandoMs
   } = opcoes
@@ -94,6 +168,8 @@ export default async function rotasPedidos(app, opcoes) {
     const { status, corpo } = await servico.criarPedido(request.body, {
       log: request.log, requestId: request.id, ip: request.ip
     })
+    // O 201 leva o token de acompanhamento (ADR 0016): nada de cache intermediário.
+    if (status === 201) reply.header('cache-control', 'no-store')
     return reply.code(status).send(corpo)
   })
 }

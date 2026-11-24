@@ -663,9 +663,9 @@ test.describe('checkout-orcamento — CA10: falha legível em 320, 375 e 1280 px
 /* ---------------- CA11: sem regressão (estático; as specs existentes rodam à parte) ---------------- */
 
 test.describe('checkout-orcamento — CA11: versões dos recursos', { tag: '@CIT-176' }, () => {
-  test('CA11 checkout.html referencia checkout.js?v=9 e checkout.css?v=5', async () => {
+  test('CA11 checkout.html referencia checkout.js?v=10 e checkout.css?v=6', async () => {
     const html = readFileSync(new URL('../checkout.html', import.meta.url), 'utf8');
-    expect(html).toContain('assets/checkout.js?v=9');
-    expect(html).toContain('assets/checkout.css?v=5');
+    expect(html).toContain('assets/checkout.js?v=10');
+    expect(html).toContain('assets/checkout.css?v=6');
   });
 });

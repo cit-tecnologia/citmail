@@ -10,7 +10,8 @@ import { test, expect } from './fixtures.js';
 const RAIZ = new URL('../', import.meta.url);
 const PAGINAS = ['index.html', 'checkout.html'];
 // CIT-156: login e painel trocam o Google Fonts por assets/fonts.css. Ver .omc/plans/CIT-156.md.
-const PAGINAS_CIT156 = ['login.html', 'painel.html'];
+// CIT-69: pedido.html segue o mesmo contrato (fontes locais, sem Google Fonts, sem rolagem horizontal).
+const PAGINAS_CIT156 = ['login.html', 'painel.html', 'pedido.html'];
 
 /** Lê um arquivo do disco (não do Vite: um fetch de .css sem Accept: text/css volta como módulo JS). */
 function lerDoDisco(nome) {
@@ -55,6 +56,7 @@ const FALLBACK_CONHECIDO_POR_PAGINA = {
   'checkout.html': ['→'],
   'login.html': ['≤'],
   'painel.html': ['≤'],
+  'pedido.html': [],
 };
 
 /** "U+0000-00FF, U+0131, ..." -> [[0, 255], [0x131, 0x131], ...] */
@@ -160,7 +162,7 @@ test.describe('CA1 — sem Google Fonts', { tag: '@CIT-52' }, () => {
   }
 });
 
-test.describe('CA1 — sem Google Fonts (login e painel)', { tag: '@CIT-156' }, () => {
+test.describe('CA1 — sem Google Fonts (login, painel e pedido)', { tag: ['@CIT-156', '@CIT-69'] }, () => {
   for (const arquivo of PAGINAS_CIT156) {
     test(`CIT-156 CA1 ${arquivo}: nenhuma requisição nem referência a host do Google Fonts; assets/fonts.css antes de assets/tokens.css`, async ({ page, erros }) => {
       const requisicoesGoogle = [];
@@ -280,7 +282,7 @@ test.describe('CA2 — fontes locais aplicadas (login e painel)', { tag: '@CIT-1
 // textContent original incluía comentários/código desses nós, como o "→" de login.html dentro de um
 // comentário de <script>, que nunca aparece na tela) e a lista de exceções vira por página — "≤" de
 // login/painel não entra na lista de landing/checkout, e vice-versa (prova pela mutação 3 do plano).
-test.describe('CA3 — glifos (texto visível, sem script/style/template)', { tag: ['@CIT-52', '@CIT-156'] }, () => {
+test.describe('CA3 — glifos (texto visível, sem script/style/template)', { tag: ['@CIT-52', '@CIT-156', '@CIT-69'] }, () => {
   // O texto visível não depende de viewport: roda só no perfil desktop (como o CA5 faz, invertido).
   test.beforeEach(({}, testInfo) => {
     test.skip(testInfo.project.name !== 'desktop', 'glifos não dependem de viewport: roda só no perfil desktop');
@@ -455,7 +457,7 @@ test.describe('CA5 — mobile e estabilidade', { tag: '@CIT-52' }, () => {
 
 // CIT-156: premissa (sem rolagem horizontal pré-existente a 320/375px) já medida OK no develop pelo
 // orquestrador antes desta spec (plano, passo 1) — login e painel entram no loop sem exclusão.
-test.describe('CA5 — mobile (login e painel)', { tag: '@CIT-156' }, () => {
+test.describe('CA5 — mobile (login, painel e pedido)', { tag: ['@CIT-156', '@CIT-69'] }, () => {
   test.beforeEach(({}, testInfo) => {
     test.skip(testInfo.project.name !== 'mobile', 'CA5 só se aplica ao perfil mobile');
   });

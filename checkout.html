@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="assets/fonts.css" />
   <link rel="stylesheet" href="assets/tokens.css" />
 
-  <link rel="stylesheet" href="assets/checkout.css?v=5" />
+  <link rel="stylesheet" href="assets/checkout.css?v=6" />
 </head>
 
 <body>
@@ -675,6 +675,17 @@
           </a>
         </div>
 
+        <!-- CIT-69: fora das regiões role="status"; o JS mostra com um token válido no 201. -->
+        <div class="acompanhar-pedido" id="acompanharPedido" hidden>
+          <p class="acompanhar-pedido-texto">Guarde este link para acompanhar o pedido.</p>
+          <div class="acompanhar-pedido-acoes">
+            <a class="btn btn-outline" id="linkAcompanharPedido">Acompanhar pedido</a>
+            <button class="btn btn-outline" id="btnCopiarAcompanhamento" type="button">
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#copy"></use></svg> <span>Copiar link</span>
+            </button>
+          </div>
+        </div>
+
         <div class="btn-row">
           <button class="btn btn-primary" id="btnIrPagamento" type="button" hidden>
             <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg> Ir para pagamento
@@ -755,7 +766,7 @@
   </div><!-- /checkout-wrapper -->
 
   <script src="assets/precos.js?v=26"></script>
-  <script src="assets/checkout.js?v=9"></script>
+  <script src="assets/checkout.js?v=10"></script>
 
 </body>
 </html>

@@ -65,6 +65,7 @@ Data: 2026-09-25
 | 0013 | [0013-seguranca-transversal-e-observabilidade.md](0013-seguranca-transversal-e-observabilidade.md) | Segurança transversal e observabilidade | aceito | 2026-09-25 |
 | 0014 | [0014-criacao-do-pedido-no-asaas.md](0014-criacao-do-pedido-no-asaas.md) | Criação do pedido no Asaas | proposto | 2026-11-23 |
 | 0015 | [0015-webhook-do-asaas.md](0015-webhook-do-asaas.md) | Webhook do Asaas | proposto | 2026-11-23 |
+| 0016 | [0016-status-do-pedido-por-token.md](0016-status-do-pedido-por-token.md) | Status do pedido por token | proposto | 2026-11-24 |
 
 Hoje nenhum ADR está `aceito`: todos têm alguma parte proposta. Passam a `aceito` quando o responsável confirmar o que falta.
 

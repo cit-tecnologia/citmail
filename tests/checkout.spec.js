@@ -2306,10 +2306,10 @@ test.describe('checkout — CIT-51: aceite', { tag: '@CIT-51' }, () => {
     expect(externas).toEqual([]);
   });
 
-  test('CA3 checkout mantém checkout.css?v=5 e checkout.js?v=9', async ({ erros }) => {
+  test('CA3 checkout mantém checkout.css?v=6 e checkout.js?v=10', async ({ erros }) => {
     const html = readFileSync(new URL('../checkout.html', import.meta.url), 'utf8');
-    expect(html).toContain('assets/checkout.css?v=5');
-    expect(html).toContain('assets/checkout.js?v=9');
+    expect(html).toContain('assets/checkout.css?v=6');
+    expect(html).toContain('assets/checkout.js?v=10');
   });
 });
 
