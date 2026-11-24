@@ -774,3 +774,50 @@ test('CIT-77 CA4: carregarConfigBanco sem DATABASE_URL lança erro citando o nom
 test('CIT-77 CA4: carregarConfigBanco com DATABASE_URL só de espaços lança erro', () => {
   assert.throws(() => carregarConfigBanco({ DATABASE_URL: '   ', NODE_ENV: 'development' }), /DATABASE_URL não definida/);
 });
+
+// CIT-70 (CA9): login do painel. Desligado em produção por padrão; ligado lá, exige
+// REDIS_URL e PAINEL_ORIGENS; PAINEL_ORIGENS é subconjunto exato de CORS_ORIGENS.
+const AMBIENTE_PAINEL = {
+  CORS_ORIGENS: 'http://127.0.0.1:4200,https://painel.exemplo.test',
+  PAINEL_ORIGENS: 'https://painel.exemplo.test',
+  REDIS_URL: 'redis://127.0.0.1:56379',
+};
+
+test('CA9 (CIT-70): PAINEL_HABILITADO desligada por padrão em produção e ligada fora dela', { tag: '@CIT-70' }, () => {
+  assert.equal(carregarConfig(AMBIENTE_PRODUCAO).painelHabilitado, false);
+  assert.equal(carregarConfig(AMBIENTE_BASE).painelHabilitado, true);
+  assert.equal(carregarConfig({ ...AMBIENTE_BASE, PAINEL_HABILITADO: 'false' }).painelHabilitado, false);
+  assert.deepEqual(carregarConfig(AMBIENTE_BASE).painelOrigens, []);
+  assert.throws(() => carregarConfig({ ...AMBIENTE_BASE, PAINEL_HABILITADO: 'sim' }), /PAINEL_HABILITADO inválida/);
+});
+
+test('CA9 (CIT-70): produção com o painel ligado e tudo definido sobe', { tag: '@CIT-70' }, () => {
+  const config = carregarConfig({ ...AMBIENTE_PRODUCAO, ...AMBIENTE_PAINEL, PAINEL_HABILITADO: 'true' });
+  assert.equal(config.painelHabilitado, true);
+  assert.deepEqual(config.painelOrigens, ['https://painel.exemplo.test']);
+});
+
+test('CA9 (CIT-70): produção com o painel ligado sem REDIS_URL ou sem PAINEL_ORIGENS lança', { tag: '@CIT-70' }, () => {
+  const { REDIS_URL: _r, ...semRedis } = AMBIENTE_PAINEL;
+  const { PAINEL_ORIGENS: _p, ...semOrigens } = AMBIENTE_PAINEL;
+  assert.throws(
+    () => carregarConfig({ ...AMBIENTE_PRODUCAO, ...semRedis, PAINEL_HABILITADO: 'true' }),
+    /^Error: REDIS_URL não definida/,
+  );
+  assert.throws(
+    () => carregarConfig({ ...AMBIENTE_PRODUCAO, ...semOrigens, PAINEL_HABILITADO: 'true' }),
+    /^Error: PAINEL_ORIGENS vazia/,
+  );
+  // Desligado em produção, nenhuma das duas é exigida.
+  assert.equal(carregarConfig({ ...AMBIENTE_PRODUCAO, ...semRedis, ...semOrigens }).painelHabilitado, false);
+});
+
+test('CA9 (CIT-70): PAINEL_ORIGENS fora de CORS_ORIGENS, com curinga ou não exata lança', { tag: '@CIT-70' }, () => {
+  for (const PAINEL_ORIGENS of ['https://outra.exemplo.test', '*', 'https://painel.exemplo.test/']) {
+    assert.throws(
+      () => carregarConfig({ ...AMBIENTE_BASE, ...AMBIENTE_PAINEL, PAINEL_ORIGENS }),
+      /PAINEL_ORIGENS/,
+      PAINEL_ORIGENS,
+    );
+  }
+});

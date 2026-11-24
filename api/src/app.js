@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
+import cookie from '@fastify/cookie'
 import AjvCompiler from '@fastify/ajv-compiler'
 import { criarPool } from './banco.js'
 import { registrarErros } from './erros.js'
@@ -13,6 +14,8 @@ import rotasWebhookAsaas from './asaas/webhook-rotas.js'
 import { caminhosMascarados, LogCitmail, serializadores } from './log.js'
 import { criarConexaoProdutor } from './fila/conexao.js'
 import { criarFilas } from './fila/filas.js'
+import rotasPainel from './painel/rotas.js'
+import { criarSessoes } from './painel/sessoes.js'
 
 // ADR 0003: toda rota que recebe corpo declara `schema.body`. Exceções, se
 // houver, entram aqui como 'MÉTODO /caminho' com o motivo ao lado.
@@ -34,7 +37,9 @@ function construirValidador(externos, opcoesAjv) {
 // `asaas`: adaptador injetado (testes), com prioridade sobre o criado pela chave.
 // `pedidos`: opções do serviço de pedidos para os testes (`agora`, `versaoTabela`,
 // `versaoTermos`, `versaoPrivacidade`, `prazoPedidoMs`, `prazoCriandoMs`).
-export function construirApp(config, { pool, logStream, filas, asaas, pedidos } = {}) {
+// `painel` (CIT-70, testes): `sessoes` (de `criarSessoes`, de quem a criou), `agora`,
+// `hash` (`{ verificar }`) e `auditoria` (função no lugar de `registrarAuditoria`).
+export function construirApp(config, { pool, logStream, filas, asaas, pedidos, painel = {} } = {}) {
   const origens = config?.corsOrigens
   if (!Array.isArray(origens) || origens.length === 0 || origens.some((o) => !o || o.includes('*'))) {
     throw new Error('CORS_ORIGENS inválida: informe a lista exata de origens permitidas')
@@ -83,13 +88,18 @@ export function construirApp(config, { pool, logStream, filas, asaas, pedidos } 
     request.log.info({ req: request }, 'request aborted')
   })
 
+  // O POST com JSON faz preflight; sem cache, o polling da página de status (CIT-69) o repetiria a cada consulta.
+  const corsBase = { methods: ['GET', 'POST'], allowedHeaders: ['Content-Type'], maxAge: 600 }
+  // ADR 0007/0008 (CIT-70): com credenciais só em `/api/painel/*` e só para `PAINEL_ORIGENS`.
+  const corsPainel = { ...corsBase, origin: config.painelOrigens ?? [], credentials: true }
+  const corsPublico = { ...corsBase, origin: origens, credentials: false }
+  // Origem fora de `PAINEL_ORIGENS` no painel: sem CORS (nem `allow-credentials`).
+  const semCors = { origin: false }
   app.register(cors, {
-    origin: origens,
-    methods: ['GET', 'POST'],
-    allowedHeaders: ['Content-Type'],
-    credentials: false,
-    // O POST com JSON faz preflight; sem cache, o polling da página de status (CIT-69) o repetiria a cada consulta.
-    maxAge: 600
+    delegator: (request, callback) => {
+      if (!String(request.url).startsWith('/api/painel/')) return callback(null, corsPublico)
+      callback(null, corsPainel.origin.includes(request.headers.origin) ? corsPainel : semCors)
+    }
   })
 
   registrarErros(app)
@@ -112,6 +122,28 @@ export function construirApp(config, { pool, logStream, filas, asaas, pedidos } 
   // Sem token (só fora de produção; `carregarConfig` o exige lá), responde 503.
   if (config.webhookAsaasHabilitado ?? config.nodeEnv !== 'production') {
     app.register(rotasWebhookAsaas, { prefix: '/api', token: config.asaasWebhookToken })
+  }
+  // ADR 0008 (CIT-70): mesmo padrão; desligada, as rotas não são registradas (404). Sem
+  // `REDIS_URL` (só fora de produção; `carregarConfig` a exige lá), respondem 503.
+  if (config.painelHabilitado ?? config.nodeEnv !== 'production') {
+    app.register(cookie)
+    let sessoes = painel.sessoes
+    if (!sessoes && config.redisUrl) {
+      const redis = criarConexaoProdutor(config.redisUrl)
+      // Só o código: a mensagem pode trazer host e porta.
+      redis.on('error', (erro) => app.log.warn({ codigo: erro.code ?? 'desconhecido' }, 'erro na conexão de sessões'))
+      sessoes = criarSessoes({ redis, prefixo: config.filaPrefixo ?? 'citmail', agora: painel.agora })
+      app.addHook('onClose', async () => {
+        redis.disconnect()
+      })
+    }
+    app.register(rotasPainel, {
+      prefix: '/api',
+      origens: config.painelOrigens ?? [],
+      sessoes,
+      hash: painel.hash,
+      auditoria: painel.auditoria
+    })
   }
   // A guarda de produção vem antes de qualquer fila: lá a rota de exemplo não existe,
   // nem com `filas` injetado. Fora de produção, `filas` injetado é de quem o criou

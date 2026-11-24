@@ -17,7 +17,7 @@ api/
   src/
     config.js         lê e valida as variáveis de ambiente por processo (carregarConfig da API, carregarConfigWorker, carregarConfigFila da CLI)
     banco.js           pool do PostgreSQL (pg) e checagem de saúde (verificarBanco)
-    app.js             fábrica construirApp(config, { pool, logStream, filas, asaas, pedidos }): Fastify, CORS, log, validação e erros
+    app.js             fábrica construirApp(config, { pool, logStream, filas, asaas, pedidos, painel }): Fastify, CORS (com credenciais só em /api/painel/*), cookie, log, validação e erros
     log.js             log técnico: lista de campos mascarados, serializers, LogCitmail (linha única por requisição) e criarLogger (worker)
     erros.js           tratamento padronizado de erro (400 por campo, 404, 500) e ErroDeDominio
     servidor.js        ponto de entrada da API: carrega a config, sobe o Fastify, encerra em SIGTERM/SIGINT
@@ -38,7 +38,8 @@ api/
     asaas/webhook-processamento.js enfileirador (iniciarEnfileiradorWebhook) e handler do job asaas_webhook (criarHandlerWebhook): conferência, matriz de status, pedido, conta do titular e eventos
     asaas/webhook-repositorio.js acesso a asaas_webhook_evento e às leituras de pedido e assinatura do processamento
     email/              e-mail transacional (ADR 0010; sem rota): servico.js (solicitarEmail, handler do job email_enviar, ErroEmail e classificação do erro SMTP), enfileirador.js (iniciarEnfileiradorEmail e alerta email_parado), transporte.js (nodemailer ou desligado), html.js (tagged templates html e texto, limparLinha), mascara.js (mascararEmail), repositorio.js (email_envio), modelos/ (registro e modelos; teste_exemplo só fora de produção)
-    contas/repositorio.js conta_titular: inserirContaSeNova e buscarContaPorClienteOuEmail
+    contas/repositorio.js conta_titular: inserirContaSeNova, buscarContaPorClienteOuEmail, buscarContaParaLogin e buscarContaPorId
+    painel/             login do painel (ADR 0008; CIT-70): rotas.js (POST /api/painel/login, POST /api/painel/logout, GET /api/painel/sessao), sessoes.js (sessão no Redis, prazos de 30 min e 8 h), senha.js (Argon2id e hash falso)
     pedidos/            POST /api/pedidos (ADR 0014) e POST /api/pedidos/status (ADR 0016): rotas.js (schema a partir do orçamento; consulta do status em lista branca), servico.js (fluxo de criação, idempotência, retomada e compensação), repositorio.js, token.js (token de acompanhamento e hash), documento.js (CPF e CNPJ, inclusive alfanumérico), dominio.js (mesmas regras de assets/checkout.js)
     eventos/            eventos de domínio pelo outbox (sem rota): servico.js (registrarEvento), publicador.js (publicarPendentes, iniciarPublicador), consumidores.js (registro, processarEvento, criarHandlersDeConsumidores), repositorio.js, vocabulario.js (12 nomes)
     auditoria/          trilha de auditoria (só serviço e repositório, sem rota): servico.js (registrarAuditoria), repositorio.js (INSERT), vocabulario.js (ações, autores, alvos, resultados e chaves proibidas)
@@ -127,7 +128,7 @@ Fila e alertas (ADRs 0005 e 0011). Cada processo exige só o que usa: a API (`np
 
 | Variável | API | Worker | CLI | Uso | Padrão |
 |---|---|---|---|---|---|
-| `REDIS_URL` | opcional | obrigatória | obrigatória | Conexão com o Redis da fila. Sem ela, a API sobe sem fila e sem `POST /api/exemplos/job`. A API não usa o Redis em produção: o webhook do Asaas só grava no banco, e quem enfileira é o worker (CIT-64). Nunca vai para o log. | sem padrão |
+| `REDIS_URL` | opcional | obrigatória | obrigatória | Conexão com o Redis da fila. Sem ela, a API sobe sem fila, sem `POST /api/exemplos/job` e com as rotas do painel em 503. Em produção, a API só usa o Redis para a sessão do painel, com `PAINEL_HABILITADO` (aí ela é obrigatória); o webhook do Asaas só grava no banco, e quem enfileira é o worker (CIT-64). Nunca vai para o log. | sem padrão |
 | `FILA_PREFIXO` | lida | lida | lida | Prefixo das chaves no Redis; separa ambientes no mesmo Redis (ADR 0006). Só letras minúsculas, dígitos e hífen. | `citmail` |
 | `FILA_TENTATIVAS` | lida | lida | lida | Tentativas por job (inteiro de 1 a 20). | `8` |
 | `FILA_BACKOFF_MS` | lida | lida | lida | Espera antes da 2ª tentativa, em ms (inteiro de 1 a 3600000); dobra a cada tentativa (exponencial: com os padrões, cerca de 2 h até esgotar). | `60000` |
@@ -156,6 +157,22 @@ Webhook do Asaas ([ADR 0015](../docs/adr/0015-webhook-do-asaas.md); CIT-64). Nen
 | `WEBHOOK_ASAAS_HABILITADO` | lida | lida | `true` ou `false` (outro valor impede a subida). Desligada, a API não registra `POST /api/asaas/webhook` (404) e o worker não registra o handler `asaas_webhook` nem inicia o enfileirador. | `false` em produção; `true` fora dela |
 | `ASAAS_WEBHOOK_TOKEN` | obrigatória em produção com a flag | não lê | Token que o Asaas envia no cabeçalho `asaas-access-token`. Segredo: só no ambiente da API. Em produção, com a flag ligada, ao menos 32 caracteres, senão a API não sobe; fora de produção, sem ele, a rota responde 503 `webhook_indisponivel`. | sem padrão |
 | `ASAAS_API_KEY`, `ASAAS_BASE_URL`, `ASAAS_TIMEOUT_MS` | ver acima | lidas com a flag | Com a flag ligada, o worker as lê com a mesma validação da API (chave e URL obrigatórias em produção) para conferir o pagamento (`GET /payments/{id}`). Fora de produção, sem chave, o handler lança e o bruto fica para reenvio. | ver acima |
+
+Login do painel ([ADR 0008](../docs/adr/0008-sessao-do-painel-e-senhas.md); CIT-70). Só a API lê.
+
+| Variável | Uso | Padrão |
+|---|---|---|
+| `PAINEL_HABILITADO` | `true` ou `false` (outro valor impede a subida). Desligada, `/api/painel/login`, `/api/painel/logout` e `/api/painel/sessao` não são registradas (404). Ligada em produção, `REDIS_URL` e `PAINEL_ORIGENS` são obrigatórias; fora de produção, sem `REDIS_URL`, as rotas respondem 503 `sessao_indisponivel`. **Só ligar em produção depois do limite de taxa (E6-H4, ADR 0013)**: cada tentativa usa 19 MiB de memória no Argon2id. | `false` em produção; `true` fora dela |
+| `PAINEL_ORIGENS` | Origens do painel, separadas por vírgula, com a mesma regra de `CORS_ORIGENS` e contidas nela. Só elas recebem `access-control-allow-credentials` em `/api/painel/*` e são aceitas no `Origin` do login e do logout (senão 403 `origem_recusada`). | vazia (login e logout sempre 403) |
+
+As chaves da sessão usam o prefixo `FILA_PREFIXO` (`<prefixo>:sessao:<sha256 do id>` e `<prefixo>:sessoes:conta:<contaId>`).
+
+## Painel
+
+- `POST /api/painel/login` `{ email, senha }` (corpo fechado; `email` 3..254, `senha` 1..1024): 204 com `Set-Cookie: __Host-citmail_sessao=<id>; Path=/; HttpOnly; Secure; SameSite=Lax` (sem `Domain`, `Max-Age` nem `Expires`); 401 `credenciais_invalidas` para e-mail inexistente, senha errada, conta `sem_senha`, `suspensa` ou `cancelada` e falha ao gravar a sessão (sempre uma verificação Argon2id, com hash falso quando não há conta ativa); 400 do schema; 403 `origem_recusada`; 503 `sessao_indisponivel`. Login com cookie anterior apaga a sessão anterior. Audita `login` e `login_falhou` (sem e-mail).
+- `POST /api/painel/logout` `{}`: 204 com o cookie expirado (`Max-Age=0`), com ou sem sessão, mesmo se a remoção no Redis falhar (logada); 403 sem `Origin` do painel; 503 com o Redis fora.
+- `GET /api/painel/sessao` (sem exigência de `Origin`): 200 `{ email }` e renova a sessão (só `SET XX`: um logout concorrente não é desfeito); 401 `sem_sessao` sem cookie, sessão vencida (30 min sem uso ou 8 h desde o login, conferidos também na leitura) ou conta que deixou de ser `ativa` (a sessão é apagada); 503 com o Redis fora.
+- Toda resposta de `/api/painel/*` leva `Cache-Control: no-store`. Ordem no login: `Origin` (403) → Redis pronto (503) → conta → Argon2id → sessão.
 
 ## Logs
 

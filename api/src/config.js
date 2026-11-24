@@ -211,9 +211,43 @@ function lerEmail(env, nodeEnv) {
   }
 }
 
-// Configuração da API. `REDIS_URL` é opcional: sem ela não há fila nem rota de exemplo
-// de job. A API não usa o Redis em produção: o webhook do Asaas (CIT-64) só grava no
-// banco, e quem enfileira é o worker. Não lê Telegram. `termosMinuta` e
+// Lista de origens exatas separadas por vírgula (CORS_ORIGENS e PAINEL_ORIGENS); vazia é permitido aqui.
+function lerOrigens(env, nome) {
+  const origens = (env[nome] ?? '')
+    .split(',')
+    .map((origem) => origem.trim())
+    .filter(Boolean)
+  if (origens.some((origem) => origem.includes('*'))) {
+    throw new Error(`${nome} não aceita curinga (*): informe as origens exatas`)
+  }
+  if (!origens.every(origemExata)) {
+    throw new Error(`${nome} inválida: cada item deve ser uma origem exata (esquema://host[:porta], sem caminho nem barra final)`)
+  }
+  return origens
+}
+
+// Login do painel (ADR 0008; CIT-70). Nasce desligado em produção e ligado fora dela.
+// Ligado em produção, `REDIS_URL` (sessões) e `PAINEL_ORIGENS` são obrigatórias; fora
+// dela, sem `REDIS_URL` as rotas respondem 503. `PAINEL_ORIGENS` (origens com cookie e
+// as únicas aceitas no `Origin` do login e do logout) é subconjunto de `CORS_ORIGENS`.
+function lerPainel(env, nodeEnv, corsOrigens, redisUrl) {
+  const producao = nodeEnv === 'production'
+  const painelHabilitado = lerBooleano(env, 'PAINEL_HABILITADO', !producao)
+  const painelOrigens = lerOrigens(env, 'PAINEL_ORIGENS')
+  if (!painelOrigens.every((origem) => corsOrigens.includes(origem))) {
+    throw new Error('PAINEL_ORIGENS inválida: cada origem deve estar também em CORS_ORIGENS')
+  }
+  if (painelHabilitado && producao) {
+    if (!redisUrl) throw new Error('REDIS_URL não definida: obrigatória com PAINEL_HABILITADO em produção')
+    if (painelOrigens.length === 0) throw new Error('PAINEL_ORIGENS vazia: obrigatória com PAINEL_HABILITADO em produção')
+  }
+  return { painelHabilitado, painelOrigens }
+}
+
+// Configuração da API. `REDIS_URL` é opcional fora de produção: sem ela não há fila, rota
+// de exemplo de job nem sessão do painel (503). Em produção, a API só usa o Redis para a
+// sessão do painel (CIT-70), quando `PAINEL_HABILITADO` está ligada: o webhook do Asaas
+// (CIT-64) só grava no banco, e quem enfileira é o worker. Não lê Telegram. `termosMinuta` e
 // `privacidadeProvisoria` são injetáveis para os testes (padrão: as constantes de
 // pedidos/aceite.js).
 export function carregarConfig(
@@ -225,18 +259,9 @@ export function carregarConfig(
     throw new Error('DATABASE_URL não definida')
   }
 
-  const corsOrigens = (env.CORS_ORIGENS ?? '')
-    .split(',')
-    .map((origem) => origem.trim())
-    .filter(Boolean)
+  const corsOrigens = lerOrigens(env, 'CORS_ORIGENS')
   if (corsOrigens.length === 0) {
     throw new Error('CORS_ORIGENS vazia: informe a lista exata de origens permitidas')
-  }
-  if (corsOrigens.some((origem) => origem.includes('*'))) {
-    throw new Error('CORS_ORIGENS não aceita curinga (*): informe as origens exatas')
-  }
-  if (!corsOrigens.every(origemExata)) {
-    throw new Error('CORS_ORIGENS inválida: cada item deve ser uma origem exata (esquema://host[:porta], sem caminho nem barra final)')
   }
 
   const nodeEnv = lerNodeEnv(env)
@@ -246,6 +271,7 @@ export function carregarConfig(
     throw new Error('PORT inválida')
   }
 
+  const fila = lerFila(env)
   return {
     databaseUrl,
     host: env.HOST || '127.0.0.1',
@@ -253,9 +279,10 @@ export function carregarConfig(
     corsOrigens,
     logLevel: env.LOG_LEVEL || 'info',
     nodeEnv,
-    ...lerFila(env),
+    ...fila,
     ...lerAsaas(env, nodeEnv, termosMinuta, privacidadeProvisoria),
-    ...lerWebhook(env, nodeEnv)
+    ...lerWebhook(env, nodeEnv),
+    ...lerPainel(env, nodeEnv, corsOrigens, fila.redisUrl)
   }
 }
 
