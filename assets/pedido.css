@@ -1,0 +1,92 @@
+/* Estilos de pedido.html (CIT-69). Reaproveita landing.css (header, rodapé, botões, tipografia); só o que é próprio da página. */
+
+[hidden] { display: none !important; }
+
+.pedido-voltar { margin-left: auto; color: var(--white); border-color: rgba(255,255,255,.4); }
+.pedido-voltar:hover { background: rgba(255,255,255,.08); border-color: var(--white); }
+.pedido-footer-logo { display: inline-flex; align-items: center; text-decoration: none; }
+
+/* Coluna estreita do Brandbook, abaixo do header fixo (68px). */
+.pedido { padding: calc(68px + clamp(32px, 6vw, 64px)) 0 clamp(56px, 8vw, 96px); }
+.pedido-card {
+  max-width: var(--cit-container-narrow); margin: 0 auto;
+  display: flex; flex-direction: column; gap: var(--cit-space-6);
+}
+.pedido-card h1 { overflow-wrap: anywhere; }
+
+.pedido-status {
+  display: flex; flex-direction: column; gap: var(--cit-space-5);
+  padding: clamp(var(--cit-space-5), 4vw, var(--cit-space-8));
+  background: var(--cit-surface); border: var(--cit-border); border-radius: var(--cit-radius-lg);
+}
+
+/* Etapas: o JS marca cada <li> com data-estado="feito" | "atual"; sem atributo = pendente. */
+.pedido-passos {
+  list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--cit-space-2);
+  counter-reset: passo;
+}
+.pedido-passo {
+  counter-increment: passo;
+  display: flex; flex-direction: column; gap: var(--cit-space-2);
+  padding-top: var(--cit-space-3); border-top: var(--cit-border-width-strong) solid var(--cit-neutral-200);
+  font-size: var(--cit-text-small); font-weight: 500; color: var(--cit-text-muted);
+}
+.pedido-passo::before {
+  content: counter(passo);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: var(--cit-radius-full);
+  border: var(--cit-border-width) solid var(--cit-neutral-300);
+  font-size: var(--cit-text-caption); font-weight: 600; line-height: 1;
+}
+.pedido-passo[data-estado="atual"] { border-top-color: var(--cit-primary); color: var(--cit-text-primary); font-weight: 600; }
+.pedido-passo[data-estado="atual"]::before { background: var(--cit-primary); border-color: var(--cit-primary); color: var(--cit-on-primary); }
+.pedido-passo[data-estado="feito"] { border-top-color: var(--cit-success); color: var(--cit-success-strong); }
+.pedido-passo[data-estado="feito"]::before { content: "\2713"; background: var(--cit-success); border-color: var(--cit-success); color: #fff; }
+
+.pedido-etapa {
+  font-family: var(--cit-font-display); font-weight: 600; letter-spacing: var(--cit-tracking-heading);
+  font-size: clamp(1.25rem, 2.2vw, 1.5rem); line-height: var(--cit-leading-snug);
+  color: var(--cit-text-primary); overflow-wrap: anywhere;
+}
+
+.pedido-aviso-dominio {
+  padding: var(--cit-space-3) var(--cit-space-4);
+  background: var(--cit-warning-subtle); color: var(--cit-warning-strong);
+  border-left: var(--cit-border-width-strong) solid var(--cit-warning); border-radius: var(--cit-radius-sm);
+  font-size: var(--cit-text-small); overflow-wrap: anywhere;
+}
+
+.pedido-faturas { display: flex; flex-direction: column; gap: var(--cit-space-3); }
+.pedido-acao { min-height: 44px; height: auto; padding-top: 10px; padding-bottom: 10px; white-space: normal; text-align: center; }
+.pedido-atualizar { align-self: flex-start; }
+
+/* Alertas (padrão .alert do brandbook, como no checkout) */
+.pedido-alerta {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: var(--cit-space-3) var(--cit-space-4); border: 1px solid; border-radius: var(--cit-radius-md);
+  font-size: var(--cit-text-small); line-height: 1.5;
+}
+.pedido-alerta .icon { margin-top: 3px; flex-shrink: 0; }
+.pedido-alerta p, .pedido-alerta span { color: inherit; overflow-wrap: anywhere; }
+.pedido-alerta a { color: inherit; font-weight: 600; text-decoration: underline; }
+.pedido-alerta--aviso { background: var(--cit-warning-subtle); color: var(--cit-warning-strong); border-color: rgba(184,121,26,.28); }
+.pedido-alerta--erro { background: var(--cit-error-subtle); color: var(--cit-error-strong); border-color: rgba(192,57,43,.28); }
+.pedido-alerta--info { background: var(--cit-info-subtle); color: var(--cit-info-strong); border-color: var(--cit-blue-200); }
+
+.pedido-contato { font-size: var(--cit-text-small); color: var(--cit-text-secondary); overflow-wrap: anywhere; }
+.pedido-contato a { color: var(--cit-text-link); text-decoration: underline; font-weight: 600; }
+.pedido-contato a:hover { color: var(--cit-text-link-hover); }
+
+.pedido a:focus-visible, .pedido button:focus-visible { outline: none; box-shadow: var(--cit-focus-ring); }
+
+@media (max-width: 480px) {
+  .pedido-status { padding: var(--cit-space-4); }
+  .pedido-atualizar { align-self: stretch; }
+  .pedido-passo { font-size: var(--cit-text-caption); }
+}
+
+/* 320 px: logo (160) + "Voltar ao site" não cabem na linha do header. */
+@media (max-width: 360px) {
+  .pedido-voltar { padding: 0 var(--cit-space-2); font-size: var(--cit-text-caption); }
+  .nav-logo img { width: 128px; height: auto; }
+}

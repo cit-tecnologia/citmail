@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>Acompanhe seu pedido — CITMail</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/favicon-32.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/apple-touch-icon.png" />
+
+  <link rel="preload" href="assets/fonts/montserrat-700.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="assets/fonts.css" />
+  <link rel="stylesheet" href="assets/tokens.css" />
+
+  <link rel="stylesheet" href="assets/landing.css?v=2" />
+  <link rel="stylesheet" href="assets/pedido.css?v=1" />
+</head>
+
+<body>
+
+  <header id="header">
+    <div class="container">
+      <nav class="nav" id="nav" aria-label="Principal">
+        <a href="index.html" class="nav-logo" aria-label="CITMail">
+          <img src="assets/brand/citmail-horizontal-escuro.webp" alt="CITMail" width="160" height="36">
+        </a>
+        <a href="index.html" class="btn btn-outline btn-sm pedido-voltar">Voltar ao site</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="pedido">
+    <div class="container">
+      <div class="pedido-card">
+        <h1>Acompanhe seu pedido</h1>
+
+        <!-- Região viva: o JS troca só o texto de #statusEtapa e o hidden dos demais blocos. -->
+        <section id="statusPedido" class="pedido-status" aria-live="polite" aria-label="Situação do pedido" hidden>
+          <ol class="pedido-passos" id="statusPassos" aria-label="Etapas do pedido">
+            <li class="pedido-passo" data-passo="pagamento">Pagamento</li>
+            <li class="pedido-passo" data-passo="ativacao">Ativação</li>
+            <li class="pedido-passo" data-passo="pronto">Pronto</li>
+          </ol>
+
+          <p class="pedido-etapa" id="statusEtapa"></p>
+
+          <p class="pedido-aviso-dominio" id="statusDominio" hidden></p>
+
+          <div class="pedido-faturas" id="statusFaturas" hidden>
+            <a class="btn btn-primary pedido-acao" id="linkFaturaContas" target="_blank" rel="noopener noreferrer" hidden>Pagar fatura das contas de e-mail<span class="sr-only"> (abre em nova aba)</span><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#external-link"></use></svg></a>
+            <a class="btn btn-outline pedido-acao" id="linkFaturaDominio" target="_blank" rel="noopener noreferrer" hidden>Pagar fatura do domínio<span class="sr-only"> (abre em nova aba)</span><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#external-link"></use></svg></a>
+          </div>
+
+          <p class="pedido-alerta pedido-alerta--aviso" id="statusAviso" hidden>
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#triangle-alert"></use></svg>
+            <span>Não conseguimos atualizar agora.</span>
+          </p>
+
+          <p class="pedido-contato" id="statusContato" hidden>Dúvidas? Fale com a gente: <a href="mailto:comercial@citmail.com.br">comercial@citmail.com.br</a></p>
+
+          <button class="btn btn-outline pedido-acao pedido-atualizar" id="btnAtualizar" type="button" hidden>
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#refresh-cw"></use></svg> Atualizar
+          </button>
+        </section>
+
+        <!-- Estados sem consulta: link inválido, modo local e pedido não encontrado (o JS escolhe um). -->
+        <div class="pedido-alerta pedido-alerta--erro" id="statusInvalido" role="alert" hidden>
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-x"></use></svg>
+          <p>Link de acompanhamento inválido. Confira o endereço ou fale com <a href="mailto:comercial@citmail.com.br">comercial@citmail.com.br</a>.</p>
+        </div>
+
+        <div class="pedido-alerta pedido-alerta--info" id="statusIndisponivel" hidden>
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#info"></use></svg>
+          <p>Status indisponível por aqui; acompanhe pelo e-mail. Dúvidas: <a href="mailto:comercial@citmail.com.br">comercial@citmail.com.br</a>.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="index.html" class="pedido-footer-logo" aria-label="CITMail">
+            <img src="assets/brand/citmail-horizontal-escuro.webp" alt="CITMail" width="160" height="36">
+          </a>
+          <p>Infraestrutura de TI que faz sua empresa crescer com segurança.</p>
+        </div>
+        <div class="footer-col">
+          <h4>Produto</h4>
+          <ul>
+            <li><a href="index.html#features">Recursos</a></li>
+            <li><a href="index.html#pricing">Planos e Preços</a></li>
+            <li><a href="index.html#marketplace">Marketplace</a></li>
+            <li><a href="index.html#domain-search">Buscar Domínio</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Suporte</h4>
+          <ul>
+            <li><a href="index.html#faq">FAQ</a></li>
+            <li><a href="login.html">Painel do Cliente</a></li>
+            <li><a href="mailto:comercial@citmail.com.br">Contato</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>© 2026 CITMail · CIT TECNOLOGIA DA INFORMACAO LTDA - ME · CNPJ 22.080.376/0001-96</p>
+        <nav class="footer-legal" aria-label="Documentos legais">
+          <a href="termos.html">Termos de Uso</a>
+          <a href="https://privacidade.cittecnologia.com.br/" target="_blank" rel="noopener noreferrer">Política de Privacidade<span class="sr-only"> (abre em nova aba)</span><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#external-link"></use></svg></a>
+        </nav>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/pedido.js?v=1"></script>
+
+</body>
+</html>
