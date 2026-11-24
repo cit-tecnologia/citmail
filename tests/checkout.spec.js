@@ -241,9 +241,10 @@ const SELETORES_TIPO_SMALL_PASSO3 = [
 ];
 const SELETORES_TIPO_BODY_PASSO3 = ['.addon-name', '.addon-sub-val', '.addon-sec-nome', '.aviso-desconto-titulo'];
 // Exceções documentadas: alertas com explicação longa usam o corpo de leitura (16px), ver checkout.html.
+// `#pedidoAmbiguoAviso` é um span dentro de `#pedidoErro` e herda a tipografia dele.
 const EXCECOES_TIPO_BODY = [
   '#domainExistPanel .alert-box', '#avisoDominioNovo', '#revisaoAvisoDominio', '#avisoEmBreve', '#avisoEmBreveCadastro',
-  '#revisaoEmBreve', '#pedidoAmbiguoAviso', '#pedidoErro', '#pedidoAviso',
+  '#revisaoEmBreve', '#pedidoErro', '#pedidoAviso',
 ];
 
 test.describe('checkout — ciclo de cobrança', { tag: '@CIT-15' }, () => {
