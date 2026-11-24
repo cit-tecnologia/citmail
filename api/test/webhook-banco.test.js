@@ -158,7 +158,7 @@ async function comBancoMigrado(corpo) {
 test('CA14: o down com linha em asaas_webhook_evento é recusado (P0001) e nada é removido', async () => {
   await comBancoMigrado(async (url, pool) => {
     await pool.query(INSERT_BRUTO, [`evt_${randomUUID()}`]);
-    await assert.rejects(aplicarMigracoes(url, 'down', 3), (erro) => {
+    await assert.rejects(aplicarMigracoes(url, 'down', 4), (erro) => {
       assert.match(erro.message, /webhook do asaas com registros: down recusado/);
       assert.equal(erro.code, 'P0001');
       return true;
@@ -178,7 +178,7 @@ test('CA14: o down com linha em conta_titular é recusado (P0001) e a coluna dom
        VALUES ('fisica', '52998224725', 'Fulana de Teste', 'fulana@exemplo.test', '11999990000') RETURNING id`
     );
     await pool.query("INSERT INTO conta_titular (cliente_id, email) VALUES ($1, 'a@exemplo.test')", [cliente.id]);
-    await assert.rejects(aplicarMigracoes(url, 'down', 3), (erro) => {
+    await assert.rejects(aplicarMigracoes(url, 'down', 4), (erro) => {
       assert.equal(erro.code, 'P0001');
       return true;
     });
@@ -198,7 +198,7 @@ test('CA14: o down com as tabelas vazias remove as duas tabelas e a coluna, e o 
                 WHERE table_name = 'pedido' AND column_name = 'dominio_pago_em') AS n`
     )).rows[0].n;
     assert.equal(await contar(), 3);
-    await aplicarMigracoes(url, 'down', 3);
+    await aplicarMigracoes(url, 'down', 4);
     assert.equal(await contar(), 0);
     await aplicarMigracoes(url, 'up', 1);
     assert.equal(await contar(), 3);

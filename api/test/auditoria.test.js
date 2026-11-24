@@ -78,9 +78,9 @@ function dadosDaAcao(acao) {
   return dadosValidos({ acao });
 }
 
-test('CA1: grava as 12 ações com cada coluna igual ao enviado e ids crescentes', async (t) => {
+test('CA1: grava as 13 ações com cada coluna igual ao enviado e ids crescentes', async (t) => {
   const pool = await bancoDoTeste(t);
-  assert.equal(ACOES.length, 12);
+  assert.equal(ACOES.length, 13);
 
   let idAnterior = 0n;
   for (const acao of ACOES) {
@@ -109,7 +109,7 @@ test('CA1: grava as 12 ações com cada coluna igual ao enviado e ids crescentes
     });
   }
 
-  assert.equal(await contar(pool), 12);
+  assert.equal(await contar(pool), 13);
 });
 
 // CA2 -----------------------------------------------------------------------

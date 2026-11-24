@@ -80,7 +80,7 @@ test('CIT-69 CA2: a migração do token cria token_hash nulável, único, com CH
   );
   assert.equal(tem, true, 'o papel da aplicação grava o hash');
 
-  await aplicarMigracoes(url, 'down', 2);
+  await aplicarMigracoes(url, 'down', 3);
   assert.equal((await consultar(url, COLUNA_TOKEN)).length, 0, 'o down remove token_hash');
 
   await aplicarMigracoes(url, 'up', Infinity);

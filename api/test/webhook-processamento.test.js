@@ -7,6 +7,8 @@ import { randomUUID } from 'node:crypto';
 import { UnrecoverableError } from 'bullmq';
 import { criarClienteAsaas } from '../src/asaas/cliente.js';
 import { criarHandlerWebhook } from '../src/asaas/webhook-processamento.js';
+import { executarDominio } from '../src/cli/dominio.js';
+import { consumidoresPadrao, processarEvento } from '../src/eventos/consumidores.js';
 import { criarLogger } from '../src/log.js';
 import { criarCapturaDeLog } from './auxiliares.js';
 import { criarStubAsaas } from './stub-asaas.js';
@@ -196,6 +198,83 @@ describe('CA5: pedido com domínio novo', () => {
     await processar(await brutoDeContas(pedido));
     assert.equal((await estadoDoPedido(banco.admin, pedido.pedidoId)).estado, 'pago');
     assert.equal((await eventosPublicados(banco.admin)).find((e) => e.nome === 'pedido_pago').payload.temDominioNovo, false);
+  });
+});
+
+describe('CIT-77 CA3: registro de domínio antes do pedido_pago', () => {
+  // Domínios pagos, registro manual gravado pelo dono e contas ainda por pagar.
+  async function pedidoComDominioRegistrado() {
+    const pedido = await semearPedido(banco.admin, { dominios: DOMINIO_NOVO, assinaturas: ASSINATURAS_COM_DOMINIOS });
+    await processar(await brutoDeDominios(pedido));
+    await banco.admin.query('UPDATE pedido_dominio SET registrado_em = now(), registro_expira_em = current_date + 365 WHERE pedido_id = $1', [pedido.pedidoId]);
+    await banco.admin.query('UPDATE pedido SET dominio_registrado_em = now() WHERE id = $1', [pedido.pedidoId]);
+    return pedido;
+  }
+
+  test('CIT-77 CA3: as contas pagas depois do registro levam o pedido direto a pago', async () => {
+    const pedido = await pedidoComDominioRegistrado();
+    assert.equal((await estadoDoPedido(banco.admin, pedido.pedidoId)).estado, 'aguardando_pagamento');
+    await processar(await brutoDeContas(pedido));
+    assert.equal((await estadoDoPedido(banco.admin, pedido.pedidoId)).estado, 'pago');
+  });
+
+  test('CIT-77 CA3: as contas pagas depois do registro publicam pedido_pago e dominio_registrado com o payload exato', async () => {
+    const pedido = await pedidoComDominioRegistrado();
+    await processar(await brutoDeContas(pedido));
+    const eventos = await eventosPublicados(banco.admin);
+    assert.deepEqual(nomes(eventos), ['conta_titular_criada', 'dominio_pago', 'dominio_registrado', 'pedido_pago']);
+    assert.deepEqual(eventos.find((e) => e.nome === 'dominio_registrado'), {
+      nome: 'dominio_registrado',
+      chave_idempotencia: `dominio_registrado-${pedido.pedidoId}`,
+      agregado_tipo: 'pedido',
+      agregado_id: pedido.pedidoId,
+      payload: { pedidoId: pedido.pedidoId, clienteId: pedido.clienteId }
+    });
+  });
+
+  test('CIT-77 CA3: reprocessar o mesmo bruto de contas não repete o dominio_registrado', async () => {
+    const pedido = await pedidoComDominioRegistrado();
+    const brutoId = await brutoDeContas(pedido);
+    await processar(brutoId);
+    await processar(brutoId);
+    assert.equal(nomes(await eventosPublicados(banco.admin)).filter((nome) => nome === 'dominio_registrado').length, 1);
+  });
+
+  test('CIT-77 CA3: com o domínio pago e ainda sem registro as contas levam a aguardando_registro_de_dominio, sem dominio_registrado', async () => {
+    const pedido = await semearPedido(banco.admin, { dominios: DOMINIO_NOVO, assinaturas: ASSINATURAS_COM_DOMINIOS });
+    await processar(await brutoDeDominios(pedido));
+    await processar(await brutoDeContas(pedido));
+    assert.equal((await estadoDoPedido(banco.admin, pedido.pedidoId)).estado, 'aguardando_registro_de_dominio');
+    assert.ok(!nomes(await eventosPublicados(banco.admin)).includes('dominio_registrado'));
+  });
+
+  test('CIT-77 CA3: registro gravado sem o domínio pago não leva o pedido a pago', async () => {
+    const pedido = await semearPedido(banco.admin, { dominios: DOMINIO_NOVO, assinaturas: ASSINATURAS_COM_DOMINIOS });
+    await banco.admin.query('UPDATE pedido SET dominio_registrado_em = now() WHERE id = $1', [pedido.pedidoId]);
+    await processar(await brutoDeContas(pedido));
+    assert.equal((await estadoDoPedido(banco.admin, pedido.pedidoId)).estado, 'aguardando_pagamento_do_dominio');
+    assert.ok(!nomes(await eventosPublicados(banco.admin)).includes('dominio_registrado'));
+  });
+
+  test('CIT-77 CA3: do dominio_pago à CLI e às contas, o pedido só vai a pago no pedido_pago, com 1 dominio_registrado', async () => {
+    const pedido = await semearPedido(banco.admin, { dominios: DOMINIO_NOVO, assinaturas: ASSINATURAS_COM_DOMINIOS });
+    await processar(await brutoDeDominios(pedido));
+    const { rows: [evento] } = await banco.admin.query("SELECT id FROM evento WHERE nome = 'dominio_pago'");
+    await processarEvento(
+      { pool: banco.app, consumidor: 'tarefa_registro_dominio', tratar: consumidoresPadrao.tarefa_registro_dominio.tratar, log },
+      { eventoId: evento.id }
+    );
+    const { rows: [tarefa] } = await banco.admin.query('SELECT id FROM tarefa_dominio');
+    const saida = { write() {} };
+    const codigo = await executarDominio({
+      pool: banco.app, saida, erro: saida, agora: () => new Date('2026-12-01T13:00:00Z'), usuarioSistema: 'operador_teste',
+      args: ['registrado', tarefa.id, '--expira-em', '2027-12-01', '--operador', 'equipe_teste']
+    });
+    assert.equal(codigo, 0);
+    assert.equal((await estadoDoPedido(banco.admin, pedido.pedidoId)).estado, 'aguardando_pagamento');
+    await processar(await brutoDeContas(pedido));
+    assert.equal((await estadoDoPedido(banco.admin, pedido.pedidoId)).estado, 'pago');
+    assert.equal(nomes(await eventosPublicados(banco.admin)).filter((nome) => nome === 'dominio_registrado').length, 1);
   });
 });
 

@@ -419,3 +419,53 @@ test('CA9: alerta de e-mail parado que esgota loga "alerta falhou" com o envioId
   assert.equal(linha.envioId, UUID_FICTICIO);
   assert.equal(linha.jobId, undefined);
 });
+
+// CIT-77, CA2: alerta `dominio` (tarefa de registro ou renovação), só com códigos e ids validados.
+test('CA2: montarTextoAlerta de domínio leva o código, a tarefa e o pedido', () => {
+  assert.equal(
+    montarTextoAlerta({ tipo: 'dominio', codigo: 'tarefa_registro', tarefaId: null, pedidoId: UUID_FICTICIO }),
+    `Domínio: codigo=tarefa_registro tarefa=- pedido=${UUID_FICTICIO}`
+  );
+  assert.equal(
+    montarTextoAlerta({ tipo: 'dominio', codigo: 'lembrete_registro', tarefaId: UUID_FICTICIO, pedidoId: UUID_FICTICIO }),
+    `Domínio: codigo=lembrete_registro tarefa=${UUID_FICTICIO} pedido=${UUID_FICTICIO}`
+  );
+});
+
+test('CA2: montarTextoAlerta de domínio troca código fora da lista e id inválido por "-"', () => {
+  assert.equal(
+    montarTextoAlerta({ tipo: 'dominio', codigo: 'fulano@exemplo.test', tarefaId: 'x', pedidoId: 'ficticio-um.exemplo.test' }),
+    'Domínio: codigo=- tarefa=- pedido=-'
+  );
+});
+
+test('CA2: cada código de domínio permitido passa intacto', () => {
+  for (const codigo of ['tarefa_registro', 'tarefa_registro_contas_pendentes', 'lembrete_registro', 'renovacao_paga', 'renovacao_pendente']) {
+    assert.equal(montarTextoAlerta({ tipo: 'dominio', codigo, pedidoId: UUID_FICTICIO }), `Domínio: codigo=${codigo} tarefa=- pedido=${UUID_FICTICIO}`);
+  }
+});
+
+test('CA2: enviarAlerta de domínio faz um POST ao Telegram só com o texto do domínio', async () => {
+  const fetchFalso = criarFetchFalso(async () => ({ ok: true, status: 200 }));
+  const enviarAlerta = criarEnvioTelegram({ token: TOKEN_FICTICIO, chatId: CHAT_FICTICIO, fetch: fetchFalso });
+  await enviarAlerta({ tipo: 'dominio', codigo: 'renovacao_paga', tarefaId: UUID_FICTICIO, pedidoId: UUID_FICTICIO });
+  assert.equal(fetchFalso.chamadas.length, 1);
+  assert.equal(JSON.parse(fetchFalso.chamadas[0].opcoes.body).text, `Domínio: codigo=renovacao_paga tarefa=${UUID_FICTICIO} pedido=${UUID_FICTICIO}`);
+});
+
+test('CA2: sem token/chatId, o alerta de domínio só loga os campos validados e nunca chama fetch', async () => {
+  const captura = criarCapturaDeLog();
+  const log = criarLogger({ level: 'info', stream: captura.stream });
+  const fetchFalso = criarFetchFalso(async () => ({ ok: true, status: 200 }));
+  const enviarAlerta = criarEnvioTelegram({ token: undefined, chatId: undefined, fetch: fetchFalso, log });
+
+  await enviarAlerta({ tipo: 'dominio', codigo: 'codigo-hostil', tarefaId: 'fulano@exemplo.test', pedidoId: UUID_FICTICIO });
+
+  assert.equal(fetchFalso.chamadas.length, 0);
+  const linha = captura.linhas().find((l) => l.msg === 'alerta sem telegram');
+  assert.equal(linha.tipo, 'dominio');
+  assert.equal(linha.codigo, '-');
+  assert.equal(linha.tarefa, '-');
+  assert.equal(linha.pedido, UUID_FICTICIO);
+  assert.ok(!captura.texto().includes('fulano@exemplo.test'));
+});
