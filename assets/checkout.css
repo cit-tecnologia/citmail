@@ -609,6 +609,18 @@ s[data-preco-tabela], .sum-disc s { color: var(--cit-error); text-decoration-lin
 .pedido-faturas { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
 .pedido-faturas-texto { font-size: var(--cit-text-small); color: var(--cit-text-secondary); overflow-wrap: anywhere; }
 .pedido-faturas .btn { min-height: 44px; height: auto; padding-top: 10px; padding-bottom: 10px; text-align: center; }
+/* Acompanhar pedido (CIT-69) */
+.acompanhar-pedido {
+  display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;
+  padding: var(--cit-space-4); border: var(--cit-border); border-radius: var(--cit-radius-md); background: var(--cit-surface);
+}
+.acompanhar-pedido-texto { font-size: var(--cit-text-small); font-weight: 600; color: var(--cit-text-primary); overflow-wrap: anywhere; }
+.acompanhar-pedido-acoes { display: flex; flex-wrap: wrap; gap: var(--cit-space-2); }
+.acompanhar-pedido-acoes .btn {
+  width: auto; max-width: 100%; min-height: 44px; height: auto; padding-top: 10px; padding-bottom: 10px;
+  white-space: normal; text-align: center; overflow-wrap: anywhere;
+}
+@media (max-width: 480px) { .acompanhar-pedido-acoes .btn { flex: 1 1 100%; } }
 /* Regiões vivas do pedido ficam sempre no DOM (anunciáveis a cada texto novo); sem texto, não ocupam espaço. */
 #pedidoProgresso:empty, #pedidoAviso:empty { margin: 0; padding: 0; border: 0; }
 #pedidoErro:not(.pedido-erro--ativo) { margin: 0; padding: 0; border: 0; }
