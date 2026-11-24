@@ -36,6 +36,9 @@ CREATE INDEX asaas_webhook_evento_nao_enfileirado_idx ON asaas_webhook_evento (r
 -- Alerta de bruto parado (`webhook_parado`).
 CREATE INDEX asaas_webhook_evento_pendente_idx ON asaas_webhook_evento (enfileirado_em)
   WHERE situacao = 'pendente';
+-- Pagamento repetido (`pagamentoJaAplicado`): procura por pagamento entre os processados.
+CREATE INDEX asaas_webhook_evento_pagamento_processado_idx ON asaas_webhook_evento (pagamento_id)
+  WHERE situacao = 'processado';
 -- Retenção de 90 dias (limpeza em história própria).
 CREATE INDEX asaas_webhook_evento_recebido_idx ON asaas_webhook_evento (recebido_em);
 

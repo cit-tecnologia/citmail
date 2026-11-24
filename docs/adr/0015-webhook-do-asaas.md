@@ -63,6 +63,7 @@ Opção 3. Proposto (CIT-64), a validar no sandbox (#57):
 ## Consequências
 
 - **A ordem entre `pedido_pago` e `conta_titular_criada` não é garantida** para os consumidores: nascem na mesma transação, mas cada consumidor recebe o seu job. Consumidor que precisar da conta lê do banco.
+- **Com o Redis fora, o alerta `webhook_parado` não sai**: ele usa a fila de alertas, no mesmo Redis da fila de jobs. O sinal nesse caso é o `log.warn` `enfileiramento do webhook falhou`, repetido a cada ciclo; quando o Redis volta, o bruto é enfileirado no mesmo ciclo. O alerta de bruto nunca enfileirado cobre o worker parado ou a flag desligada no worker com o Redis no ar.
 - Os brutos `ignorado` `pagamento_seguinte` (pagamentos seguintes ao 1º) ficam reprocessáveis quando `cobranca_paga` existir (E4-H5).
 - Um bruto parado há mais de 1 hora gera o alerta `webhook_parado`; o reenvio manual é zerar `enfileirado_em` do bruto (api/README.md).
 - **Pendência: limpeza do bruto após 90 dias.** O índice por `recebido_em` está pronto; a limpeza é história própria, com papel próprio (o papel da aplicação não tem `DELETE`).
