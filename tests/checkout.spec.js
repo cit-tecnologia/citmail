@@ -2331,7 +2331,8 @@ async function preencherCadastroSemSenha(/** @type {import('@playwright/test').P
   await page.locator('#fTelefone').fill('11999990000');
   await page.locator('#fCPF').fill(CPF_FICTICIO_63);
   await page.locator('#fCEP').fill('01001000');
-  await page.locator('#termsCheck').check({ force: true });
+  // clique direto no input: o clique por coordenada pode cair em elemento sobreposto durante o re-render (CI com vários workers)
+  await page.locator('#termsCheck').evaluate(el => { if (!el.checked) el.click(); });
 }
 
 test.describe('checkout — CIT-63: sem pagamento de demonstração (CA1)', { tag: '@CIT-63' }, () => {

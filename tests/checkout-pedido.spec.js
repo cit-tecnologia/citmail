@@ -156,7 +156,8 @@ async function chegarRevisao(page, o = {}) {
   await page.locator('#fCEP').fill('01001000');
   if (relogio) await page.clock.runFor(400);
   await expect(page.locator('#orderSummary')).toHaveAttribute('data-total-confirmado', /^\d+$/);
-  await page.locator('#termsCheck').check({ force: true });
+  // clique direto no input: o clique por coordenada pode cair em elemento sobreposto durante o re-render (CI com vários workers)
+  await page.locator('#termsCheck').evaluate(el => { if (!el.checked) el.click(); });
   await expect(page.locator('#termsCheck')).toBeChecked();
   await page.locator('#btnSubmitCadastro').click();
   await expect(page.locator('#step5')).toHaveClass(/active/);
