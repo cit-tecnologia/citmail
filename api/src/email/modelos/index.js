@@ -1,18 +1,20 @@
 // Registro dos modelos de e-mail (ADR 0010; CIT-65), versionados no repositório.
-// Cada modelo: `{ versao, carregar(cliente, refs) → { destinatario, variaveis } | null,
+// Cada modelo: `{ versao, carregar(cliente, refs, { log }) → { destinatario, variaveis } | null,
 // assunto(v), html(v), texto(v) }`. `carregar` lê do banco, no momento do envio, o
-// destinatário e as variáveis a partir de `refs` (só ids). `html` devolve o resultado do
+// destinatário e as variáveis a partir de `refs` (só ids); `log` (do job) serve para o
+// motivo, em código, de devolver `null`. `html` devolve o resultado do
 // tagged template `html` (escape automático); `assunto` e `texto` passam por `limparLinha`.
 // O nome do modelo é a chave do registro (sem hífen; mesmo formato do CHECK da tabela).
+import { compraConfirmada } from './compra-confirmada.js'
 import { testeExemplo } from './teste-exemplo.js'
 
 const NOME_MODELO = /^[a-z][a-z0-9_]{0,47}$/
 
 /**
- * Modelos de produção. Vazio nesta versão: os concretos (confirmação de compra,
- * credenciais, avisos) chegam com as histórias #66, #102 e #72.
+ * Modelos de produção: `compra_confirmada` (CIT-66). Credenciais e avisos chegam com as
+ * histórias #102 e #72.
  */
-export const modelosPadrao = Object.freeze({})
+export const modelosPadrao = Object.freeze({ compra_confirmada: compraConfirmada })
 
 /** Modelos fora de produção: os de produção e o `teste_exemplo` (como o `jobExemplo`). */
 export const modelosForaDeProducao = Object.freeze({ ...modelosPadrao, teste_exemplo: testeExemplo })

@@ -112,9 +112,9 @@ describe('registro de modelos', () => {
     versao: 1, carregar: () => null, assunto: () => 'a', html: () => 'b', texto: () => 'c'
   };
 
-  test('o registro de produção está vazio e o de fora de produção tem só o teste_exemplo', () => {
-    assert.deepEqual(Object.keys(modelosPadrao), []);
-    assert.deepEqual(Object.keys(modelosForaDeProducao), ['teste_exemplo']);
+  test('o registro de produção tem só o compra_confirmada e o de fora de produção acrescenta o teste_exemplo', () => {
+    assert.deepEqual(Object.keys(modelosPadrao), ['compra_confirmada']);
+    assert.deepEqual(Object.keys(modelosForaDeProducao), ['compra_confirmada', 'teste_exemplo']);
   });
 
   test('NODE_ENV ausente ou production usa o registro de produção; test e development, o completo', () => {
