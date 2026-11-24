@@ -1,6 +1,7 @@
 // Criação do pedido no Asaas (ADR 0014; CIT-61). Fluxo D1 do plano:
-//  1. consulta pela chave (reenvio devolve o gravado) → limites → documento e domínios → total (409);
-//  2. transação curta: cliente, pedido em `criando` (posse = `criando_desde`) e domínios;
+//  1. consulta pela chave (reenvio devolve o gravado) → limites → documento e domínios →
+//     versões do aceite (409, CIT-62) → total (409) → IP do aceite (500 se inválido);
+//  2. transação curta: cliente, pedido em `criando` (posse = `criando_desde`) com o aceite, e domínios;
 //  3. cliente no Asaas (consulta antes de criar e antes de declarar falha);
 //  4. assinaturas (contas; domínios se houver avulso), idem, e a URL da 1ª fatura;
 //  5. transação final guardada pela posse.
@@ -11,6 +12,7 @@ import { createHash } from 'node:crypto'
 import { ErroAsaas } from '../asaas/cliente.js'
 import { calcularOrcamento, validarLimites } from '../precos/servico.js'
 import { VERSAO } from '../precos/tabela.js'
+import { normalizarIp, VERSAO_PRIVACIDADE, VERSAO_TERMOS } from './aceite.js'
 import { normalizarDocumento, tipoPessoa } from './documento.js'
 import {
   nomeDominioExistente,
@@ -95,7 +97,8 @@ function canonico(valor) {
 }
 
 // D3: hash do corpo sem a chave e sem o bloco `cliente` (nenhum dado pessoal), com os
-// domínios normalizados. O cliente é comparado às colunas, à parte.
+// domínios normalizados. O cliente é comparado às colunas, à parte. O bloco `aceite`
+// entra (CIT-62): mesma chave com outra versão → 422. O IP não entra.
 function hashDoCorpo(corpo) {
   const { chave_idempotencia: _chave, cliente: _cliente, ...resto } = corpo
   const normalizarPrincipal = corpo.dominio.tipo === 'novo' ? normalizarDominioNovo : normalizarDominioExistente
@@ -206,6 +209,8 @@ export function criarServicoPedidos({
   asaasTimeoutMs = 10000,
   agora = () => new Date(),
   versaoTabela = VERSAO,
+  versaoTermos = VERSAO_TERMOS,
+  versaoPrivacidade = VERSAO_PRIVACIDADE,
   prazoPedidoMs = PRAZO_PEDIDO_MS,
   prazoCriandoMs
 }) {
@@ -458,7 +463,7 @@ export function criarServicoPedidos({
     return executarCriacao(existente.id, posse, log, requestId)
   }
 
-  async function fluxo(corpo, log, requestId) {
+  async function fluxo(corpo, log, requestId, ip) {
     const cliente = normalizarCliente(corpo.cliente)
     const corpoHash = hashDoCorpo(corpo)
 
@@ -470,6 +475,14 @@ export function criarServicoPedidos({
     const { campos, dominios, tipoPessoa: tipo } = validarDados(corpo, cliente)
     if (campos.length > 0) return { status: 400, corpo: { erro: 'validacao', campos } }
 
+    // Versão antes do total (CIT-62): o front recarrega os termos antes de recalcular.
+    if (corpo.aceite.versao_termos !== versaoTermos || corpo.aceite.versao_privacidade !== versaoPrivacidade) {
+      return {
+        status: 409,
+        corpo: { erro: 'versao_termos_divergente', versao_termos: versaoTermos, versao_privacidade: versaoPrivacidade }
+      }
+    }
+
     const orcamento = calcularOrcamento(corpo)
     const totalCentavos = orcamento.totais.recorrente_ciclo_centavos + orcamento.totais.avulso_centavos
     if (corpo.total_exibido_centavos !== totalCentavos || corpo.versao_tabela !== versaoTabela) {
@@ -477,6 +490,14 @@ export function criarServicoPedidos({
         status: 409,
         corpo: { erro: 'total_divergente', total_centavos: totalCentavos, versao_tabela: versaoTabela }
       }
+    }
+
+    // IP inválido só com proxy mal configurado: erro de infraestrutura, não do cliente.
+    // Sem IP não há prova do aceite; nada é gravado. O log não traz o valor.
+    const ipAceite = normalizarIp(ip)
+    if (!ipAceite) {
+      log.warn('ip inválido')
+      return respostaFalha('ip_invalido', requestId)
     }
 
     const criado = await noBanco(() => emTransacao(async (conexao) => {
@@ -492,7 +513,10 @@ export function criarServicoPedidos({
         contatoNome: cliente.nome,
         contatoEmail: cliente.email,
         contatoTelefone: cliente.telefone,
-        requestId
+        requestId,
+        versaoTermos,
+        versaoPrivacidade,
+        ipAceite
       })
       // Chave já usada: o ROLLBACK desfaz também o cliente recém-inserido.
       if (!pedido) return null
@@ -507,9 +531,9 @@ export function criarServicoPedidos({
   }
 
   return {
-    async criarPedido(corpo, { log, requestId }) {
+    async criarPedido(corpo, { log, requestId, ip }) {
       try {
-        return await fluxo(corpo, log, requestId)
+        return await fluxo(corpo, log, requestId, ip)
       } catch (erro) {
         if (!(erro instanceof ErroBanco)) throw erro
         logarErroBanco(log, undefined, erro)

@@ -72,6 +72,10 @@ Uma compra feita no checkout. Guarda o total calculado pelo servidor (ADR 0012).
   - `criando_desde`: preenchido só no estado `criando`; é a posse do fluxo de criação e o início do prazo de retomada.
   - `falha_motivo` no formato `^[a-z][a-z0-9_]{0,47}$`, aceito em `falhou_na_criacao` (obrigatório) e `falha_no_provisionamento`. Códigos da E3-H2: `asaas_timeout`, `asaas_rede`, `asaas_http_4xx`, `asaas_http_5xx`, `asaas_resposta_invalida` e `banco`.
   - `request_id` da requisição que criou o pedido.
+- **Implementado (CIT-62, [ADR 0014](../0014-criacao-do-pedido-no-asaas.md), decisão 11):**
+  - `aceite_em` (`timestamptz`, relógio do banco no `INSERT` do pedido, igual a `criado_em`), `versao_termos` (`^[0-9A-Za-z._-]{1,32}$`), `versao_privacidade` (`^[0-9A-Za-z._-]{1,64}$`) e `ip_aceite` (`inet`), todas `NOT NULL`, gravadas só no `INSERT` do estado `criando`. O papel `<banco>_aplicacao` tem `INSERT` nelas e nenhum `UPDATE`; a retomada e a conclusão não as tocam.
+  - Retenção do IP: a regra da auditoria (ADR 0013 item 9): 6 meses em claro, depois `/24` no IPv4 e `/48` no IPv6, com dono na E6-H3. Essa pseudonimização exigirá `UPDATE (ip_aceite)` em `pedido` por um papel de retenção (`<banco>_retencao`, a criar), como já previsto para a auditoria. Até a rotina existir, o IP fica em claro além dos 6 meses (mesmo risco aceito da auditoria). O mesmo IP também sai no log de acesso (`req.remoteAddress` do `request completed`, ADR 0013 item 3), com a retenção de 30 dias dos logs técnicos.
+  - A anonimização do contato (E6-H3) **não** apaga `aceite_em` nem as versões: são a prova do consentimento enquanto durar o contrato e o prazo prescricional.
 - **Relações:** pertence a 1 cliente; gera 1 ou 2 assinaturas; provisiona N caixas; origina N eventos.
 
 ## Entidade: assinatura

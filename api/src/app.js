@@ -32,7 +32,7 @@ function construirValidador(externos, opcoesAjv) {
 
 // `asaas`: adaptador injetado (testes), com prioridade sobre o criado pela chave.
 // `pedidos`: opções do serviço de pedidos para os testes (`agora`, `versaoTabela`,
-// `prazoPedidoMs`, `prazoCriandoMs`).
+// `versaoTermos`, `versaoPrivacidade`, `prazoPedidoMs`, `prazoCriandoMs`).
 export function construirApp(config, { pool, logStream, filas, asaas, pedidos } = {}) {
   const origens = config?.corsOrigens
   if (!Array.isArray(origens) || origens.length === 0 || origens.some((o) => !o || o.includes('*'))) {
@@ -96,6 +96,8 @@ export function construirApp(config, { pool, logStream, filas, asaas, pedidos } 
   // config (montada à mão), vale o padrão de `carregarConfig`: desligada só em produção.
   // Sem adaptador nem chave (fora de produção), a rota responde 503.
   if (config.pedidosHabilitado ?? config.nodeEnv !== 'production') {
+    // CIT-62: `TERMOS_MINUTA_ACEITA=true` liberou a produção com aceite provisório (só homologação).
+    if (config.aceiteLiberado) app.log.warn('aceite liberado com termos em minuta ou política provisória')
     const asaasTimeoutMs = config.asaasTimeoutMs ?? 10000
     const adaptador = asaas ?? (config.asaasApiKey
       ? criarClienteAsaas({ baseUrl: config.asaasBaseUrl, apiKey: config.asaasApiKey, timeoutMs: asaasTimeoutMs })

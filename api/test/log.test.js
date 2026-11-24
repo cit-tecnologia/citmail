@@ -107,7 +107,7 @@ test('CA3: cabeçalho Authorization nunca aparece no log, mesmo numa resposta de
   assert.ok(!captura.texto().includes('SEGREDO-X-AUTH'));
 });
 
-// Os 41 nomes da decisão 5 do plano CIT-55 (pedido em português, ViaCEP,
+// Os 41 nomes da decisão 5 do plano CIT-55 (mais 2 da CIT-62: ipAceite e ip_aceite) (pedido em português, ViaCEP,
 // credenciais em inglês e cliente/pagamento do Asaas, com as inscrições
 // municipal/estadual acrescentadas na revisão de 2026-09-29). Se a lista
 // exportada de `api/src/log.js` encolher ou ganhar um nome sem que este
@@ -120,7 +120,7 @@ const NOMES_ESPERADOS_CA3 = [
   'password', 'authorization', 'accessToken', 'access_token', 'refreshToken', 'apiKey',
   'name', 'phone', 'mobilePhone', 'company', 'postalCode', 'address', 'addressNumber',
   'complement', 'province', 'cityName', 'additionalEmails', 'municipalInscription', 'stateInscription',
-  'creditCard', 'creditCardToken',
+  'creditCard', 'creditCardToken', 'ipAceite', 'ip_aceite',
 ];
 
 function construirComMarcadores(nomes, profundidade) {
@@ -139,11 +139,11 @@ function acessarNivel(linha, profundidade) {
   return linha.a.b.c;
 }
 
-test('CA3: os 41 campos sensíveis da decisão 5 são mascarados na raiz e em até 3 níveis de aninhamento', async (t) => {
+test('CA3: os 43 campos sensíveis da decisão 5 são mascarados na raiz e em até 3 níveis de aninhamento', async (t) => {
   const { app, captura, fechar } = await construirAppTeste();
   t.after(fechar);
 
-  assert.equal(NOMES_ESPERADOS_CA3.length, 41);
+  assert.equal(NOMES_ESPERADOS_CA3.length, 43);
   assert.deepEqual([...camposSensiveis].sort(), [...NOMES_ESPERADOS_CA3].sort());
 
   for (let profundidade = 0; profundidade <= 3; profundidade++) {

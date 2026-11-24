@@ -1,7 +1,8 @@
 // POST /api/pedidos (ADR 0014; CIT-61): cria o cliente e as assinaturas no Asaas.
 // Registrada só com `PEDIDOS_HABILITADO` (app.js). O corpo é o do orçamento com
 // `dominio.nome`, mais `dominios_extras`, `cliente`, `chave_idempotencia`,
-// `versao_tabela` e `total_exibido_centavos`; todo objeto é fechado (campo de cartão → 400).
+// `versao_tabela`, `total_exibido_centavos` e `aceite` (CIT-62); todo objeto é fechado
+// (campo de cartão → 400).
 import { criarCorpoOrcamento } from '../precos/rotas.js'
 import { LIMITES } from '../precos/tabela.js'
 import { AVISO_FATURA_PENDENTE, criarServicoPedidos } from './servico.js'
@@ -19,7 +20,9 @@ const baseOrcamento = criarCorpoOrcamento({ pedido: true })
 
 export const corpoPedido = {
   ...baseOrcamento,
-  required: [...baseOrcamento.required, 'chave_idempotencia', 'versao_tabela', 'total_exibido_centavos', 'cliente'],
+  required: [
+    ...baseOrcamento.required, 'chave_idempotencia', 'versao_tabela', 'total_exibido_centavos', 'cliente', 'aceite'
+  ],
   properties: {
     ...baseOrcamento.properties,
     chave_idempotencia: {
@@ -34,6 +37,12 @@ export const corpoPedido = {
       email: { type: 'string', format: 'email', maxLength: 254, pattern: '^\\P{C}*$' },
       telefone: textoContato(10, 20),
       documento: textoContato(11, 20)
+    }),
+    // Corpo sem coerção (app.js): `"true"` não vira `true`.
+    aceite: objetoFechado({
+      termos: { type: 'boolean', const: true },
+      versao_termos: { ...texto(1, 32), pattern: '^[0-9A-Za-z._-]+$' },
+      versao_privacidade: { ...texto(1, 64), pattern: '^[0-9A-Za-z._-]+$' }
     })
   }
 }
@@ -55,7 +64,13 @@ const respostas = {
     },
     aviso: { type: 'string', enum: [AVISO_FATURA_PENDENTE] }
   }, ['pedidoId', 'estado', 'faturas']),
-  409: objetoFechado({ erro: tipoTexto, total_centavos: { type: 'integer' }, versao_tabela: tipoTexto }, ['erro']),
+  409: objetoFechado({
+    erro: tipoTexto,
+    total_centavos: { type: 'integer' },
+    versao_tabela: tipoTexto,
+    versao_termos: tipoTexto,
+    versao_privacidade: tipoTexto
+  }, ['erro']),
   422: respostaErro,
   502: respostaAsaas,
   503: respostaErro,
@@ -63,15 +78,22 @@ const respostas = {
 }
 
 export default async function rotasPedidos(app, opcoes) {
-  const { asaas, asaasTimeoutMs, agora, versaoTabela, prazoPedidoMs, prazoCriandoMs } = opcoes
+  const {
+    asaas, asaasTimeoutMs, agora, versaoTabela, versaoTermos, versaoPrivacidade, prazoPedidoMs, prazoCriandoMs
+  } = opcoes
   // Sem adaptador (fora de produção, sem chave): 503 sem tocar no banco.
   const servico = asaas
-    ? criarServicoPedidos({ pool: app.banco, asaas, asaasTimeoutMs, agora, versaoTabela, prazoPedidoMs, prazoCriandoMs })
+    ? criarServicoPedidos({
+      pool: app.banco, asaas, asaasTimeoutMs, agora, versaoTabela, versaoTermos, versaoPrivacidade, prazoPedidoMs, prazoCriandoMs
+    })
     : null
 
   app.post('/pedidos', { schema: { body: corpoPedido, response: respostas } }, async (request, reply) => {
     if (!servico) return reply.code(503).send({ erro: 'asaas_nao_configurado' })
-    const { status, corpo } = await servico.criarPedido(request.body, { log: request.log, requestId: request.id })
+    // IP do aceite: `request.ip` (trustProxy só no loopback), nunca um header lido à mão.
+    const { status, corpo } = await servico.criarPedido(request.body, {
+      log: request.log, requestId: request.id, ip: request.ip
+    })
     return reply.code(status).send(corpo)
   })
 }
