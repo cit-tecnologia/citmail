@@ -76,8 +76,20 @@ Uma compra feita no checkout. Guarda o total calculado pelo servidor (ADR 0012).
   - `aceite_em` (`timestamptz`, relógio do banco no `INSERT` do pedido, igual a `criado_em`), `versao_termos` (`^[0-9A-Za-z._-]{1,32}$`), `versao_privacidade` (`^[0-9A-Za-z._-]{1,64}$`) e `ip_aceite` (`inet`), todas `NOT NULL`, gravadas só no `INSERT` do estado `criando`. O papel `<banco>_aplicacao` tem `INSERT` nelas e nenhum `UPDATE`; a retomada e a conclusão não as tocam.
   - Retenção do IP: a regra da auditoria (ADR 0013 item 9): 6 meses em claro, depois `/24` no IPv4 e `/48` no IPv6, com dono na E6-H3. Essa pseudonimização exigirá `UPDATE (ip_aceite)` em `pedido` por um papel de retenção (`<banco>_retencao`, a criar), como já previsto para a auditoria. Até a rotina existir, o IP fica em claro além dos 6 meses (mesmo risco aceito da auditoria). O mesmo IP também sai no log de acesso (`req.remoteAddress` do `request completed`, ADR 0013 item 3), com a retenção de 30 dias dos logs técnicos.
   - A anonimização do contato (E6-H3) **não** apaga `aceite_em` nem as versões: são a prova do consentimento enquanto durar o contrato e o prazo prescricional.
-- **Implementado (CIT-64, [ADR 0015](../0015-webhook-do-asaas.md)):** `dominio_pago_em` (`timestamptz`, nulável), gravado no 1º pagamento da assinatura de domínios; o papel `<banco>_aplicacao` tem `UPDATE` nela. `dominio_registrado_em` continua da E4-H4.
+- **Implementado (CIT-64, [ADR 0015](../0015-webhook-do-asaas.md)):** `dominio_pago_em` (`timestamptz`, nulável), gravado no 1º pagamento da assinatura de domínios; o papel `<banco>_aplicacao` tem `UPDATE` nela.
+- **Implementado (CIT-77, E4-H4):** `pedido.dominio_registrado_em` (`timestamptz`, nulável), gravado quando o último domínio novo do pedido é registrado pela equipe; em `pedido_dominio`, `registrado_em` (`timestamptz`) e `registro_expira_em` (`date`, vencimento no Registro.br, informado pela equipe; índice parcial para a renovação D-30). O papel `<banco>_aplicacao` tem `UPDATE` só nessas três colunas (nunca em `pedido_dominio.nome`). A renovação muda só `registro_expira_em`.
 - **Relações:** pertence a 1 cliente; gera 1 ou 2 assinaturas; provisiona N caixas; origina N eventos.
+
+### Tabela auxiliar: tarefa de domínio
+
+Tarefa manual da equipe para registrar ou renovar um domínio novo no Registro.br (E4-H4; CIT-77), na tabela `tarefa_dominio`.
+
+- **Chave:** `id` (UUID). Único: `(pedido_dominio_id, tipo, referencia_expira_em)` com `NULLS NOT DISTINCT` (uma tarefa `registro` por domínio; uma `renovacao` por vencimento).
+- **Atributos:** `pedido_dominio_id`, `tipo` (`registro` ou `renovacao`), `referencia_expira_em` (vencimento que a renovação cobre; nulo no registro), `situacao_fatura` (`paga` ou `pendente`, só na renovação), `aberta_em`, `concluida_em`, `alertada_em` (aviso de abertura enfileirado), `ultimo_lembrete_em`. `CHECK`: `registro` sem referência nem situação; `renovacao` com as duas.
+- **Abertura:** `registro` pelo consumidor `tarefa_registro_dominio` do `dominio_pago` (pedido cancelado não abre; fatura retida abre); `renovacao` pelo laço do worker quando `registro_expira_em - 30` chega à data local de hoje (pedido não cancelado).
+- **Situação da fatura:** `paga` se o bruto do webhook (`asaas_webhook_evento`) tem pagamento `RECEIVED`, `CONFIRMED` ou `RECEIVED_IN_CASH` da assinatura `dominios` do pedido vencendo entre `referencia - 60` e `referencia + 30` dias; senão `pendente`. Limites: em D-30 a fatura anual quase sempre ainda não venceu (`pendente` é o caso comum e não é inadimplência); estorno posterior não é descontado; a retenção do bruto pode apagar a linha. A equipe confere no Asaas; a fonte certa será `cobranca_paga` (E4-H5).
+- **Conclusão:** pela CLI `npm run dominio -- registrado|renovado` (auditoria `dominio_registrado_manualmente`).
+- **Grants:** o papel `<banco>_aplicacao` tem `SELECT`, `INSERT` em `pedido_dominio_id`, `tipo`, `referencia_expira_em` e `situacao_fatura`, e `UPDATE` só em `concluida_em`, `alertada_em` e `ultimo_lembrete_em`; sem `DELETE`.
 
 ## Entidade: assinatura
 
@@ -151,10 +163,10 @@ Marca, por consumidor, o evento já tratado (consumidor idempotente, ADR 0005; C
 Trilha das ações críticas (E6-H7, ADR 0013). Tabela só de inclusão: o papel da aplicação (`<banco>_aplicacao`) tem só `INSERT` (sem `id` e `ocorrido_em`) e `SELECT`, e um trigger bloqueia `UPDATE`, `DELETE` e `TRUNCATE` (exceção: o papel `<banco>_retencao` altera só `ip`).
 
 - **Chave:** `id` sequencial (ordem de gravação).
-- **Atributos:** `ocorrido_em` (`clock_timestamp()`, instante do registro), `autor_tipo` (`cliente`, `sistema`, `equipe`), `autor_id` (chave interna, nunca e-mail), `acao` (`login`, `login_falhou`, `conta_bloqueada`, `caixa_criada`, `caixa_excluida`, `senha_trocada`, `cadastro_alterado`, `assinatura_cancelada`, `dados_excluidos`, `conta_suspensa`, `conta_reativada`, `dominio_registrado_manualmente`), `alvo_tipo` (`conta`, `caixa`, `cliente`, `pedido`, `assinatura`, `dominio`), `alvo_id`, `ip` (`inet`), `resultado` (`sucesso` ou `falha`), `request_id`, `detalhes` (JSON objeto, até 2048 bytes, sem senha nem token; chave proibida é recusada).
+- **Atributos:** `ocorrido_em` (`clock_timestamp()`, instante do registro), `autor_tipo` (`cliente`, `sistema`, `equipe`), `autor_id` (chave interna, nunca e-mail), `acao` (`login`, `login_falhou`, `conta_bloqueada`, `caixa_criada`, `caixa_excluida`, `senha_trocada`, `cadastro_alterado`, `assinatura_cancelada`, `dados_excluidos`, `conta_suspensa`, `conta_reativada`, `dominio_registrado_manualmente`, `dados_titular_consultados`), `alvo_tipo` (`conta`, `caixa`, `cliente`, `pedido`, `assinatura`, `dominio`), `alvo_id`, `ip` (`inet`), `resultado` (`sucesso` ou `falha`), `request_id`, `detalhes` (JSON objeto, até 2048 bytes, sem senha nem token; chave proibida é recusada).
 - **Relações:** referencia conta do titular, caixa, cliente, pedido, assinatura ou domínio por `alvo_tipo` + `alvo_id`, sem chave estrangeira (o registro sobrevive à anonimização).
 - **Retenção (proposta, a confirmar):** `ip` em claro por 6 meses, depois pseudonimizado por truncamento (ex.: `/24`), não apagado; registro por 5 anos (ADR 0013). A exclusão de dados (E6-H3) não apaga a auditoria.
-- **Ação a mais:** registro manual de domínio pela equipe (E4-H4), `dominio_registrado_manualmente`.
+- **Ações a mais:** registro e renovação manual de domínio pela equipe (E4-H4), `dominio_registrado_manualmente` (alvo `dominio`, o `pedido_dominio.id`); leitura dos dados do titular pela CLI (`npm run dominio -- mostrar`, CIT-77), `dados_titular_consultados` (alvo `cliente`). Pela CLI, autor `equipe` com o apelido do operador, IP fixo `127.0.0.1` e `usuarioSistema` (conta Unix) em `detalhes`.
 - **Nulos:** `autor_id` nulo só com autor `sistema` ou ação `login_falhou`; `alvo_id` nulo só em `login_falhou` (e-mail inexistente, sem identificar a conta); `ip` nulo só com autor `sistema`. Conferido por `CHECK` no banco.
 
 ## Estados do pedido
@@ -192,10 +204,10 @@ Transições:
 
 - `aguardando_pagamento` → próximo estado: só uma vez por pedido, mesmo com webhook repetido (E3-H4). Chave `pedido_pago-<pedidoId>`.
 - **Domínio novo:** nada é provisionado antes do pagamento das contas, e o provisionamento espera o domínio pago e registrado.
-  - `dominio_pago` com o pedido ainda `aguardando_pagamento`: grava `dominio_pago_em` e abre a tarefa de registro (E4-H4), sem mudar o estado. Se a equipe marcar o registro nesse intervalo, grava `dominio_registrado_em` e não enfileira nada.
-  - `pedido_pago` depois: vai direto ao estado que os dois campos indicam (tabela do diagrama).
+  - `dominio_pago` com o pedido ainda `aguardando_pagamento`: grava `dominio_pago_em` e abre a tarefa de registro (E4-H4), sem mudar o estado. Se a equipe marcar o registro nesse intervalo, grava `dominio_registrado_em` (quando todos os domínios novos do pedido estão registrados), sem mudar o estado nem emitir evento.
+  - `pedido_pago` depois: vai direto ao estado que os dois campos indicam (tabela do diagrama). Com `dominio_pago_em` e `dominio_registrado_em` preenchidos, vai a `pago` e emite `pedido_pago` e `dominio_registrado` na mesma transação (CIT-77).
   - `dominio_pago` com o pedido `aguardando_pagamento_do_dominio`: vai a `aguardando_registro_de_dominio` e abre a tarefa.
-  - Equipe marca o registro com o pedido `aguardando_registro_de_dominio`: vai a `pago` e o job de E4-H2 é enfileirado (E4-H4).
+  - Equipe marca o registro com o pedido `aguardando_registro_de_dominio`: cada domínio novo tem a sua tarefa; quando o último é registrado, vai a `pago` e emite `dominio_registrado` (E4-H4; CIT-77), que o provisionamento de E4-H2 vai consumir (#68).
 - `pago` → `ativo`: pelo job de E4-H2; emite `conta_ativada`.
 - `pago` → `falha_no_provisionamento` → `pago`: o reprocessamento (E2-H10) retoma de onde parou.
 - `ativo` → `cancelado`: a solicitação (E5-H10) não muda o estado; só a efetivação.
@@ -239,4 +251,5 @@ Transições:
 | 2026-09-25 | Ajustes da revisão: estados do pedido com domínio novo, tabela de solicitação de senha, itens de domínio com id, `agregado_tipo` sem `dominio`, retenções. | CIT-47 |
 | 2026-11-23 | Tabela auxiliar `evento_processado` e relação evento → evento processado. | CIT-166 |
 | 2026-11-23 | `conta_titular` e `pedido.dominio_pago_em` implementados; tabela auxiliar do evento bruto do webhook do Asaas. | CIT-64 |
+| 2026-11-24 | Tabela auxiliar `tarefa_dominio`; `pedido.dominio_registrado_em`, `pedido_dominio.registrado_em` e `registro_expira_em` implementados; ação de auditoria `dados_titular_consultados`; transição `aguardando_pagamento` com registro → `pago` no `pedido_pago`. | CIT-77 |
 | a definir | Revisão prevista pela #48 (PoC Skymail): campos da caixa marcados "provisório (#48)", lista de add-ons do pedido. | #48 |

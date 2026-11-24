@@ -5,7 +5,7 @@
 export const ACOES = Object.freeze([
   'login', 'login_falhou', 'conta_bloqueada', 'caixa_criada', 'caixa_excluida', 'senha_trocada',
   'cadastro_alterado', 'assinatura_cancelada', 'dados_excluidos', 'conta_suspensa', 'conta_reativada',
-  'dominio_registrado_manualmente'
+  'dominio_registrado_manualmente', 'dados_titular_consultados'
 ])
 
 export const AUTORES = Object.freeze(['cliente', 'sistema', 'equipe'])

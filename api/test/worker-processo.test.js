@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { setTimeout as esperar } from 'node:timers/promises';
 import { Pool } from 'pg';
 import { urlRedisTeste, criarFilasTeste, criarBancoTemporario, removerBancoTemporario, aplicarMigracoes } from './auxiliares.js';
+import { DADOS_TITULAR, semearComTarefas } from './dominio-fixtures.js';
 import { criarStubAsaas } from './stub-asaas.js';
 import { criarStubSmtp } from './stub-smtp.js';
 import { estadoDoPedido, semearBruto, semearPagamentoNoStub, semearPedido } from './webhook-fixtures.js';
@@ -387,4 +388,39 @@ test('CA1: o worker enfileira e envia pelo SMTP de teste uma linha pendente do t
   for (const proibido of ['fulano@exemplo.test', 'Fulano Ficticio', 'SenhaSmtpFicticia-123']) {
     assert.ok(!obterSaida().includes(proibido), `saída do worker com ${proibido}`);
   }
+});
+
+// CIT-77: o laço das tarefas de domínio roda no worker, avisa a equipe pela fila de alertas
+// (sem Telegram, só o log) e encerra junto com o processo.
+test('CIT-77 CA2: o worker avisa a tarefa de registro de ponta a ponta, sem dado pessoal no log, e sai com código 0', { timeout: 30000 }, async (t) => {
+  const aux = criarFilasTeste({ tentativas: 1, backoffMs: 300 });
+  t.after(aux.fechar);
+  const databaseUrl = await criarBancoParaWorker(t);
+  const admin = new Pool({ connectionString: databaseUrl, max: 2 });
+  const { pedidoId, tarefaIds } = await semearComTarefas(admin);
+
+  const env = {
+    PATH: process.env.PATH, NODE_ENV: 'test', REDIS_URL: urlRedisTeste(), DATABASE_URL: databaseUrl, FILA_PREFIXO: aux.prefixo,
+    DOMINIO_TAREFAS_INTERVALO_MS: '3600000',
+  };
+  const { filho, obterSaida } = spawnWorker(env);
+  let codigoDeSaida;
+  const encerrado = new Promise((resolve) => { filho.on('exit', (codigo) => { codigoDeSaida = codigo; resolve(); }); });
+  t.after(() => { if (filho.exitCode === null) filho.kill('SIGKILL'); });
+
+  await aguardarCondicao(() => obterSaida().includes('"tarefas de domínio iniciadas"'), { timeoutMs: 15000 });
+  await aguardarCondicao(() => obterSaida().includes('alerta sem telegram'), { timeoutMs: 15000 });
+  filho.kill('SIGTERM');
+  await encerrado;
+
+  assert.equal(codigoDeSaida, 0);
+  const linha = obterSaida().split('\n').find((texto) => texto.includes('alerta sem telegram'));
+  const alerta = JSON.parse(linha);
+  assert.equal(alerta.tipo, 'dominio');
+  assert.equal(alerta.codigo, 'tarefa_registro');
+  assert.equal(alerta.pedido, pedidoId);
+  for (const dado of DADOS_TITULAR) assert.ok(!obterSaida().includes(dado), dado);
+  const { rows } = await admin.query('SELECT alertada_em FROM tarefa_dominio WHERE id = ANY($1)', [tarefaIds]);
+  await admin.end();
+  assert.ok(rows.every((r) => r.alertada_em !== null));
 });

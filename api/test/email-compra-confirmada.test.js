@@ -340,7 +340,7 @@ test('CA6: o modelo e o consumidor estão nos registros de produção e passam n
   assert.ok(Object.hasOwn(consumidoresPadrao, 'email_compra_confirmada'));
   validarModelos(modelosPadrao);
   validarConsumidores(consumidoresPadrao);
-  assert.deepEqual(Object.keys(criarHandlersDeConsumidores({ pool: banco.app })), ['email_compra_confirmada']);
+  assert.deepEqual(Object.keys(criarHandlersDeConsumidores({ pool: banco.app })), ['email_compra_confirmada', 'tarefa_registro_dominio']);
 });
 
 test('CA6: toda chave de conta, add-on e plano de Skybox da tabela de preços tem rótulo', () => {

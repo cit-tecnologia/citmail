@@ -17,6 +17,7 @@
     "servicos:teste": "docker compose --profile teste up -d --wait banco-teste redis-teste",
     "worker": "node --env-file-if-exists=.env src/worker.js",
     "reprocessar": "node --env-file-if-exists=.env src/cli/reprocessar.js",
+    "dominio": "node --env-file-if-exists=.env src/cli/dominio.js",
     "lint": "eslint . --max-warnings=0",
     "test": "node --import ./test/sem-rede.js --test --test-concurrency=1"
   },

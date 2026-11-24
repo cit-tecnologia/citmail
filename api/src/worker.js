@@ -1,7 +1,8 @@
 // Processo do worker da fila (ADR 0006; CIT-56): `npm run worker`. Roda os jobs, os
 // consumidores de eventos e o publicador do outbox (CIT-166), que lê o banco, e, com
 // `WEBHOOK_ASAAS_HABILITADO`, o enfileirador e o handler do webhook do Asaas (CIT-64), e
-// o enfileirador e o handler do e-mail transacional (CIT-65), em todos os ambientes.
+// o enfileirador e o handler do e-mail transacional (CIT-65) e o laço das tarefas de
+// domínio (CIT-77), em todos os ambientes.
 // Sem CORS; o token do Telegram só existe aqui (menor privilégio).
 import { carregarConfigWorker } from './config.js'
 import { criarLogger } from './log.js'
@@ -18,6 +19,7 @@ import { criarHandlerEmail, JOB_EMAIL } from './email/servico.js'
 import { iniciarEnfileiradorEmail } from './email/enfileirador.js'
 import { modelosDoAmbiente } from './email/modelos/index.js'
 import { criarTransporte } from './email/transporte.js'
+import { iniciarTarefasDominio } from './dominios/laco.js'
 
 let config
 try {
@@ -99,8 +101,14 @@ const enfileiradorEmail = iniciarEnfileiradorEmail({
   intervaloMs: config.outboxIntervaloMs,
   paradoHoras: config.emailParadoHoras
 })
+const tarefasDominio = iniciarTarefasDominio({
+  pool,
+  filas: filasPublicador,
+  log,
+  intervaloMs: config.dominioTarefasIntervaloMs
+})
 
-// Ordem: o publicador e os enfileiradores (webhook e e-mail) param de criar jobs; `workers.close()` espera o job ativo terminar
+// Ordem: o publicador, os enfileiradores (webhook e e-mail) e o laço das tarefas de domínio param de criar jobs; `workers.close()` espera o job ativo terminar
 // e os alertas em curso serem enfileirados; depois filas, pool e conexões. Um segundo
 // sinal durante o encerramento é ignorado (a unidade systemd mata o processo após
 // `TimeoutStopSec`).
@@ -115,6 +123,7 @@ for (const sinal of ['SIGTERM', 'SIGINT']) {
       await publicador.close()
       await enfileiradorWebhook?.close()
       await enfileiradorEmail.close()
+      await tarefasDominio.close()
       await workers.close()
       await filas.close()
       // Com o Redis fora, o `close()` das filas do produtor pode falhar: a conexão

@@ -269,11 +269,23 @@ export function carregarConfigFila(env = process.env) {
   return { nodeEnv, logLevel: env.LOG_LEVEL || 'info', ...fila }
 }
 
+// Configuração da CLI de tarefas de domínio (CIT-77, `npm run dominio`): só o banco (sem
+// CORS, Redis nem Telegram). Mesmo `DATABASE_URL` da aplicação.
+export function carregarConfigBanco(env = process.env) {
+  const nodeEnv = lerNodeEnv(env)
+  const databaseUrl = (env.DATABASE_URL ?? '').trim()
+  if (!databaseUrl) {
+    throw new Error('DATABASE_URL não definida')
+  }
+  return { nodeEnv, logLevel: env.LOG_LEVEL || 'info', databaseUrl }
+}
+
 // Configuração do worker: a da fila, o banco (outbox de eventos, CIT-166) e o Telegram
 // (ADR 0011), obrigatório em produção. Só este processo recebe o token (menor privilégio).
 // Com `WEBHOOK_ASAAS_HABILITADO` (mesmo padrão da API), lê também chave, URL e timeout do
 // Asaas (conferência do pagamento, CIT-64), obrigatórios em produção; nunca o token do webhook.
-// Lê também o transporte e o remetente do e-mail transacional (CIT-65, `lerEmail`).
+// Lê também o transporte e o remetente do e-mail transacional (CIT-65, `lerEmail`) e o
+// intervalo do laço das tarefas de domínio (CIT-77, `DOMINIO_TAREFAS_INTERVALO_MS`).
 export function carregarConfigWorker(env = process.env) {
   const config = carregarConfigFila(env)
   const databaseUrl = (env.DATABASE_URL ?? '').trim()
@@ -281,6 +293,7 @@ export function carregarConfigWorker(env = process.env) {
     throw new Error('DATABASE_URL não definida')
   }
   const outboxIntervaloMs = lerInteiro(env, 'OUTBOX_INTERVALO_MS', 2000, 100, 60000)
+  const dominioTarefasIntervaloMs = lerInteiro(env, 'DOMINIO_TAREFAS_INTERVALO_MS', 300000, 60000, 3600000)
   const telegramBotToken = (env.TELEGRAM_BOT_TOKEN ?? '').trim() || undefined
   const telegramChatId = (env.TELEGRAM_CHAT_ID ?? '').trim() || undefined
   if (config.nodeEnv === 'production') {
@@ -290,7 +303,8 @@ export function carregarConfigWorker(env = process.env) {
   const webhookAsaasHabilitado = lerBooleano(env, 'WEBHOOK_ASAAS_HABILITADO', config.nodeEnv !== 'production')
   const asaas = webhookAsaasHabilitado ? lerCredenciaisAsaas(env, config.nodeEnv === 'production', true) : {}
   return {
-    ...config, databaseUrl, outboxIntervaloMs, telegramBotToken, telegramChatId, webhookAsaasHabilitado, ...asaas,
+    ...config, databaseUrl, outboxIntervaloMs, dominioTarefasIntervaloMs, telegramBotToken, telegramChatId,
+    webhookAsaasHabilitado, ...asaas,
     ...lerEmail(env, config.nodeEnv)
   }
 }

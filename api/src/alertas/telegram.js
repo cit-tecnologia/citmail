@@ -1,5 +1,7 @@
 // Alertas pelo Telegram (ADR 0011): job esgotado (CIT-56), resultado do webhook do
-// Asaas (`tipo: 'webhook'`, CIT-64) e e-mail parado (`tipo: 'email_parado'`, CIT-65). O texto leva só ids e códigos, nunca dado pessoal.
+// Asaas (`tipo: 'webhook'`, CIT-64), e-mail parado (`tipo: 'email_parado'`, CIT-65) e
+// tarefa de domínio (`tipo: 'dominio'`, CIT-77). O texto leva só ids e códigos, nunca dado
+// pessoal (nem o nome do domínio: o detalhe é pela CLI `npm run dominio`).
 // O token vai na URL: nunca entra em log nem no erro lançado (erro novo, sem `cause`,
 // porque a `cause` do `fetch` pode repetir a URL).
 
@@ -24,11 +26,25 @@ export function codigoSeguro(codigo) {
   return typeof codigo === 'string' && CODIGO.test(codigo) ? codigo : '-'
 }
 
-// Três formatos: `{ jobId, job, pedidoId }` (job esgotado),
-// `{ tipo: 'webhook', codigo, brutoId, pedidoId }` (webhook do Asaas) e
-// `{ tipo: 'email_parado', envioId }` (e-mail pendente há mais de `EMAIL_PARADO_HORAS`),
+// Códigos do alerta de tarefa de domínio (CIT-77); outro vira `-`.
+const CODIGOS_DOMINIO = new Set([
+  'tarefa_registro', 'tarefa_registro_contas_pendentes', 'lembrete_registro', 'renovacao_paga', 'renovacao_pendente'
+])
+
+function codigoDominioSeguro(codigo) {
+  return CODIGOS_DOMINIO.has(codigo) ? codigo : '-'
+}
+
+// Quatro formatos: `{ jobId, job, pedidoId }` (job esgotado),
+// `{ tipo: 'webhook', codigo, brutoId, pedidoId }` (webhook do Asaas),
+// `{ tipo: 'email_parado', envioId }` (e-mail pendente há mais de `EMAIL_PARADO_HORAS`) e
+// `{ tipo: 'dominio', codigo, tarefaId, pedidoId }` (tarefa de registro ou renovação),
 // com os ids validados.
 export function montarTextoAlerta(dados = {}) {
+  if (dados.tipo === 'dominio') {
+    return `Domínio: codigo=${codigoDominioSeguro(dados.codigo)} tarefa=${pedidoSeguro(dados.tarefaId)} ` +
+      `pedido=${pedidoSeguro(dados.pedidoId)}`
+  }
   if (dados.tipo === 'email_parado') {
     return `E-mail parado: envio=${pedidoSeguro(dados.envioId)}`
   }
@@ -42,6 +58,14 @@ export function montarTextoAlerta(dados = {}) {
 
 // Campos do log sem Telegram, com os mesmos ids validados do texto.
 function camposDoLog(dados) {
+  if (dados.tipo === 'dominio') {
+    return {
+      tipo: 'dominio',
+      codigo: codigoDominioSeguro(dados.codigo),
+      tarefa: pedidoSeguro(dados.tarefaId),
+      pedido: pedidoSeguro(dados.pedidoId)
+    }
+  }
   if (dados.tipo === 'email_parado') {
     return { tipo: 'email_parado', envio: pedidoSeguro(dados.envioId) }
   }
@@ -57,7 +81,7 @@ function camposDoLog(dados) {
 }
 
 /**
- * Devolve `enviarAlerta(dados)`, com `dados` num dos três formatos de `montarTextoAlerta`.
+ * Devolve `enviarAlerta(dados)`, com `dados` num dos quatro formatos de `montarTextoAlerta`.
  * Sem token ou chat id (só fora de produção; o worker exige os dois em produção), o
  * alerta sai só no log.
  * Erro de rede ou status não 2xx: `warn` só com o nome do erro ou o status e lança

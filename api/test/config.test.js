@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { carregarConfig, carregarConfigFila, carregarConfigWorker } from '../src/config.js';
+import { carregarConfig, carregarConfigBanco, carregarConfigFila, carregarConfigWorker } from '../src/config.js';
 import { construirApp } from '../src/app.js';
 import { PRIVACIDADE_PROVISORIA, TERMOS_MINUTA } from '../src/pedidos/aceite.js';
 import { criarCapturaDeLog, criarConfigTeste } from './auxiliares.js';
@@ -736,4 +736,41 @@ test('CA8: smtpRequireTls é true em qualquer host fora do loopback, em produç�
 test('CA8: EMAIL_TRANSPORTE com espaços nas pontas é aceito e só com espaços vale desligado', () => {
   assert.equal(carregarConfigWorker({ ...AMBIENTE_EMAIL_SMTP, EMAIL_TRANSPORTE: ' smtp ' }).emailTransporte, 'smtp');
   assert.equal(carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development', EMAIL_TRANSPORTE: '   ' }).emailTransporte, 'desligado');
+});
+
+// CIT-77: intervalo do laço das tarefas de domínio (60000 a 3600000, padrão 300000) e a
+// configuração da CLI `npm run dominio` (só o banco).
+test('CIT-77 CA2: carregarConfigWorker usa 300000 em DOMINIO_TAREFAS_INTERVALO_MS ausente', () => {
+  const config = carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development' });
+  assert.equal(config.dominioTarefasIntervaloMs, 300000);
+});
+
+test('CIT-77 CA2: carregarConfigWorker aceita DOMINIO_TAREFAS_INTERVALO_MS nos limites 60000 e 3600000', () => {
+  for (const valor of ['60000', '3600000']) {
+    const config = carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development', DOMINIO_TAREFAS_INTERVALO_MS: valor });
+    assert.equal(config.dominioTarefasIntervaloMs, Number(valor));
+  }
+});
+
+for (const valor of ['59999', '3600001', '1e5', 'abc']) {
+  test(`CIT-77 CA2: carregarConfigWorker lança erro citando DOMINIO_TAREFAS_INTERVALO_MS com ${JSON.stringify(valor)}`, () => {
+    assert.throws(
+      () => carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development', DOMINIO_TAREFAS_INTERVALO_MS: valor }),
+      (erro) => { assert.match(erro.message, /DOMINIO_TAREFAS_INTERVALO_MS/); return true; },
+    );
+  });
+}
+
+test('CIT-77 CA4: carregarConfigBanco é válida só com DATABASE_URL, sem CORS, Redis nem Telegram', () => {
+  const config = carregarConfigBanco({ DATABASE_URL: AMBIENTE_WORKER.DATABASE_URL, NODE_ENV: 'development' });
+  assert.equal(config.databaseUrl, AMBIENTE_WORKER.DATABASE_URL);
+  assert.equal(config.logLevel, 'info');
+});
+
+test('CIT-77 CA4: carregarConfigBanco sem DATABASE_URL lança erro citando o nome', () => {
+  assert.throws(() => carregarConfigBanco({ NODE_ENV: 'development' }), /DATABASE_URL não definida/);
+});
+
+test('CIT-77 CA4: carregarConfigBanco com DATABASE_URL só de espaços lança erro', () => {
+  assert.throws(() => carregarConfigBanco({ DATABASE_URL: '   ', NODE_ENV: 'development' }), /DATABASE_URL não definida/);
 });
