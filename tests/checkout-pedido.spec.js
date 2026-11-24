@@ -143,6 +143,9 @@ async function chegarRevisao(page, o = {}) {
   await page.locator('#btnStep2Next').click();
   if (extras.length) await page.evaluate(n => addonChange('extraDom', n), extras.length);
   await expect(page.locator('#step3')).toHaveClass(/active/);
+  // o orçamento pedido pelas mudanças acima pode refazer o passo 3: espera confirmar antes de preencher os extras
+  if (relogio) await page.clock.runFor(400);
+  await expect(page.locator('#orderSummary')).toHaveAttribute('data-total-confirmado', /^\d+$/);
   for (const [i, rotulo] of extras.entries()) await page.locator(`#fDomExtra${i + 1}`).fill(rotulo);
   await page.locator('#btnStep3Next').click();
   await expect(page.locator('#step4')).toHaveClass(/active/);
@@ -397,6 +400,8 @@ test.describe('checkout-pedido — CA6: erro, nova tentativa e chave de idempot�
     await conferirErro(page);
     await expect(page.locator('#pedidoErroTexto')).toContainText('comercial@citmail.com.br');
     await expect(page.locator('#btnPedidoRetry')).toBeHidden();
+    await expect(page.locator('#pedidoAmbiguoAviso'), 'sem aviso de ambíguo no irrecuperável').toHaveText('');
+    await expect(page.locator('[role="alert"]:visible'), 'uma só região de alerta visível').toHaveCount(1);
     for (const botao of await page.locator('#step5 button').all()) await botao.dispatchEvent('click');
     await page.waitForTimeout(500);
     expect(posts.length, 'nenhum 3º POST').toBe(2);
@@ -410,6 +415,80 @@ test.describe('checkout-pedido — CA6: erro, nova tentativa e chave de idempot�
     await conferirErro(page);
     await expect(page.locator('#pedidoErroTexto')).toContainText('indisponível');
     await expect(page.locator('#btnPedidoRetry')).toBeHidden();
+    descartarApi(erros);
+  });
+
+  test('CA6f 500, 500, 201: o 1º 500 é ambíguo (mesma chave e corpo, edição travada) e o 2º seguido é definitivo (chave nova)', async ({ page, erros }) => {
+    const { posts } = await abrir(page, {
+      pedido: (route, _corpo, n) => (n < 3 ? json(route, 500, { erro: 'interno' }) : soContas(route)),
+    });
+    await chegarRevisao(page);
+    await pagar(page);
+    await conferirErro(page);
+    await expect(page.locator('#pedidoAmbiguoAviso')).toContainText('pode já ter sido criado');
+    const navegacao = page.locator('#step5 [data-ir-passo]');
+    for (const botao of await navegacao.all()) await expect(botao).toBeDisabled();
+    for (const botao of await navegacao.all()) await botao.dispatchEvent('click'); // tentativa de editar
+    await expect(page.locator('#step5')).toHaveClass(/active/);
+
+    await page.locator('#btnPedidoRetry').click();
+    await expect.poll(() => posts.length).toBe(2);
+    expect(posts[1].postData(), 'mesmo corpo, byte a byte').toBe(posts[0].postData());
+    await conferirErro(page);
+    await expect(page.locator('#pedidoErroTexto')).toContainText('Não foi possível gerar a fatura');
+    await expect(page.locator('#pedidoAmbiguoAviso'), 'o 2º 500 seguido não é mais ambíguo').toHaveText('');
+    for (const botao of await navegacao.all()) await expect(botao).toBeEnabled();
+
+    await page.locator('#btnPedidoRetry').click();
+    await page.waitForURL(FATURA_CONTAS);
+    expect(posts.length).toBe(3);
+    const [a1, a2, b] = posts.map(p => p.postDataJSON().chave_idempotencia);
+    expect(a2).toBe(a1);
+    expect(b).not.toBe(a1);
+    descartarApi(erros);
+  });
+
+  test('CA6g 404 em estado ambíguo mantém o aviso, sem retry e sem novo POST', async ({ page, erros }) => {
+    const { posts } = await abrir(page, {
+      pedido: (route, _corpo, n) => (n === 1 ? proxy504(route) : json(route, 404, { erro: 'nao_encontrado' })),
+    });
+    await chegarRevisao(page);
+    await pagar(page);
+    await conferirErro(page);
+    await page.locator('#btnPedidoRetry').click();
+    await expect.poll(() => posts.length).toBe(2);
+    await expect(page.locator('#pedidoErroTexto')).toContainText('indisponível');
+    await expect(page.locator('#pedidoAmbiguoAviso')).toContainText('pode já ter sido criado');
+    await expect(page.locator('#btnPedidoRetry')).toBeHidden();
+    for (const botao of await page.locator('#step5 [data-ir-passo]').all()) await expect(botao).toBeDisabled();
+    for (const botao of await page.locator('#step5 button').all()) await botao.dispatchEvent('click');
+    await page.waitForTimeout(500);
+    expect(posts.length, 'nenhum 3º POST').toBe(2);
+    descartarApi(erros);
+  });
+
+  test('CA6h #pedidoErro é a única região role=alert: existe vazia, é reescrita a cada resposta e esvaziada no 201', async ({ page, erros }) => {
+    const { posts } = await abrir(page, {
+      pedido: (route, _corpo, n) => (n === 1 ? proxy504(route) : criado(route, [{ tipo: 'contas', url: null }])),
+    });
+    await chegarRevisao(page);
+    await expect(page.locator('[role="alert"]#pedidoErro')).toHaveCount(1);
+    await expect(page.locator('#pedidoErroTexto')).toHaveText('');
+    await expect(page.locator('#pedidoAmbiguoAviso')).toHaveText('');
+    await expect(page.locator('#pedidoAmbiguoAviso')).not.toHaveAttribute('role', /.*/);
+    await expect(page.locator('[role="alert"]:visible')).toHaveCount(0);
+
+    await pagar(page);
+    await conferirErro(page);
+    await expect(page.locator('#pedidoErroTexto')).not.toHaveText('');
+    await expect(page.locator('[role="alert"]:visible'), 'uma só região de alerta visível').toHaveCount(1);
+
+    await page.locator('#btnPedidoRetry').click();
+    await expect.poll(() => posts.length).toBe(2);
+    await expect(page.locator('#pedidoAviso')).toBeVisible();
+    await expect(page.locator('#pedidoErroTexto')).toHaveText('');
+    await expect(page.locator('#pedidoAmbiguoAviso')).toHaveText('');
+    await expect(page.locator('[role="alert"]:visible')).toHaveCount(0);
     descartarApi(erros);
   });
 });
@@ -515,6 +594,54 @@ test.describe('checkout-pedido — CA9: 400 de validação', { tag: '@CIT-63' },
     await expect(page.locator('#pedidoErroTexto')).toContainText('Revise os dados destacados');
     await page.locator('#btnPedidoRevisar').click();
     await expect(page.locator('#step3')).toHaveClass(/active/);
+    descartarApi(erros);
+  });
+
+  /** 400 em cliente.documento (n = 1); depois 201 sem URL segura (n = 2). */
+  const comMarcaNoCpf = { pedido: (/** @type {any} */ route, /** @type {any} */ _c, /** @type {number} */ n) => (n === 1
+    ? validacao([{ campo: 'cliente.documento' }])(route) : criado(route, [{ tipo: 'contas', url: null }])) };
+
+  async function marcarCpf(/** @type {import('@playwright/test').Page} */ page) {
+    await pagar(page);
+    await conferirErro(page);
+    await expect(page.locator('#fCPF')).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.locator('#err-cpf')).toHaveText('Confira este dado.');
+    await expect(page.locator('#err-cpf')).toHaveClass(/visible/);
+  }
+
+  test('CA9 a marca "Confira este dado." sai quando a validação local do cadastro passa', async ({ page, erros }) => {
+    await abrir(page, comMarcaNoCpf);
+    await chegarRevisao(page);
+    await marcarCpf(page);
+    await page.locator('#btnPedidoRevisar').click();
+    await expect(page.locator('#step4')).toHaveClass(/active/);
+    await page.locator('#btnSubmitCadastro').click();
+    await expect(page.locator('#step5')).toHaveClass(/active/);
+    await expect(page.locator('#fCPF')).not.toHaveAttribute('aria-invalid', 'true');
+    await expect(page.locator('#err-cpf')).not.toHaveClass(/visible/);
+    descartarApi(erros);
+  });
+
+  test('CA9 a marca do CPF sai ao trocar para CNPJ', async ({ page, erros }) => {
+    await abrir(page, comMarcaNoCpf);
+    await chegarRevisao(page);
+    await marcarCpf(page);
+    await page.locator('#btnPedidoRevisar').click();
+    await page.locator('[data-doc-tipo="cnpj"]').click();
+    await expect(page.locator('#fCPF')).not.toHaveAttribute('aria-invalid', 'true');
+    await expect(page.locator('#err-cpf')).not.toHaveClass(/visible/);
+    descartarApi(erros);
+  });
+
+  test('CA9 as marcas saem depois de um 201', async ({ page, erros }) => {
+    await abrir(page, comMarcaNoCpf);
+    await chegarRevisao(page);
+    await marcarCpf(page);
+    await page.evaluate(() => goStep(5));
+    await pagar(page);
+    await expect(page.locator('#pedidoAviso')).toBeVisible();
+    await expect(page.locator('#fCPF')).not.toHaveAttribute('aria-invalid', 'true');
+    await expect(page.locator('#err-cpf')).not.toHaveClass(/visible/);
     descartarApi(erros);
   });
 
@@ -668,6 +795,12 @@ test.describe('checkout-pedido — CA15: paridade das versões e dos recursos', 
     expect(html).toContain('assets/checkout.js?v=9');
     expect(html).toContain('assets/checkout.css?v=5');
     expect(html).toContain('assets/precos.js?v=26');
+  });
+
+  test('CA15 #loadingOverlay (sem uso) saiu do HTML, do CSS e do JS', async () => {
+    for (const arquivo of ['../checkout.html', '../assets/checkout.js', '../assets/checkout.css']) {
+      expect(ler(arquivo), arquivo).not.toContain('loadingOverlay');
+    }
   });
 
   test('CA15 a CSP do checkout segue idêntica à anterior', async () => {
