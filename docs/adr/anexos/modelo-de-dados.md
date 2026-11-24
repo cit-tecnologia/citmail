@@ -76,6 +76,7 @@ Uma compra feita no checkout. Guarda o total calculado pelo servidor (ADR 0012).
   - `aceite_em` (`timestamptz`, relógio do banco no `INSERT` do pedido, igual a `criado_em`), `versao_termos` (`^[0-9A-Za-z._-]{1,32}$`), `versao_privacidade` (`^[0-9A-Za-z._-]{1,64}$`) e `ip_aceite` (`inet`), todas `NOT NULL`, gravadas só no `INSERT` do estado `criando`. O papel `<banco>_aplicacao` tem `INSERT` nelas e nenhum `UPDATE`; a retomada e a conclusão não as tocam.
   - Retenção do IP: a regra da auditoria (ADR 0013 item 9): 6 meses em claro, depois `/24` no IPv4 e `/48` no IPv6, com dono na E6-H3. Essa pseudonimização exigirá `UPDATE (ip_aceite)` em `pedido` por um papel de retenção (`<banco>_retencao`, a criar), como já previsto para a auditoria. Até a rotina existir, o IP fica em claro além dos 6 meses (mesmo risco aceito da auditoria). O mesmo IP também sai no log de acesso (`req.remoteAddress` do `request completed`, ADR 0013 item 3), com a retenção de 30 dias dos logs técnicos.
   - A anonimização do contato (E6-H3) **não** apaga `aceite_em` nem as versões: são a prova do consentimento enquanto durar o contrato e o prazo prescricional.
+- **Implementado (CIT-64, [ADR 0015](../0015-webhook-do-asaas.md)):** `dominio_pago_em` (`timestamptz`, nulável), gravado no 1º pagamento da assinatura de domínios; o papel `<banco>_aplicacao` tem `UPDATE` nela. `dominio_registrado_em` continua da E4-H4.
 - **Relações:** pertence a 1 cliente; gera 1 ou 2 assinaturas; provisiona N caixas; origina N eventos.
 
 ## Entidade: assinatura
@@ -96,6 +97,7 @@ Login do painel. Nasce sem senha no pagamento (E3-H4).
 - **Atributos:** `cliente_id`, `email` (do pedido), `senha_hash` (Argon2id; nulo em `sem_senha`), `senha_definida_em`, `estado` (ver "Estados da conta do titular"), `suspensa_em`, `motivo_suspensao` (`inadimplencia`).
 - **Solicitações de senha:** tabela auxiliar própria, abaixo.
 - **Relações:** pertence a 1 cliente; administra N caixas; tem N solicitações de senha; aparece na auditoria como autor ou alvo.
+- **Implementado (CIT-64, [ADR 0015](../0015-webhook-do-asaas.md)):** tabela `conta_titular`, criada pelo webhook com o 1º pagamento das contas (`pedido_pago`), na mesma transação: `email = lower(trim(pedido.contato_email))` (CHECK `email = lower(email)`, 3 a 254 caracteres), `estado` `sem_senha` (CHECK `sem_senha|ativa|suspensa|cancelada`), `senha_hash` nulo, `motivo_suspensao` só `inadimplencia`, `criado_em`/`atualizado_em` com trigger. Pedido com `fatura_retida` não cria a conta (alerta `contato_divergente`); e-mail já em conta de outro cliente também não (alerta `conta_email_em_uso`). O papel `<banco>_aplicacao` tem `SELECT` e `INSERT` em `cliente_id`, `email` e `estado`, sem `UPDATE` nesta história.
 
 ### Tabela auxiliar: solicitação de definição de senha
 
@@ -126,7 +128,15 @@ Evento de domínio gravado na mesma transação da mudança de estado e publicad
 - **Chave:** `id` (é o `eventoId` do payload). Único: `chave_idempotencia`.
 - **Atributos:** `nome`, `versao`, `agregado_tipo` (`pedido`, `conta_titular` ou `assinatura`), `agregado_id`, `payload` (JSON só com ids e dados não pessoais), `request_id` (correlação, ADR 0013), `ocorrido_em`, `publicado_em` (nulo até ir para a fila), `tentativas_publicacao`.
 - **Relações:** pertence a 1 agregado (pedido, conta do titular ou assinatura).
-- **Regras:** a restrição única em `chave_idempotencia` impede o mesmo fato duas vezes; formato da chave no anexo de eventos. O webhook bruto do Asaas (E3-H4) e o log de chamadas à Skymail (E4-H1) ficam em tabelas próprias, fora deste anexo. O webhook bruto é único pelo id do evento do Asaas, guarda só campos sem dado pessoal e tem retenção proposta de 90 dias (ADR 0005, a confirmar).
+- **Regras:** a restrição única em `chave_idempotencia` impede o mesmo fato duas vezes; formato da chave no anexo de eventos. O webhook bruto do Asaas (E3-H4) e o log de chamadas à Skymail (E4-H1) ficam em tabelas próprias. O webhook bruto é único pelo id do evento do Asaas, guarda só campos sem dado pessoal e tem retenção proposta de 90 dias (ADR 0005, a confirmar).
+
+### Tabela auxiliar: evento bruto do webhook do Asaas
+
+Implementada na CIT-64 ([ADR 0015](../0015-webhook-do-asaas.md)): `asaas_webhook_evento`, gravada pela rota do webhook e processada por job no worker.
+
+- **Chave:** `id`. Único: `asaas_evento_id`.
+- **Atributos (lista branca):** `asaas_evento_id`, `evento`, `request_id`, `pagamento_id`, `assinatura_id` (`payment.subscription`), `referencia_externa` (até 100 caracteres), `status`, `billing_type`, `valor_centavos`, `vencimento` e `pago_em` (`date`). Processamento: `recebido_em`, `enfileirado_em`, `processado_em`, `alertado_pendente_em`; resultado: `situacao` (`pendente`, `processado`, `ignorado`, `divergente`) e `codigo` (`^[a-z][a-z0-9_]{0,47}$`).
+- **Regras:** nunca guarda `customer`, `description`, `observations`, URLs de fatura, `creditCard*`, nome, e-mail, documento, endereço nem o corpo inteiro. Índices parciais para o enfileirador e o alerta de parado e índice por `recebido_em` para a limpeza de 90 dias (história própria). O papel `<banco>_aplicacao` tem `SELECT`, `INSERT` nas colunas da lista branca e `UPDATE` só nas de processamento e resultado; nada de `DELETE`.
 
 ### Tabela auxiliar: evento processado
 
@@ -228,4 +238,5 @@ Transições:
 | 2026-09-25 | Criação do anexo. | CIT-47 |
 | 2026-09-25 | Ajustes da revisão: estados do pedido com domínio novo, tabela de solicitação de senha, itens de domínio com id, `agregado_tipo` sem `dominio`, retenções. | CIT-47 |
 | 2026-11-23 | Tabela auxiliar `evento_processado` e relação evento → evento processado. | CIT-166 |
+| 2026-11-23 | `conta_titular` e `pedido.dominio_pago_em` implementados; tabela auxiliar do evento bruto do webhook do Asaas. | CIT-64 |
 | a definir | Revisão prevista pela #48 (PoC Skymail): campos da caixa marcados "provisório (#48)", lista de add-ons do pedido. | #48 |

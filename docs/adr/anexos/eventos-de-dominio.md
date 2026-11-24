@@ -54,13 +54,17 @@ A chave de idempotência é o valor gravado em `evento.chave_idempotencia` (rest
 - **Quem emite não envia e-mail.** E-mail é sempre efeito de um consumidor do E7 (E7-H1, ADR 0010).
 - **Mudança de payload.** Campo novo é compatível; remover ou renomear campo sobe `versao` e exige consumidor que aceite as duas versões durante a transição.
 
+## Emissor implementado (CIT-64)
+
+O webhook do Asaas ([ADR 0015](../0015-webhook-do-asaas.md)) emite `pedido_pago`, `dominio_pago`, `conta_titular_criada` e `cobranca_vencida`, com os payloads e as chaves da tabela acima, depois de conferir o pagamento no Asaas. `assinaturaId` é o id local da assinatura (`assinatura.id`); `cobrancaAsaasId` é o id do pagamento no Asaas. `cobranca_paga` **continua pendente** (E4-H5): os pagamentos seguintes ao 1º ficam no bruto como `ignorado` `pagamento_seguinte`, reprocessáveis quando o evento existir. A ordem entre `pedido_pago` e `conta_titular_criada` não é garantida para os consumidores.
+
 ## Divergências encontradas na conferência
 
 1. **Evento de desativação sem nome (E3-H7).** A história publica "o evento de desativação", consumido por E4 e E7, mas nenhuma história do E4 ou do E7 o consome hoje (E7-H8 remete o e-mail de cancelamento efetivado à E3-H7). Nome proposto: `assinatura_cancelada`. Falta decidir se o cancelamento feito pela equipe no mvp também o publica.
 2. **`conta_suspensa` e `conta_reativada` numa linha só.** Separados em duas linhas, com chave própria.
 3. **Reativação sem evento de entrada.** E4-H5 reativa quando "chega o pagamento confirmado da cobrança em atraso", mas a tabela base não tem esse evento e E3-H4 só publica `pedido_pago` para a fatura das contas. Reusar `pedido_pago` dispararia de novo o provisionamento (E4-H2) e o e-mail de compra (E7-H2). Proposta: `pedido_pago` só no primeiro pagamento do pedido e `cobranca_paga` (nome proposto) para os pagamentos seguintes. Exige critério novo em E3-H4 (ver "Ajustes de critérios em outras histórias" no README).
 4. **Token de senha no payload.** E5-H2 gera o token e publica `definicao_senha_solicitada`; E7-H3 precisa do link. O token não pode ir para a tabela `evento` nem para a fila. Proposta: o payload leva só `solicitacaoId`, e o job de e-mail gera o token no envio e grava só o hash. A tabela de solicitação de senha (anexo de modelo de dados) guarda o hash. Ajustar o critério 1 de E5-H2 e os critérios 1 e 2 de E7-H3.
-5. **`dominio_pago` também para domínio extra existente.** A assinatura anual de domínios cobre domínio novo e extra (E3-H2). E4-H4 só trata domínio novo; o extra existente entra na ativação de E4-H7, via `conta_ativada`. O consumidor de E4-H4 ignora o evento quando `temDominioNovo` é falso.
+5. **`dominio_pago` e domínio extra (corrigida na CIT-64).** A versão inicial supunha domínio extra existente na assinatura de domínios, com `dominio_pago` e `temDominioNovo` falso. No código (CIT-61), todo domínio extra é gravado como `novo` (`pedido_dominio`: `CHECK (papel = 'principal' OR tipo = 'novo')`), e a assinatura de domínios só existe com algum domínio novo. Por isso `dominio_pago` sai sempre com `temDominioNovo: true`; o domínio principal existente entra na ativação de E4-H7, via `conta_ativada`.
 6. **Ordem entre `pedido_pago` e `dominio_pago`.** São faturas separadas e podem chegar em qualquer ordem. O consumidor de E4-H4 aceita `dominio_pago` com o pedido ainda `aguardando_pagamento`: abre a tarefa de registro, mas só enfileira o provisionamento quando as contas estiverem pagas. Transições no anexo de modelo de dados.
 7. **Nome `conta_ativada`.** Fechado: mantém o nome da base, com esta definição: o evento marca o fim do provisionamento do pedido (E4-H2, pedido `ativo`), não a passagem da conta do titular para `ativa` (que acontece quando a senha é definida).
 8. **Domínio novo registrado pela equipe.** E4-H4 enfileira o provisionamento de E4-H2 por comando administrativo, sem evento. Fica como job direto; o registro manual vai para a auditoria (ADR 0013). Se outro consumidor precisar saber do registro, criar `dominio_registrado`.
@@ -75,4 +79,5 @@ A chave de idempotência é o valor gravado em `evento.chave_idempotencia` (rest
 | 2026-09-25 | Criação do anexo. | CIT-47 |
 | 2026-09-25 | Ajustes da revisão: chaves de idempotência por fato de negócio, `jobId` com hífen, autenticação e conferência do webhook, `conta_ativada` fechado. | CIT-47 |
 | 2026-11-23 | Consumidor idempotente pela tabela `evento_processado`. | CIT-166 |
+| 2026-11-23 | Emissor do webhook do Asaas implementado; `cobranca_paga` pendente; divergência 5 corrigida (domínio extra é sempre novo). | CIT-64 |
 | a definir | Revisão prevista pela #48 (PoC Skymail): payloads marcados "provisório (#48)" (`conta_ativada`, `dominio_verificado`, `conta_suspensa`, `conta_reativada`). | #48 |

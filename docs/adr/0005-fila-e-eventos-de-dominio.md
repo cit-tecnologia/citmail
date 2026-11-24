@@ -28,7 +28,7 @@ A gravação do evento na tabela `evento` acontece na mesma transação da mudan
 3. **Chave de idempotência por fato de negócio**, não pelo id do evento externo. Ex.: `pedido_pago-<pedidoId>`, `cobranca_paga-<cobrancaAsaasId>`. O Asaas manda `PAYMENT_CONFIRMED` e `PAYMENT_RECEIVED` com ids diferentes para o mesmo pagamento; a chave pelo id do evento do Asaas deixaria passar os dois. Lista completa no anexo de eventos.
 4. **Um job por consumidor.** Cada consumidor recebe o evento num job próprio, com `jobId = <consumidor>-<eventoId>`. Separador hífen: o BullMQ pode rejeitar `:` em `jobId` customizado.
 5. **Novas tentativas com backoff.** Tentativas esgotadas levam o job a "falhou" e geram alerta (ADR 0011).
-6. **Webhook do Asaas (E3-H4):**
+6. **Webhook do Asaas (E3-H4):** rota, flag, token, tabela do bruto, lista branca, job, matriz de status e conferência detalhados no [ADR 0015](0015-webhook-do-asaas.md) (CIT-64).
    - Exige o cabeçalho `asaas-access-token`. Comparação em tempo constante: calcula o digest SHA-256 do token recebido e do token configurado (ambos 32 bytes) e compara os dois digests com `crypto.timingSafeEqual`, que exige buffers do mesmo tamanho — comparar os tokens brutos falharia (exceção, não 401) para um token recebido de tamanho diferente do configurado. Ausente ou com digest diferente: 401, nada gravado, sem expor o tamanho do token esperado.
    - Grava o evento bruto (tabela própria, única pelo id do evento do Asaas) e responde 200. O processamento segue em job.
    - Antes de mudar estado, o job consulta o pagamento na API do Asaas e confere pagamento, valor e pedido (assinatura ligada ao pedido). Divergência: não muda estado, gera alerta.
