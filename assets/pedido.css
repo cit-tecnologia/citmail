@@ -90,3 +90,6 @@
   .pedido-voltar { padding: 0 var(--cit-space-2); font-size: var(--cit-text-caption); }
   .nav-logo img { width: 128px; height: auto; }
 }
+
+/* Sem etapa ainda (1ª consulta falhou): o parágrafo vazio não ocupa espaço. */
+.pedido-etapa:empty { display: none; }
