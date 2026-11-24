@@ -1,5 +1,5 @@
 // @ts-check
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { test, expect } from './fixtures.js';
 // CIT-22: guarda de carga (assets/precos.js não carrega) — espera erro de propósito, por isso usa o
 // `test` puro do Playwright em vez da fixture `erros` (que falharia com qualquer erro registrado).
@@ -175,8 +175,10 @@ async function preencherCheckoutPesado(page) {
     selectDomainOpt('new-br');
     document.getElementById('fDomNew').value = 'empresaficticiacomnomebemcomprido';
     onDomNewInput();
-    document.getElementById('successWebmail').textContent = 'webmail.empresaficticiacomnomemuitolongoparateste.com.br';
-    document.getElementById('successEmail').textContent = 'contato.financeiro@empresaficticiacomnomemuitolongo.com.br';
+    // pior caso de largura no passo 3: um campo por domínio extra, com rótulos longos fictícios
+    document.querySelectorAll('#domExtrasCampos input').forEach((el, i) => {
+      el.value = `extraficticiacomnome${i}`.slice(0, 26);
+    });
   });
 }
 
@@ -208,10 +210,10 @@ async function lerFontes(page, seletores, excecoes = []) {
 const LARGURAS_BARRA = [320, 331, 332, 412, 500, 521, 543, 544, 744, 960, 961, 1024, 1243, 1920];
 // Rótulos visíveis esperados por largura, fixados a partir da geometria medida (coluna ≈ 92% da largura
 // até 960px): 543 → coluna 499,6px → só o ativo; 544 → coluna 500,5px → todos.
-// O limite de 500px deixa folga para as métricas da fonte no Linux (6 rótulos ≈ 472px) e no Windows (≈ 453px).
+// O limite de 500px deixa folga para as métricas da fonte no Linux (5 rótulos, medir de novo após a CIT-63) e no Windows.
 const ROTULOS_POR_LARGURA = /** @type {Record<number, number>} */ ({
   320: 1, 331: 1, 332: 1, 412: 1, 500: 1, 521: 1, 543: 1,
-  544: 6, 744: 6, 960: 6, 961: 6, 1024: 6, 1243: 6, 1920: 6,
+  544: 5, 744: 5, 960: 5, 961: 5, 1024: 5, 1243: 5, 1920: 5,
 });
 // Círculos da barra por largura: 32px só com coluna < 300px (320 → 288px, 331 → 299px).
 const CIRCULO_POR_LARGURA = /** @type {Record<number, number>} */ ({ 320: 32, 331: 32 });
@@ -223,8 +225,6 @@ const SELETORES_TIPO_SMALL = [
   '.mini-row-price', '.mini-row-tabela', '.mini-row-disc', '.cycle-toggle .left',
   '.opt-desc', '.opt-price-note', '.domain-tld', '.domain-at',
   '.field label', '.field-hint', '.field-error', '.doc-type-btn', '.terms-check',
-  '.payment-desc', '.pix-box-title', '.pix-box--sm .pix-box-title', '.pix-box-desc', '.pix-copy-label', '.pix-note', '.pix-copy', '.pix-timer', '.pix-status', '.asaas-notice',
-  '.access-label', '.access-value', '.access-item', '.success-help',
   '.alert-box', '.btn-back-row',
   '.summary-plan-cycle', '.sum-lines', '.sum-disc', '.sum-economia', '.summary-feature', '.secure-badge', '.summary-total .period',
 ];
@@ -232,7 +232,7 @@ const SELETORES_TIPO_SMALL = [
 const SELETORES_TIPO_BODY = [
   '.mini-row-name', '.mini-qty-val', '.mini-row-sub', '.mini-row-sub-tabela',
   '.opt-name',
-  '.field input', '.field select', '.installments-select',
+  '.field input', '.field select',
 ];
 // Passo 3 (add-ons), incluindo o cabeçalho das seções da sanfona, o indicador de subtotal e o aviso de desconto (CIT-21).
 const SELETORES_TIPO_SMALL_PASSO3 = [
@@ -241,7 +241,11 @@ const SELETORES_TIPO_SMALL_PASSO3 = [
 ];
 const SELETORES_TIPO_BODY_PASSO3 = ['.addon-name', '.addon-sub-val', '.addon-sec-nome', '.aviso-desconto-titulo'];
 // Exceções documentadas: alertas com explicação longa usam o corpo de leitura (16px), ver checkout.html.
-const EXCECOES_TIPO_BODY = ['#domainExistPanel .alert-box', '.boleto-inner .alert-box'];
+// `#pedidoAmbiguoAviso` é um span dentro de `#pedidoErro` e herda a tipografia dele.
+const EXCECOES_TIPO_BODY = [
+  '#domainExistPanel .alert-box', '#avisoDominioNovo', '#revisaoAvisoDominio', '#avisoEmBreve', '#avisoEmBreveCadastro',
+  '#revisaoEmBreve', '#pedidoErro', '#pedidoAviso',
+];
 
 test.describe('checkout — ciclo de cobrança', { tag: '@CIT-15' }, () => {
   test('toggle do ciclo fica verde com ?cycle=annual e alterna ao clicar', async ({ page, erros }) => {
@@ -346,7 +350,7 @@ test.describe('checkout — domínio', { tag: '@CIT-15' }, () => {
 
     await expect(page.locator('#step2Error')).toBeHidden();
     await expect(page.locator('#step3')).toHaveClass(/active/);
-    await expect(page.locator('#successWebmail')).toHaveText('webmail.minhaempresateste.com.br');
+    await expect(page.locator('#fDomNew')).toHaveValue('minhaempresateste');
   });
 
   test('fluxo até o passo 3 com domínio existente conclui sem erros', async ({ page, erros }) => {
@@ -394,7 +398,7 @@ test.describe('checkout — CIT-19', { tag: '@CIT-19' }, () => {
 
   test.describe('checkout — barra de etapas', () => {
     for (const largura of LARGURAS_BARRA) {
-      test(`largura ${largura}px: sem transbordo e rótulos corretos nos passos 1, 5 e 6`, async ({ page, erros }) => {
+      test(`largura ${largura}px: sem transbordo e rótulos corretos nos passos 1 e 5`, async ({ page, erros }) => {
         await page.goto('checkout.html?qty5=2');
         await page.evaluate(() => document.fonts.ready);
         await page.setViewportSize({ width: largura, height: 800 });
@@ -402,7 +406,7 @@ test.describe('checkout — CIT-19', { tag: '@CIT-19' }, () => {
         const rotulosEsperados = ROTULOS_POR_LARGURA[largura];
         const circuloEsperado = CIRCULO_POR_LARGURA[largura] ?? 36;
 
-        for (const passo of [1, 5, 6]) {
+        for (const passo of [1, 5]) {
           const m = await medirBarra(page, passo);
           const contexto = `largura ${largura}px, passo ${passo} (coluna ${Math.round(m.mcWidth)}px)`;
 
@@ -415,7 +419,7 @@ test.describe('checkout — CIT-19', { tag: '@CIT-19' }, () => {
           expect(m.ativoCortado, `${contexto}: rótulo ativo está cortado`).toBe(false);
           expect(m.labelsCortados, `${contexto}: rótulos cortados ou fora da .main-col`).toEqual([]);
           expect(m.nLabels, `${contexto}: quantidade de rótulos visíveis`).toBe(rotulosEsperados);
-          expect(m.circulos, `${contexto}: tamanho dos círculos`).toEqual(Array(6).fill({ w: circuloEsperado, h: circuloEsperado }));
+          expect(m.circulos, `${contexto}: tamanho dos círculos`).toEqual(Array(5).fill({ w: circuloEsperado, h: circuloEsperado }));
         }
       });
     }
@@ -455,11 +459,10 @@ test.describe('checkout — CIT-19', { tag: '@CIT-19' }, () => {
         await preencherCheckoutPesado(page);
         await page.setViewportSize({ width: largura, height: 900 });
 
-        const variantes = /** @type {[number, string?][]} */ ([[1], [2], [3], [4], [5, 'pix'], [5, 'boleto'], [5, 'card'], [6]]);
-        for (const [passo, pagamento] of variantes) {
-          const m = await page.evaluate(([n, pay]) => {
+        const variantes = /** @type {[number, string?][]} */ ([[1], [2], [3], [4], [5]]);
+        for (const [passo] of variantes) {
+          const m = await page.evaluate(([n]) => {
             goStep(n);
-            if (pay) selectPayment(pay);
             const doc = document.documentElement;
             const cards = [...document.querySelectorAll('.card')].filter(c => c.getClientRects().length > 0);
             return {
@@ -468,22 +471,12 @@ test.describe('checkout — CIT-19', { tag: '@CIT-19' }, () => {
               cardsTransbordando: cards.filter(c => c.scrollWidth > c.clientWidth + 1)
                 .map(c => `${c.closest('[id]')?.id}: ${c.scrollWidth}>${c.clientWidth}`),
             };
-          }, [passo, pagamento]);
-          const id = pagamento ? `${passo}/${pagamento}` : `${passo}`;
+          }, [passo]);
+          const id = `${passo}`;
           expect(m.docOverflow, `largura ${largura}px, passo ${id}: rolagem horizontal do documento`).toBeLessThanOrEqual(0);
           expect(m.cardsVisiveis, `largura ${largura}px, passo ${id}: nenhum .card visível medido`).toBeGreaterThan(0);
           expect(m.cardsTransbordando, `largura ${largura}px, passo ${id}: .card com conteúdo mais largo que o card`).toEqual([]);
         }
-
-        // Passo 6 com webmail fictício longo: precisa caber inteiramente dentro do card.
-        const dentroDoCard = await page.evaluate(() => {
-          const el = document.getElementById('successWebmail');
-          const card = el.closest('.card');
-          const b = el.getBoundingClientRect();
-          const c = card.getBoundingClientRect();
-          return b.left >= c.left - 0.5 && b.right <= c.right + 0.5 && el.scrollWidth <= el.clientWidth + 1;
-        });
-        expect(dentroDoCard, `largura ${largura}px: #successWebmail transborda do card`).toBe(true);
       });
     }
   });
@@ -714,9 +707,8 @@ test.describe('checkout — add-ons: preços (não regressão)', { tag: '@CIT-21
     await expect(page.locator('#asGrupo')).toHaveText('R$ 8,00');
     await expect(page.locator('#asSkybox')).toHaveText('R$ 57,40');
     await expect(page.locator('#asExtraDom')).toHaveText('R$ 158,00');
-    await expect(page.locator('#extraDomPixTotal')).toHaveText('R$ 158,00');
 
-    // Domínio extra (anual, via Pix) fica fora do subtotal mensal dos add-ons.
+    // Domínio extra (anual, cobrado em fatura própria) fica fora do subtotal mensal dos add-ons.
     await expect(page.locator('#addonsSubtotalVal')).toHaveText('+ R$ 110,50/mês');
     expect(await linhas(page, '#addonsSubtotalLines .addon-sub-line')).toEqual([
       ['Talk', 'R$ 14,10/mês'],
@@ -789,15 +781,14 @@ test.describe('checkout — add-ons: preços (não regressão)', { tag: '@CIT-21
     await expect(page.locator('#sumTotal')).toHaveText('R$ 20,00');
   });
 
-  test('domínio extra: 2 × R$ 79,00 no Pix anual, fora do total mensal e do resumo', async ({ page, erros }) => {
+  test('domínio extra: 2 × R$ 79,00 anuais, fora do total mensal e do resumo', async ({ page, erros }) => {
     await page.goto('checkout.html?qty5=2');
     await page.evaluate(() => goStep(3));
 
     await definirQtdAddon(page, 'Domínio secundário', 'aqExtraDom', 2);
 
     await expect(page.locator('#asExtraDom')).toHaveText('R$ 158,00');
-    await expect(page.locator('#extraDomPixPanel')).toBeVisible();
-    await expect(page.locator('#extraDomPixTotal')).toHaveText('R$ 158,00');
+    await expect(page.locator('#domExtrasCampos')).toBeVisible();
     await expect(page.locator('#addonsSubtotal')).toBeHidden();
     expect(await linhas(page, '#sumAccountLines .sum-line')).toEqual([['2× E-mail 5 GB', 'R$ 20,00']]);
     await expect(page.locator('#sumTotal')).toHaveText('R$ 20,00');
@@ -853,7 +844,7 @@ test.describe('checkout — add-ons: sanfona', { tag: '@CIT-21' }, () => {
     await expect((await painelSecao(page, 'Armazenamento em nuvem')).locator('#adSkybox')).toHaveCount(1);
     await expect((await painelSecao(page, 'Talk – Videoconferência')).locator('#adTalk')).toHaveCount(1);
     await expect((await painelSecao(page, 'Backup')).locator('#adBackup90, #adBackup365')).toHaveCount(2);
-    await expect((await painelSecao(page, 'Domínio secundário')).locator('#adExtraDom, #extraDomPixPanel')).toHaveCount(2);
+    await expect((await painelSecao(page, 'Domínio secundário')).locator('#adExtraDom, #domExtrasCampos')).toHaveCount(2);
   });
 
   test('Grupo de E-mail fica fora das seções, sempre visível, e entra no subtotal, no resumo e no total', async ({ page, erros }) => {
@@ -935,6 +926,7 @@ test.describe('checkout — add-ons: sanfona', { tag: '@CIT-21' }, () => {
     await page.getByRole('button', { name: 'Aumentar Backup 365 dias', exact: true }).click();
     await abrirSecao(page, 'Domínio secundário');
     await page.getByRole('button', { name: 'Aumentar Domínio extra', exact: true }).click();
+    await page.locator('#fDomExtra1').fill('outraempresa');
     // Fecha tudo antes de sair do passo.
     for (const nome of SECOES_ADDONS) {
       const b = botaoSecao(page, nome);
@@ -1177,7 +1169,7 @@ test.describe('checkout — add-ons: aviso de desconto', { tag: '@CIT-21' }, () 
     const aviso = page.locator('#avisoDescontoAddons');
     await expect(aviso).toHaveCount(1);
 
-    for (const passo of [1, 2, 3, 4, 5, 6]) {
+    for (const passo of [1, 2, 3, 4, 5]) {
       await page.evaluate(n => goStep(n), passo);
       if (passo === 3) await expect(aviso, 'passo 3').toBeVisible();
       else await expect(aviso, `passo ${passo}`).toBeHidden();
@@ -1283,40 +1275,6 @@ test.describe('checkout — CIT-22: caracterização dos valores atuais', { tag:
       }
     });
   }
-
-  test('opções de #fInstallments no mensal (5× E-mail 5 GB, R$ 47,50)', async ({ page, erros }) => {
-    await page.goto('checkout.html?qty5=5');
-    await expect(page.locator('#fInstallments option')).toHaveText([
-      '1× de R$ 47,50 (sem juros)',
-      '2× de R$ 23,75 (sem juros)',
-      '3× de R$ 15,83 (sem juros)',
-    ]);
-  });
-
-  test('opções de #fInstallments no anual (5× E-mail 5 GB, R$ 40,00)', async ({ page, erros }) => {
-    await page.goto('checkout.html?qty5=5&cycle=annual');
-    await expect(page.locator('#fInstallments option')).toHaveText([
-      '1× de R$ 40,00 (sem juros)',
-      '2× de R$ 20,00 (sem juros)',
-      '3× de R$ 13,33 (sem juros)',
-      '6× de R$ 6,67 (sem juros)',
-      '12× de R$ 3,33 (sem juros)',
-    ]);
-  });
-
-  test('Pix do domínio principal: #domPixCode contém 540000079', async ({ page, erros }) => {
-    await page.goto('checkout.html');
-    await page.evaluate(() => selectDomainOpt('new-br'));
-    await expect(page.locator('#domPixCode')).toContainText('540000079');
-  });
-
-  test('Pix de domínio extra (2×): #extraDomPixTotal e #extraDomPixCode', async ({ page, erros }) => {
-    await page.goto('checkout.html?qty5=2');
-    await page.evaluate(() => goStep(3));
-    await definirQtdAddon(page, 'Domínio secundário', 'aqExtraDom', 2);
-    await expect(page.locator('#extraDomPixTotal')).toHaveText('R$ 158,00');
-    await expect(page.locator('#extraDomPixCode')).toContainText('540000158');
-  });
 });
 
 // CIT-22, Passo 5: preço de tabela riscado, cascata, economia e checkout em centavos inteiros.
@@ -1711,7 +1669,7 @@ test.describe('checkout — CIT-22: fonte única de preços, sem valor fixo no H
       };
       const regex = /\d+,\d\d/g;
       const achados = [];
-      for (const sel of ['.mini-calc-row', '.addon-row', '.sky-opt', '#doptBr', '#domPixDesc']) {
+      for (const sel of ['.mini-calc-row', '.addon-row', '.sky-opt', '#doptBr']) {
         doc.querySelectorAll(sel).forEach(el => {
           const casados = (el.textContent.match(regex) || []).filter(v => v !== '0,00');
           if (casados.length) achados.push(`${sel}#${el.id || ''}: ${casados.join(',')}`);
@@ -1740,19 +1698,10 @@ test.describe('checkout — domínio: preço de PRECOS.dominio', { tag: '@CIT-31
     await page.route('https://viacep.com.br/**', route => route.abort());
   });
 
-  test('CIT-31 CA1 — texto inicial de #domPixDesc e chaves sem duplicar o preço do domínio', async ({ page, baseURL, erros }) => {
+  test('CIT-31 CA1 — chaves sem duplicar o preço do domínio', async ({ page, erros }) => {
     await page.goto('checkout.html');
 
-    // Texto inicial de #domPixDesc no HTML bruto, sem executar JS; o scan de preço fixo por
-    // contêiner (inclusive #doptBr e #domPixDesc) já é feito pelo CA17 (@CIT-22).
-    const resp = await page.request.get(new URL('checkout.html', baseURL).toString());
-    const html = await resp.text();
-    const domPixDescBruto = await page.evaluate((rawHtml) => {
-      const doc = new DOMParser().parseFromString(rawHtml, 'text/html');
-      return doc.getElementById('domPixDesc')?.textContent.trim();
-    }, html);
-    expect(domPixDescBruto).toBe('Registrar domínio .com.br');
-
+    // O scan de preço fixo por contêiner (inclusive #doptBr) já é feito pelo CA17 (@CIT-22).
     const chaves = await page.evaluate(() => ({
       dominio: PRECOS.dominio,
       temExtraDom: 'extraDom' in PRECOS.addons,
@@ -1767,14 +1716,11 @@ test.describe('checkout — domínio: preço de PRECOS.dominio', { tag: '@CIT-31
     await expect(page.locator('#doptBr .opt-price')).toHaveText('R$ 79,00');
 
     await page.locator('#doptBr').click();
-    await expect(page.locator('#domPixDesc')).toHaveText('Registrar domínio .com.br — R$ 79,00/ano');
-    await expect(page.locator('#domPixCode')).toContainText('540000079');
 
     await page.evaluate(() => goStep(3));
     await expect(page.locator('#adExtraDom .addon-price')).toHaveText('R$ 79,00/domínio/ano');
     await definirQtdAddon(page, 'Domínio secundário', 'aqExtraDom', 2);
-    await expect(page.locator('#extraDomPixTotal')).toHaveText('R$ 158,00');
-    await expect(page.locator('#extraDomPixCode')).toContainText('540000158');
+    await expect(page.locator('#domExtrasCampos input')).toHaveCount(2);
   });
 
   test('CIT-31 CA3 — principal e extra derivam da mesma constante PRECOS.dominio', async ({ page, erros }) => {
@@ -1791,14 +1737,11 @@ test.describe('checkout — domínio: preço de PRECOS.dominio', { tag: '@CIT-31
     await expect(page.locator('#doptBr .opt-price')).toHaveText('R$ 89,00');
 
     await page.evaluate(() => selectDomainOpt('new-br'));
-    await expect(page.locator('#domPixDesc')).toHaveText('Registrar domínio .com.br — R$ 89,00/ano');
-    await expect(page.locator('#domPixCode')).toContainText('540000089');
 
     await page.evaluate(() => goStep(3));
     await expect(page.locator('#adExtraDom .addon-price')).toHaveText('R$ 89,00/domínio/ano');
     await definirQtdAddon(page, 'Domínio secundário', 'aqExtraDom', 1);
-    await expect(page.locator('#extraDomPixTotal')).toHaveText('R$ 89,00');
-    await expect(page.locator('#extraDomPixCode')).toContainText('540000089');
+    await expect(page.locator('#domExtrasCampos input')).toHaveCount(1);
   });
 
   test('CIT-31 CA4 — mobile 320px: preço do domínio sem corte nem rolagem horizontal', async ({ page, erros }) => {
@@ -1818,438 +1761,6 @@ test.describe('checkout — domínio: preço de PRECOS.dominio', { tag: '@CIT-31
       return { scrollWidth: el.scrollWidth, clientWidth: el.clientWidth };
     });
     expect(caixa.scrollWidth, '#doptBr: preço cortado dentro da caixa').toBeLessThanOrEqual(caixa.clientWidth + 1);
-  });
-});
-
-/**
- * Abre o passo 3 com 2 contas de 5 GB, define o domínio extra = 1 e devolve o texto do
- * código Pix gerado (para comparar com toHaveText nos passos seguintes).
- * @param {import('@playwright/test').Page} page
- */
-async function configurarExtraDom1(page) {
-  await page.goto('checkout.html?qty5=2');
-  await page.evaluate(() => goStep(3));
-  await definirQtdAddon(page, 'Domínio secundário', 'aqExtraDom', 1);
-  return /** @type {string} */ (await page.locator('#extraDomPixCode').textContent());
-}
-
-test.describe('checkout — domínio extra: Pix estável', { tag: '@CIT-30' }, () => {
-  test.beforeEach(async ({ page }) => {
-    await page.route('https://viacep.com.br/**', route => route.abort());
-  });
-
-  test('CA1 — regressão: código Pix do domínio extra não muda com Talk, Backup, Skybox nem evento repetido; sem rolagem horizontal', async ({ page, erros }, testInfo) => {
-    const c1 = await configurarExtraDom1(page);
-    const loc = page.locator('#extraDomPixCode');
-    expect(c1).toContain('540000079');
-    await expect(page.locator('#extraDomPixTotal')).toHaveText('R$ 79,00');
-
-    await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 1);
-    await expect(loc).toHaveText(c1);
-    await expect(page.locator('#extraDomPixTotal')).toHaveText('R$ 79,00');
-
-    await definirQtdAddon(page, 'Backup', 'aqBackup90', 1);
-    await expect(loc).toHaveText(c1);
-    await expect(page.locator('#extraDomPixTotal')).toHaveText('R$ 79,00');
-
-    await abrirSecao(page, 'Armazenamento em nuvem');
-    await page.locator('#skyOpt50').click();
-    await expect(loc).toHaveText(c1);
-    await expect(page.locator('#extraDomPixTotal')).toHaveText('R$ 79,00');
-
-    await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 0);
-    await expect(loc).toHaveText(c1);
-    await expect(page.locator('#extraDomPixTotal')).toHaveText('R$ 79,00');
-
-    // dispatchEvent('change') com o mesmo valor 1: fill() com valor igual não dispara onchange sozinho.
-    await page.locator('#aqExtraDom').dispatchEvent('change');
-    await expect(loc).toHaveText(c1);
-    await expect(page.locator('#extraDomPixTotal')).toHaveText('R$ 79,00');
-
-    // Rolagem horizontal incondicional (não é específica do mobile); com o painel do Pix visível.
-    await expect(loc).toBeVisible();
-    const [scrollWidth, innerWidth] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
-    expect(scrollWidth, `${testInfo.project.name}: rolagem horizontal com o painel do Pix visível`).toBeLessThanOrEqual(innerWidth);
-  });
-
-  test('CA2 — mudar o valor regenera com o valor certo (1 → 2 → 1)', async ({ page, erros }) => {
-    const c1 = await configurarExtraDom1(page);
-    const loc = page.locator('#extraDomPixCode');
-
-    await definirQtdAddon(page, 'Domínio secundário', 'aqExtraDom', 2);
-    const c2 = /** @type {string} */ (await loc.textContent());
-    await expect(page.locator('#extraDomPixTotal')).toHaveText('R$ 158,00');
-    await expect(loc).toContainText('540000158');
-    expect(c2, 'código de 2× deveria diferir do código de 1×').not.toBe(c1);
-
-    await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 1);
-    await expect(loc).toHaveText(c2);
-    await expect(page.locator('#extraDomPixTotal')).toHaveText('R$ 158,00');
-
-    await definirQtdAddon(page, 'Domínio secundário', 'aqExtraDom', 1);
-    await expect(loc).toContainText('540000079');
-    await expect(page.locator('#extraDomPixTotal')).toHaveText('R$ 79,00');
-  });
-
-  test('CA3 — 1 → 0 → 1: painel some e volta com o mesmo código', async ({ page, erros }) => {
-    const c1 = await configurarExtraDom1(page);
-    const loc = page.locator('#extraDomPixCode');
-    const panel = page.locator('#extraDomPixPanel');
-    expect(c1).toContain('540000079');
-
-    await definirQtdAddon(page, 'Domínio secundário', 'aqExtraDom', 0);
-    await expect(panel).toBeHidden();
-
-    await definirQtdAddon(page, 'Domínio secundário', 'aqExtraDom', 1);
-    await expect(panel).toBeVisible();
-    await expect(loc).toHaveText(c1);
-  });
-});
-
-// CIT-31 CA6: precos.js antigo (sem PRECOS.dominio) aciona a mesma guarda de carga do CIT-22 — a
-// guarda lança erro de propósito, por isso usa o `test` puro do Playwright (testSemErros), como a
-// guarda "sem assets/precos.js" (~:1875), em vez da fixture `erros`.
-testSemErros.describe('checkout — CIT-31: precos.js antigo sem PRECOS.dominio (CA6)', { tag: '@CIT-31' }, () => {
-  testSemErros('mostra o aviso "Não foi possível carregar os preços. Recarregue a página." e nenhum NaN', async ({ page }) => {
-    const fonte = readFileSync(new URL('../assets/precos.js', import.meta.url), 'utf8');
-    const body = fonte.replace('dominio: 7900,', '');
-    expect(body).not.toContain('dominio:');
-    await page.route('**/assets/precos.js*', route => route.fulfill({ contentType: 'application/javascript', body }));
-    await page.goto('checkout.html');
-
-    await expect(page.locator('#step1 .sum-empty[role="alert"]')).toHaveText(
-      'Não foi possível carregar os preços. Recarregue a página.'
-    );
-    await expect(page.locator('#sumAccountLines .sum-empty[role="alert"]')).toHaveText(
-      'Não foi possível carregar os preços. Recarregue a página.'
-    );
-    await expect(page.locator('.summary-total')).toBeHidden();
-    await expect(page.locator('body')).not.toContainText('NaN');
-  });
-});
-
-test.describe('checkout — CIT-22: Pix e boleto em centavos inteiros (CA18)', { tag: '@CIT-22' }, () => {
-  test.beforeEach(async ({ page }) => {
-    await page.route('https://viacep.com.br/**', route => route.abort());
-  });
-
-  test('caso obrigatório: anual de R$ 76,40 — Pix e boleto sem resto de ponto flutuante', async ({ page, erros }) => {
-    await page.goto('checkout.html?qty5=2&cycle=annual');
-    await page.evaluate(() => goStep(3));
-    await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 1);
-    await definirQtdAddon(page, 'Backup', 'aqBackup365', 2);
-    await definirQtdAddon(page, 'Armazenamento em nuvem', 'aqSkybox', 1);
-    await page.locator('#skyOpt50').click();
-    await expect(page.locator('#sumTotal')).toHaveText('R$ 76,40'); // guarda: total não muda (CA1)
-
-    await page.evaluate(() => goStep(5));
-    await expect(page.locator('#pixCode')).toContainText('5400076.40');
-    await expect(page.locator('#boletoCode')).toContainText('080076.40.000000');
-    const boleto = /** @type {string} */ (await page.locator('#boletoCode').textContent());
-    expect(boleto).toMatch(/00000000007640$/);
-    expect(boleto).not.toMatch(/000000000001/);
-  });
-
-  test('caso complementar: mensal de R$ 44,10 (3×5GB + Talk ×3)', async ({ page, erros }) => {
-    await page.goto('checkout.html?qty5=3');
-    await page.evaluate(() => goStep(3));
-    await definirQtdAddon(page, 'Talk – Videoconferência', 'aqTalk', 3);
-    await expect(page.locator('#sumTotal')).toHaveText('R$ 44,10');
-
-    await page.evaluate(() => goStep(5));
-    await expect(page.locator('#pixCode')).toContainText('5400044.10');
-    const boleto = /** @type {string} */ (await page.locator('#boletoCode').textContent());
-    expect(boleto).toMatch(/00000000004410$/);
-  });
-
-  test('genFakePix do domínio principal não muda: recebe reais inteiros', async ({ page, erros }) => {
-    await page.goto('checkout.html');
-    await page.evaluate(() => selectDomainOpt('new-br'));
-    await expect(page.locator('#domPixCode')).toContainText('540000079');
-  });
-});
-
-// CIT-22: guarda de carga quando assets/precos.js não carrega. Estes testes ESPERAM erro de rede/console
-// de propósito (abortam o script e conferem o aviso), por isso não usam a fixture `erros` — usam o `test`
-// puro do Playwright (testSemErros), que não falha ao ver erros registrados.
-testSemErros.describe('checkout — CIT-22: guarda quando assets/precos.js não carrega', { tag: '@CIT-22' }, () => {
-  testSemErros('mostra o aviso "Não foi possível carregar os preços. Recarregue a página." no passo 1 e no resumo', async ({ page }) => {
-    await page.route('**/assets/precos.js*', route => route.abort());
-    await page.goto('checkout.html');
-    await expect(page.locator('#step1 .sum-empty[role="alert"]')).toHaveText(
-      'Não foi possível carregar os preços. Recarregue a página.'
-    );
-    await expect(page.locator('#sumAccountLines .sum-empty[role="alert"]')).toHaveText(
-      'Não foi possível carregar os preços. Recarregue a página.'
-    );
-    await expect(page.locator('.summary-total')).toBeHidden();
-  });
-});
-
-// CIT-153: o aviso "Copiado" do Pix de pagamento (passo 5) deve aparecer no próprio #btnCopyPix, não em
-// outro botão .pix-copy do checkout (copyPix() usava document.querySelector('.pix-copy') sem escopo).
-test.describe('checkout — Pix de pagamento: feedback de cópia', { tag: '@CIT-153' }, () => {
-  test('CA1 copiar o Pix no passo 5 mostra "Copiado" só em #btnCopyPix, copia #pixCode e o botão volta a "Copiar"', async ({ page, context, erros }) => {
-    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-    await page.goto('checkout.html', { waitUntil: 'networkidle' });
-    await page.evaluate(() => goStep(5));
-    await page.locator('#payPix .payment-name').click();
-
-    const codigoPix = await page.locator('#pixCode').textContent();
-    await page.locator('#btnCopyPix').click();
-
-    await expect(page.locator('#btnCopyPix')).toContainText('Copiado');
-    for (const id of ['#btnCopyDomPix', '#btnCopyExtraDomPix']) {
-      await expect(page.locator(id)).toContainText('Copiar');
-      await expect(page.locator(id)).not.toContainText('Copiado');
-    }
-    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(codigoPix);
-
-    await expect(page.locator('#btnCopyPix')).toContainText('Copiar', { timeout: 5000 });
-    await expect(page.locator('#btnCopyPix')).not.toContainText('Copiado');
-  });
-
-  test('CA3 a 320px, com #btnCopyPix mostrando "Copiado", a página não tem rolagem horizontal', async ({ page, context, erros }, testInfo) => {
-    test.skip(testInfo.project.name !== 'mobile', 'CA3 só se aplica ao perfil mobile');
-    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-    await page.setViewportSize({ width: 320, height: 700 });
-    await page.goto('checkout.html', { waitUntil: 'networkidle' });
-    await page.evaluate(() => goStep(5));
-    await page.locator('#payPix .payment-name').click();
-    await page.locator('#btnCopyPix').click();
-
-    await expect(page.locator('#btnCopyPix')).toContainText('Copiado');
-    const semRolagem = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
-    expect(semRolagem).toBe(true);
-  });
-});
-
-// CIT-163: feedback dos botões de cópia do checkout — janela de 2 s a partir do último clique (#161)
-// e falha na área de transferência (#162). Dados fictícios; sem terceiros.
-test.describe('checkout — cópia: feedback e falha', { tag: '@CIT-163' }, () => {
-  /** Preparos que deixam cada botão de cópia visível (mesma navegação do CA5 (e) de tests/csp.spec.js). */
-  const preparos = {
-    /** @param {import('@playwright/test').Page} page */
-    async domPix(page) {
-      await page.evaluate(() => goStep(2));
-      await page.locator('#doptBr').click();
-      await page.locator('#fDomNew').fill('minhaempresateste');
-    },
-    /** @param {import('@playwright/test').Page} page */
-    async extraDomPix(page) {
-      await page.evaluate(() => goStep(3));
-      const secaoDominio = page.locator('#step3 .addon-sec-btn')
-        .filter({ has: page.locator('.addon-sec-nome', { hasText: /^Domínio secundário$/ }) });
-      await secaoDominio.click();
-      await page.locator('button[data-addon="extraDom"][data-addon-delta="1"]').click();
-      await expect(page.locator('#extraDomPixPanel')).toBeVisible();
-    },
-    /** @param {import('@playwright/test').Page} page */
-    async pix(page) {
-      await page.evaluate(() => goStep(5));
-      await page.locator('#payPix .payment-name').click();
-    },
-    /** @param {import('@playwright/test').Page} page */
-    async boleto(page) {
-      await page.evaluate(() => goStep(5));
-      await page.locator('#payBoleto .payment-name').click();
-    },
-  };
-
-  const botoes = [
-    { nome: 'domínio novo', preparo: 'domPix', botao: '#btnCopyDomPix', codigo: '#domPixCode', aviso: '#domPixCopiaAviso', original: 'Copiar' },
-    { nome: 'domínio extra', preparo: 'extraDomPix', botao: '#btnCopyExtraDomPix', codigo: '#extraDomPixCode', aviso: '#extraDomPixCopiaAviso', original: 'Copiar' },
-    { nome: 'Pix', preparo: 'pix', botao: '#btnCopyPix', codigo: '#pixCode', aviso: '#pixCopiaAviso', original: 'Copiar' },
-    { nome: 'boleto', preparo: 'boleto', botao: '#btnCopyBoleto', codigo: '#boletoCode', aviso: '#boletoCopiaAviso', original: 'Copiar código' },
-  ];
-
-  for (const b of botoes.filter(x => x.preparo !== 'boleto')) {
-    test(`CA1 (#161) em ${b.nome}, o segundo clique mantém "Copiado" por 2 s a partir dele (t=2,3 s ainda "Copiado"; t=3,6 s "Copiar")`, async ({ page, context, erros }) => {
-      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-      await page.addInitScript(() => {
-        // @ts-ignore
-        window.__copiasOk = 0;
-        const original = Clipboard.prototype.writeText;
-        Clipboard.prototype.writeText = function (...args) {
-          const promessa = original.apply(this, args);
-          promessa.then(() => { /** @type {any} */ (window).__copiasOk++; }, () => {});
-          return promessa;
-        };
-      });
-      await page.clock.install({ time: new Date('2026-01-01T10:00:00') });
-      await page.goto('checkout.html?qty5=2', { waitUntil: 'networkidle' });
-      await preparos[/** @type {'domPix'|'extraDomPix'|'pix'} */ (b.preparo)](page);
-
-      const agora = await page.evaluate(() => Date.now());
-      await page.clock.pauseAt(agora + 1000);
-      const botao = page.locator(b.botao);
-      const copias = () => page.evaluate(() => /** @type {any} */ (window).__copiasOk);
-
-      await botao.click();
-      await expect.poll(copias).toBe(1);
-      await expect(botao).toContainText('Copiado');
-
-      await page.clock.runFor(1500);
-      await botao.click();
-      await expect.poll(copias).toBe(2);
-
-      await page.clock.runFor(800);
-      await expect(botao).toContainText('Copiado');
-
-      await page.clock.runFor(1300);
-      await expect(botao).toContainText('Copiar');
-      await expect(botao).not.toContainText('Copiado');
-    });
-  }
-
-  /**
-   * @param {string} titulo
-   * @param {'rejeicao'|'ausente'} variante
-   * @param {typeof botoes[number]} b
-   */
-  function testeFalha(titulo, variante, b) {
-    test(titulo, async ({ page, context, erros }) => {
-      await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-      if (variante === 'rejeicao') {
-        await page.addInitScript(() => {
-          Clipboard.prototype.writeText = () => Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'));
-        });
-      } else {
-        await page.addInitScript(() => {
-          Object.defineProperty(Navigator.prototype, 'clipboard', { get: () => undefined, configurable: true });
-        });
-      }
-      let dialogs = 0;
-      page.on('dialog', d => { dialogs++; d.dismiss(); });
-      await page.goto('checkout.html?qty5=2', { waitUntil: 'networkidle' });
-      await preparos[/** @type {'domPix'|'extraDomPix'|'pix'|'boleto'} */ (b.preparo)](page);
-
-      const codigo = ((await page.locator(b.codigo).textContent()) ?? '').trim();
-      const botao = page.locator(b.botao);
-      await botao.click();
-
-      await expect(botao).toContainText('Erro ao copiar');
-      await expect(botao).not.toContainText('Copiado');
-      await expect(page.locator(b.aviso)).toBeVisible();
-      await expect(page.locator(b.aviso)).toContainText('Não foi possível copiar');
-      await expect.poll(() => page.evaluate(() => (window.getSelection()?.toString() ?? '').trim())).toBe(codigo);
-      expect(dialogs).toBe(0);
-
-      await expect(botao).toContainText(b.original, { timeout: 5000 });
-      await expect(botao).not.toContainText('Erro ao copiar');
-      await expect(page.locator(b.aviso)).toContainText('Não foi possível copiar');
-    });
-  }
-
-  for (const b of botoes) {
-    testeFalha(`CA2 (#162) com writeText rejeitando, o botão de ${b.nome} mostra "Erro ao copiar", avisa, seleciona o código e volta ao normal`, 'rejeicao', b);
-  }
-  for (const b of botoes.filter(x => x.preparo === 'pix' || x.preparo === 'boleto')) {
-    testeFalha(`CA2 (#162) sem navigator.clipboard, o botão de ${b.nome} mostra "Erro ao copiar", avisa, seleciona o código e volta ao normal`, 'ausente', b);
-  }
-
-  test('CA3 (#163) depois de uma falha, a cópia bem-sucedida no mesmo botão esvazia o aviso', async ({ page, context, erros }) => {
-    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-    await page.addInitScript(() => {
-      const original = Clipboard.prototype.writeText;
-      let chamadas = 0;
-      Clipboard.prototype.writeText = function (...args) {
-        chamadas++;
-        if (chamadas === 1) return Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'));
-        return original.apply(this, args);
-      };
-    });
-    await page.goto('checkout.html', { waitUntil: 'networkidle' });
-    await preparos.pix(page);
-
-    await page.locator('#btnCopyPix').click();
-    await expect(page.locator('#pixCopiaAviso')).toContainText('Não foi possível copiar');
-
-    await page.locator('#btnCopyPix').click();
-    await expect(page.locator('#btnCopyPix')).toContainText('Copiado');
-    await expect(page.locator('#pixCopiaAviso')).toBeEmpty();
-  });
-
-  test('CA2 (#162) numa segunda falha no mesmo botão, o aviso é esvaziado e reescrito (reanúncio)', async ({ page, context, erros }) => {
-    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-    await page.addInitScript(() => {
-      Clipboard.prototype.writeText = () => Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'));
-      /** @type {{ inseriu: boolean, lote: number }[]} lote = nº da entrega do observer (uma entrega por tarefa) */
-      const historico = [];
-      /** @type {any} */ (window).__avisoHist = historico;
-      let lote = 0;
-      document.addEventListener('DOMContentLoaded', () => {
-        new MutationObserver(registros => {
-          lote++;
-          for (const r of registros) historico.push({ inseriu: r.addedNodes.length > 0, lote });
-        }).observe(/** @type {Node} */ (document.getElementById('pixCopiaAviso')), { childList: true });
-      });
-    });
-    await page.goto('checkout.html', { waitUntil: 'networkidle' });
-    await preparos.pix(page);
-
-    await page.locator('#btnCopyPix').click();
-    await expect(page.locator('#pixCopiaAviso')).toContainText('Não foi possível copiar');
-    await page.locator('#btnCopyPix').click();
-
-    // remoção e reescrita em entregas diferentes do observer = com intervalo (próximo frame), não síncronas
-    await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__avisoHist.slice(-2).map(/** @param {any} h */ h => h.inseriu))).toEqual([false, true]);
-    const [remocao, insercao] = await page.evaluate(() => /** @type {any} */ (window).__avisoHist.slice(-2));
-    expect(insercao.lote).toBeGreaterThan(remocao.lote);
-    await expect(page.locator('#pixCopiaAviso')).toContainText('Não foi possível copiar');
-  });
-
-  test('CA4 a 320px, com a falha de cópia, Pix e domínio novo não geram rolagem horizontal e botão e aviso cabem na tela', async ({ page, context, erros }, testInfo) => {
-    test.skip(testInfo.project.name !== 'mobile', 'CA4 só se aplica ao perfil mobile');
-    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-    await page.addInitScript(() => {
-      Clipboard.prototype.writeText = () => Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'));
-    });
-    await page.setViewportSize({ width: 320, height: 700 });
-    await page.goto('checkout.html', { waitUntil: 'networkidle' });
-
-    for (const b of botoes.filter(x => x.preparo === 'pix' || x.preparo === 'domPix')) {
-      await preparos[/** @type {'domPix'|'pix'} */ (b.preparo)](page);
-      await page.locator(b.botao).click();
-      await expect(page.locator(b.botao)).toContainText('Erro ao copiar');
-      await expect(page.locator(b.aviso)).toContainText('Não foi possível copiar');
-
-      const semRolagem = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
-      expect(semRolagem, `${b.nome}: sem rolagem horizontal`).toBe(true);
-      for (const alvo of [b.botao, b.aviso]) {
-        const caixa = await page.locator(alvo).boundingBox();
-        expect(caixa, `${alvo} visível`).not.toBeNull();
-        expect(caixa.x, `${alvo} à esquerda`).toBeGreaterThanOrEqual(0);
-        expect(caixa.x + caixa.width, `${alvo} à direita`).toBeLessThanOrEqual(320);
-      }
-    }
-  });
-
-  test('CA2 (#162) falha seguida de sucesso no mesmo botão antes do próximo frame termina com o aviso vazio', async ({ page, context, erros }) => {
-    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-    await page.addInitScript(() => {
-      const original = Clipboard.prototype.writeText;
-      let chamadas = 0;
-      Clipboard.prototype.writeText = function (...args) {
-        chamadas++;
-        if (chamadas === 1) return Promise.reject(new DOMException('Write permission denied.', 'NotAllowedError'));
-        return original.apply(this, args);
-      };
-    });
-    await page.goto('checkout.html', { waitUntil: 'networkidle' });
-    await preparos.pix(page);
-
-    // 1º clique falha e a falha é tratada (rAF agendado); o 2º clique chega ainda no mesmo frame e tem sucesso
-    await page.evaluate(async () => {
-      const botao = /** @type {HTMLElement} */ (document.getElementById('btnCopyPix'));
-      botao.click();
-      await new Promise(r => setTimeout(r, 0));
-      botao.click();
-    });
-    await expect(page.locator('#btnCopyPix')).toContainText('Copiado');
-    // espera alguns frames: um rAF esquecido da falha reescreveria o aviso
-    await page.evaluate(() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r)))));
-    await expect(page.locator('#pixCopiaAviso')).toBeEmpty();
   });
 });
 
@@ -2391,12 +1902,12 @@ test.describe('checkout — CIT-59: tetos de quantidade (CA5)', { tag: '@CIT-59'
     await expect(page.locator('#aqSkybox')).toHaveValue('50');
   });
 
-  test('CA5 domínio extra: 25 vira 20 e o Pix anual fica em R$ 1.580,00', async ({ page, erros }) => {
+  test('CA5 domínio extra: 25 vira 20 e são 20 campos de domínio extra', async ({ page, erros }) => {
     await page.goto('checkout.html?qty5=2');
     await page.evaluate(() => goStep(3));
     await definirQtdAddon(page, 'Domínio secundário', 'aqExtraDom', 25);
     await expect(page.locator('#aqExtraDom')).toHaveValue('20');
-    await expect(page.locator('#extraDomPixTotal')).toHaveText('R$ 1.580,00');
+    await expect(page.locator('#domExtrasCampos input')).toHaveCount(20);
   });
 
   test('CA5 D6: sem contas, Talk, Skybox e domínio extra ficam em 0 com max="0"', async ({ page, erros }) => {
@@ -2508,13 +2019,12 @@ async function irParaPasso2Novo(page) {
 }
 
 test.describe('checkout — CIT-181: nome do domínio novo (CA1)', { tag: '@CIT-181' }, () => {
-  test('CA1 citflow.com.br avança, vira citflow no campo e o webmail não duplica .com.br', async ({ page, erros }) => {
+  test('CA1 citflow.com.br avança, vira citflow no campo e o campo não duplica .com.br', async ({ page, erros }) => {
     await irParaPasso2Novo(page);
     await page.locator('#fDomNew').fill('citflow.com.br');
     await page.locator('#btnStep2Next').click();
 
     await expect(page.locator('#step3')).toHaveClass(/active/);
-    await expect(page.locator('#successWebmail')).toHaveText('webmail.citflow.com.br');
     await expect(page.locator('#fDomNew')).toHaveValue('citflow');
   });
 
@@ -2564,7 +2074,6 @@ test.describe('checkout — CIT-181: novo domínio, normalização e limites (CA
       await digitarEContinuar(page, '#fDomNew', valor);
       await expect(page.locator('#step3'), `"${valor}" deve avançar`).toHaveClass(/active/);
       await expect(page.locator('#fDomNew'), `"${valor}" deve virar citflow`).toHaveValue('citflow');
-      await expect(page.locator('#successWebmail'), `"${valor}" webmail`).toHaveText('webmail.citflow.com.br');
     }
   });
 
@@ -2573,7 +2082,7 @@ test.describe('checkout — CIT-181: novo domínio, normalização e limites (CA
     for (const valor of ['ab', 'a'.repeat(26), '1a', 'abc--d']) {
       await digitarEContinuar(page, '#fDomNew', valor);
       await expect(page.locator('#step3'), `"${valor}" deve avançar`).toHaveClass(/active/);
-      await expect(page.locator('#successWebmail'), `"${valor}" webmail`).toHaveText(`webmail.${valor}.com.br`);
+      await expect(page.locator('#fDomNew'), `"${valor}" fica no campo`).toHaveValue(valor);
     }
   });
 
@@ -2590,7 +2099,7 @@ test.describe('checkout — CIT-181: novo domínio, normalização e limites (CA
 });
 
 test.describe('checkout — CIT-181: domínio existente (CA3)', { tag: '@CIT-181' }, () => {
-  test('CA3 domínios válidos avançam normalizados e viram o webmail', async ({ page, erros }) => {
+  test('CA3 domínios válidos avançam (a normalização vai ao corpo do pedido: checkout-pedido.spec.js)', async ({ page, erros }) => {
     await irParaPasso2Existente(page);
     const casos = [
       ['minhaempresa.com.br', 'minhaempresa.com.br'],
@@ -2601,7 +2110,6 @@ test.describe('checkout — CIT-181: domínio existente (CA3)', { tag: '@CIT-181
     for (const [valor, esperado] of casos) {
       await digitarEContinuar(page, '#fDomExist', valor);
       await expect(page.locator('#step3'), `"${valor}" deve avançar`).toHaveClass(/active/);
-      await expect(page.locator('#successWebmail'), `"${valor}" webmail`).toHaveText(`webmail.${esperado}`);
     }
   });
 
@@ -2798,9 +2306,273 @@ test.describe('checkout — CIT-51: aceite', { tag: '@CIT-51' }, () => {
     expect(externas).toEqual([]);
   });
 
-  test('CA3 checkout mantém checkout.css?v=4 e checkout.js?v=8', async ({ erros }) => {
+  test('CA3 checkout mantém checkout.css?v=5 e checkout.js?v=9', async ({ erros }) => {
     const html = readFileSync(new URL('../checkout.html', import.meta.url), 'utf8');
-    expect(html).toContain('assets/checkout.css?v=4');
-    expect(html).toContain('assets/checkout.js?v=8');
+    expect(html).toContain('assets/checkout.css?v=5');
+    expect(html).toContain('assets/checkout.js?v=9');
   });
+});
+
+/* ================================================================
+   CIT-63: checkout paga na fatura do Asaas (modo local, 127.0.0.1; o modo API está em checkout-pedido.spec.js)
+================================================================ */
+
+const CPF_FICTICIO_63 = '52998224725';
+const IDS_PAGAMENTO_REMOVIDOS = [
+  '#payPix', '#payBoleto', '#payCard', '#fCardNum', '#pixCode', '#boletoCode', '#btnPagar', '#btnCopyPix', '#btnCopyBoleto',
+  '#domPixBox', '#domPixCode', '#btnCopyDomPix', '#extraDomPixPanel', '#extraDomPixCode', '#btnCopyExtraDomPix',
+  '#step6', '#successWebmail', '#successEmail', '#fSenha', '#err-senha', '#sc6', '#sl6',
+];
+
+/** Cadastro fictício válido, sem senha, com aceite dos termos. */
+async function preencherCadastroSemSenha(/** @type {import('@playwright/test').Page} */ page) {
+  await page.locator('#fNome').fill('Maria Ficticia');
+  await page.locator('#fEmail').fill('maria@exemplo.test');
+  await page.locator('#fTelefone').fill('11999990000');
+  await page.locator('#fCPF').fill(CPF_FICTICIO_63);
+  await page.locator('#fCEP').fill('01001000');
+  // clique direto no input: o clique por coordenada pode cair em elemento sobreposto durante o re-render (CI com vários workers)
+  await page.locator('#termsCheck').evaluate(el => { if (!el.checked) el.click(); });
+}
+
+test.describe('checkout — CIT-63: sem pagamento de demonstração (CA1)', { tag: '@CIT-63' }, () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route('https://viacep.com.br/**', route => route.abort());
+  });
+
+  test('CA1 nenhum elemento de Pix, boleto, cartão, senha nem passo 6 existe na página', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty5=2');
+    for (const passo of [1, 2, 3, 4, 5]) {
+      await page.evaluate(n => goStep(n), passo);
+      for (const id of IDS_PAGAMENTO_REMOVIDOS) await expect(page.locator(id), `passo ${passo}: ${id}`).toHaveCount(0);
+    }
+  });
+
+  test('CA1 o texto da página não promete QR Code, linha digitável, confirmação de pagamento nem copia e cola', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty5=2');
+    const texto = (await page.evaluate(() => document.body.textContent ?? '')).toLowerCase();
+    for (const proibido of ['qr code', 'linha digitável', 'confirmar pagamento', 'copia e cola', 'pagamento confirmado']) {
+      expect(texto, proibido).not.toContain(proibido);
+    }
+  });
+
+  test('CA1 intro do passo 2, nota de preço do domínio e selo dizem a verdade sobre a fatura', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty5=2');
+    await expect(page.locator('#step2 .step-intro')).toHaveText(
+      'O domínio é registrado anualmente e cobrado em fatura própria. Se já tiver um domínio, basta conectá-lo.');
+    await expect(page.locator('#doptBr .opt-price-note')).toHaveText('/ano · cobrado na fatura');
+    await expect(page.locator('.secure-badge').filter({ hasText: 'Pague na fatura' })).toContainText('Pague na fatura: Pix, boleto ou cartão');
+  });
+
+  test('CA1 assets/boleto.css não existe nem é referenciado e checkout.js não tem as funções de pagamento', async () => {
+    expect(existsSync(new URL('../assets/boleto.css', import.meta.url))).toBe(false);
+    expect(readFileSync(new URL('../checkout.html', import.meta.url), 'utf8')).not.toContain('boleto.css');
+    const js = readFileSync(new URL('../assets/checkout.js', import.meta.url), 'utf8');
+    for (const nome of ['genFakePix', 'processPayment', 'downloadBoleto', 'copiarComFeedback']) expect(js, nome).not.toContain(nome);
+  });
+});
+
+test.describe('checkout — CIT-63: cadastro sem senha (CA2)', { tag: '@CIT-63' }, () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route('https://viacep.com.br/**', route => route.abort());
+  });
+
+  test('CA2 cadastro válido sem senha e com aceite ativa a revisão', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty5=2');
+    await page.evaluate(() => goStep(4));
+    await expect(page.locator('#fSenha')).toHaveCount(0);
+    await expect(page.locator('#err-senha')).toHaveCount(0);
+    await preencherCadastroSemSenha(page);
+    await expect(page.locator('#btnSubmitCadastro')).toContainText('Continuar para revisão');
+    await page.locator('#btnSubmitCadastro').click();
+    await expect(page.locator('#step5')).toHaveClass(/active/);
+  });
+});
+
+test.describe('checkout — CIT-63: aviso de domínio novo (CA5)', { tag: '@CIT-63' }, () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route('https://viacep.com.br/**', route => route.abort());
+  });
+
+  test('CA5 domínio novo: aviso de registro no passo 2 e na revisão', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty5=2');
+    await page.evaluate(() => goStep(2));
+    await page.locator('#doptBr').click();
+    await expect(page.locator('#avisoDominioNovo')).toBeVisible();
+    await expect(page.locator('#avisoDominioNovo')).toContainText('registro');
+    await expect(page.locator('#avisoDominioNovo')).toContainText('alguns dias úteis');
+    await page.evaluate(() => goStep(5));
+    await expect(page.locator('#revisaoAvisoDominio')).toBeVisible();
+  });
+
+  test('CA5 domínio existente sem extras: nenhum dos dois avisos aparece', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty5=2');
+    await page.evaluate(() => goStep(2));
+    await page.locator('#doptExist').click();
+    await expect(page.locator('#avisoDominioNovo')).toBeHidden();
+    await page.evaluate(() => goStep(5));
+    await expect(page.locator('#revisaoAvisoDominio')).toBeHidden();
+  });
+
+  test('CA5 domínio existente com 1 extra: só a revisão avisa', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty5=2');
+    await page.evaluate(() => goStep(2));
+    await page.locator('#doptExist').click();
+    await page.evaluate(() => { goStep(3); addonChange('extraDom', 1); });
+    await expect(page.locator('#avisoDominioNovo')).toBeHidden();
+    await page.evaluate(() => goStep(5));
+    await expect(page.locator('#revisaoAvisoDominio')).toBeVisible();
+  });
+});
+
+test.describe('checkout — CIT-63: campos de domínio extra no passo 3 (CA10)', { tag: '@CIT-63' }, () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route('https://viacep.com.br/**', route => route.abort());
+  });
+
+  /** Abre o passo 3 com domínio principal definido e `extras` campos. */
+  async function abrirPasso3(/** @type {import('@playwright/test').Page} */ page, /** @type {'novo' | 'existente'} */ dominio, /** @type {number} */ extras) {
+    await page.goto('checkout.html?qty5=2');
+    await page.evaluate(() => goStep(2));
+    if (dominio === 'novo') {
+      await page.locator('#doptBr').click();
+      await page.locator('#fDomNew').fill('minhaempresa');
+    } else {
+      await page.locator('#doptExist').click();
+      await page.locator('#fDomExist').fill('minhaempresa.com.br');
+    }
+    await page.locator('#btnStep2Next').click();
+    await expect(page.locator('#step3')).toHaveClass(/active/);
+    if (extras) await page.evaluate(n => addonChange('extraDom', n), extras);
+  }
+
+  test('CA10 a quantidade de extras cria e remove os campos mantendo os primeiros preenchidos', async ({ page, erros }) => {
+    await abrirPasso3(page, 'novo', 2);
+    await expect(page.locator('#fDomExtra1')).toBeVisible();
+    await expect(page.locator('#fDomExtra2')).toBeVisible();
+    await expect(page.locator('#step3 .domain-tld').filter({ hasText: '.com.br' })).not.toHaveCount(0);
+    await page.locator('#fDomExtra1').fill('primeira');
+    await page.evaluate(() => addonChange('extraDom', -1));
+    await expect(page.locator('#fDomExtra1')).toHaveValue('primeira');
+    await expect(page.locator('#fDomExtra2')).toHaveCount(0);
+    await page.evaluate(() => addonChange('extraDom', -1));
+    await expect(page.locator('#domExtrasCampos')).toBeHidden();
+  });
+
+  /** @type {{ nome: string, dominio: 'novo' | 'existente', campos: string[], erroEm: number, mensagem: string }[]} */
+  const INVALIDOS = [
+    { nome: 'vazio', dominio: 'novo', campos: [''], erroEm: 1, mensagem: 'Informe o nome do domínio extra.' },
+    { nome: 'inválido (-x)', dominio: 'novo', campos: ['-x'], erroEm: 1, mensagem: 'Domínio inválido.' },
+    { nome: 'igual a outro extra', dominio: 'novo', campos: ['outraempresa', 'outraempresa'], erroEm: 2, mensagem: 'Domínio repetido.' },
+    { nome: 'igual ao principal novo', dominio: 'novo', campos: ['minhaempresa'], erroEm: 1, mensagem: 'Domínio repetido.' },
+    { nome: 'igual ao principal existente (minhaempresa.com.br)', dominio: 'existente', campos: ['minhaempresa'], erroEm: 1, mensagem: 'Domínio repetido.' },
+  ];
+
+  for (const caso of INVALIDOS) {
+    test(`CA10 extra ${caso.nome} não avança, mostra a mensagem e foca o campo`, async ({ page, erros }) => {
+      await abrirPasso3(page, caso.dominio, caso.campos.length);
+      for (const [i, valor] of caso.campos.entries()) await page.locator(`#fDomExtra${i + 1}`).fill(valor);
+      await page.locator('#btnStep3Next').click();
+      await expect(page.locator('#step3')).toHaveClass(/active/);
+      await expect(page.locator(`#err-dom-extra-${caso.erroEm}`)).toHaveText(caso.mensagem);
+      await expect(page.locator(`#fDomExtra${caso.erroEm}`)).toBeFocused();
+    });
+  }
+
+  test('CA10 extras válidos e distintos avançam para o passo 4', async ({ page, erros }) => {
+    await abrirPasso3(page, 'novo', 2);
+    await page.locator('#fDomExtra1').fill('outraempresa');
+    await page.locator('#fDomExtra2').fill('terceiraempresa');
+    await page.locator('#btnStep3Next').click();
+    await expect(page.locator('#step4')).toHaveClass(/active/);
+  });
+
+  test('CA10 sem extras o contêiner fica oculto e o passo 3 avança sem validação', async ({ page, erros }) => {
+    await abrirPasso3(page, 'novo', 0);
+    await expect(page.locator('#domExtrasCampos')).toBeHidden();
+    await page.locator('#btnStep3Next').click();
+    await expect(page.locator('#step4')).toHaveClass(/active/);
+  });
+});
+
+test.describe('checkout — CIT-63: modo local avisa "em breve" (CA11)', { tag: '@CIT-63' }, () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route('https://viacep.com.br/**', route => route.abort());
+  });
+
+  test('CA11 em 127.0.0.1 os avisos aparecem nos passos 1, 4 e na revisão, sem botão de pagamento nem requisição de pedido', async ({ page, erros }) => {
+    /** @type {string[]} */
+    const pedidos = [];
+    page.on('request', req => { if (req.url().includes('/api/pedidos')) pedidos.push(req.url()); });
+    await page.goto('checkout.html?qty5=2');
+
+    for (const [passo, aviso] of [[1, '#avisoEmBreve'], [4, '#avisoEmBreveCadastro'], [5, '#revisaoEmBreve']]) {
+      await page.evaluate(n => goStep(n), passo);
+      const caixa = page.locator(`#step${passo} ${aviso}`);
+      await expect(caixa, `passo ${passo}`).toBeVisible();
+      await expect(caixa).toContainText('Contratação online em breve');
+      await expect(caixa.locator('a[href="mailto:comercial@citmail.com.br"]')).toHaveCount(1);
+    }
+    await expect(page.locator('#step5 h2')).toHaveText('Revisão do pedido');
+    await expect(page.locator('#btnIrPagamento')).toBeHidden();
+    await expect(page.getByText('Pagamento Confirmado')).toHaveCount(0);
+    await page.waitForTimeout(300);
+    expect(pedidos).toEqual([]);
+  });
+});
+
+test.describe('checkout — CIT-63: títulos (CA12)', { tag: '@CIT-63' }, () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route('https://viacep.com.br/**', route => route.abort());
+  });
+
+  test('CA12 há um só h1, cada passo tem um h2, nenhum h4-h6 e nenhum título salta de nível', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty5=2');
+    await expect(page.locator('h1')).toHaveCount(1);
+    await expect(page.locator('h1')).toHaveText('Contrate o CITMail');
+    for (const passo of [1, 2, 3, 4, 5]) await expect(page.locator(`#step${passo} h2`), `passo ${passo}`).toHaveCount(1);
+    await expect(page.locator('h4, h5, h6')).toHaveCount(0);
+    const niveis = await page.evaluate(() => [...document.querySelectorAll('h1, h2, h3, h4, h5, h6')].map(h => Number(h.tagName[1])));
+    expect(niveis[0]).toBe(1);
+    niveis.forEach((n, i) => { if (i > 0) expect(n, `título ${i + 1} salta de nível (${niveis[i - 1]} → ${n})`).toBeLessThanOrEqual(niveis[i - 1] + 1); });
+  });
+});
+
+test.describe('checkout — CIT-63: barra com 5 passos (CA13)', { tag: '@CIT-63' }, () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route('https://viacep.com.br/**', route => route.abort());
+  });
+
+  test('CA13 a barra tem 5 itens, o último é "Revisão" e o sexto não existe', async ({ page, erros }) => {
+    await page.goto('checkout.html?qty5=2');
+    await expect(page.locator('.step-item')).toHaveCount(5);
+    await expect(page.locator('#sl5')).toHaveText('Revisão');
+    await expect(page.locator('#sc6')).toHaveCount(0);
+    await expect(page.locator('#sl6')).toHaveCount(0);
+  });
+});
+
+test.describe('checkout — CIT-63: modo local em 320 e 375 px (CA14)', { tag: '@CIT-63' }, () => {
+  test.beforeEach(async ({ page }) => {
+    await page.route('https://viacep.com.br/**', route => route.abort());
+  });
+
+  for (const largura of [320, 375]) {
+    test(`CA14 em ${largura} px os passos 1, 4 e 5 com o aviso "em breve" cabem sem rolagem horizontal`, async ({ page, erros }, testInfo) => {
+      await page.setViewportSize({ width: largura, height: 700 });
+      await page.goto('checkout.html?qty5=2');
+      for (const [passo, aviso] of [[1, '#avisoEmBreve'], [4, '#avisoEmBreveCadastro'], [5, '#revisaoEmBreve']]) {
+        await page.evaluate(n => goStep(n), passo);
+        await expect(page.locator(aviso)).toBeVisible();
+        const m = await page.evaluate(() => ({ rolagem: document.documentElement.scrollWidth, largura: window.innerWidth }));
+        expect(m.rolagem, `passo ${passo}: sem rolagem horizontal`).toBeLessThanOrEqual(m.largura);
+        const caixa = await page.locator(aviso).boundingBox();
+        expect(caixa).not.toBeNull();
+        expect(/** @type {any} */ (caixa).x).toBeGreaterThanOrEqual(0);
+        expect(/** @type {any} */ (caixa).x + /** @type {any} */ (caixa).width).toBeLessThanOrEqual(m.largura);
+        await page.screenshot({ path: testInfo.outputPath(`local-passo${passo}-${largura}.png`), fullPage: true });
+      }
+      await expect(page.locator('#btnIrPagamento')).toBeHidden();
+    });
+  }
 });
