@@ -2,6 +2,8 @@
 // das variáveis de ambiente. Cada processo exige só o que usa (CIT-56).
 // As mensagens de erro citam o nome da variável, nunca o valor.
 
+import { TERMOS_MINUTA } from './pedidos/aceite.js'
+
 const AMBIENTES = ['production', 'development', 'test']
 
 function origemExata(origem) {
@@ -63,9 +65,11 @@ function lerBooleano(env, nome, padrao) {
 // (#62) e o limite de taxa (E6-H4). Ligada em produção, chave e URL são obrigatórias, e
 // a URL só pode ser `https://` num dos hosts do Asaas; fora dela, chave sem URL é erro
 // (sem URL padrão que aponte para produção).
+// Termos em minuta (CIT-62): ligada em produção, a API não sobe, salvo com a liberação
+// explícita `TERMOS_MINUTA_ACEITA=true`, só para a homologação. A produção real nunca a usa.
 const HOSTS_ASAAS = ['api.asaas.com', 'api-sandbox.asaas.com']
 
-function lerAsaas(env, nodeEnv) {
+function lerAsaas(env, nodeEnv, termosMinuta) {
   const producao = nodeEnv === 'production'
   const pedidosHabilitado = lerBooleano(env, 'PEDIDOS_HABILITADO', !producao)
   const asaasApiKey = (env.ASAAS_API_KEY ?? '').trim() || undefined
@@ -94,12 +98,16 @@ function lerAsaas(env, nodeEnv) {
       throw new Error(`ASAAS_BASE_URL inválida: em produção, use o host ${HOSTS_ASAAS.join(' ou ')}`)
     }
   }
+  if (pedidosHabilitado && producao && termosMinuta === true && !lerBooleano(env, 'TERMOS_MINUTA_ACEITA', false)) {
+    throw new Error('PEDIDOS_HABILITADO recusada em produção: termos de uso em minuta; TERMOS_MINUTA_ACEITA=true só em homologação (CIT-62)')
+  }
   return { pedidosHabilitado, asaasApiKey, asaasBaseUrl, asaasTimeoutMs }
 }
 
 // Configuração da API. `REDIS_URL` é opcional: sem ela não há fila nem rota de exemplo
-// de job (a #64 a torna obrigatória em produção). Não lê Telegram.
-export function carregarConfig(env = process.env) {
+// de job (a #64 a torna obrigatória em produção). Não lê Telegram. `termosMinuta` é
+// injetável para os testes (padrão: a constante de pedidos/aceite.js).
+export function carregarConfig(env = process.env, { termosMinuta = TERMOS_MINUTA } = {}) {
   const databaseUrl = (env.DATABASE_URL ?? '').trim()
   if (!databaseUrl) {
     throw new Error('DATABASE_URL não definida')
@@ -134,7 +142,7 @@ export function carregarConfig(env = process.env) {
     logLevel: env.LOG_LEVEL || 'info',
     nodeEnv,
     ...lerFila(env),
-    ...lerAsaas(env, nodeEnv)
+    ...lerAsaas(env, nodeEnv, termosMinuta)
   }
 }
 

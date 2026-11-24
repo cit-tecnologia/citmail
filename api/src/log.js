@@ -10,6 +10,8 @@ export const camposSensiveis = [
   // Pedido (campos do checkout), em português.
   'senha', 'token', 'email', 'telefone', 'nome', 'cpf', 'cnpj', 'cpfCnpj', 'documento', 'razaoSocial',
   'nascimento', 'dataNascimento', 'cep', 'endereco', 'logradouro', 'numero', 'complemento', 'bairro', 'cidade',
+  // IP do aceite dos termos (CIT-62).
+  'ipAceite', 'ip_aceite',
   // ViaCEP.
   'localidade',
   // Credenciais em inglês.

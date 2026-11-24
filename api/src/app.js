@@ -32,7 +32,7 @@ function construirValidador(externos, opcoesAjv) {
 
 // `asaas`: adaptador injetado (testes), com prioridade sobre o criado pela chave.
 // `pedidos`: opções do serviço de pedidos para os testes (`agora`, `versaoTabela`,
-// `prazoPedidoMs`, `prazoCriandoMs`).
+// `versaoTermos`, `versaoPrivacidade`, `prazoPedidoMs`, `prazoCriandoMs`).
 export function construirApp(config, { pool, logStream, filas, asaas, pedidos } = {}) {
   const origens = config?.corsOrigens
   if (!Array.isArray(origens) || origens.length === 0 || origens.some((o) => !o || o.includes('*'))) {
