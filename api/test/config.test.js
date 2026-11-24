@@ -593,3 +593,147 @@ test('CA13(e): WEBHOOK_ASAAS_HABILITADO=talvez lança citando a variável, na AP
     assert.throws(carregar, (erro) => { assert.match(erro.message, /WEBHOOK_ASAAS_HABILITADO/); return true; });
   }
 });
+
+// CIT-65, CA8: e-mail transacional no worker (`EMAIL_*`, `SMTP_*`).
+const AMBIENTE_EMAIL_SMTP = {
+  ...AMBIENTE_WORKER,
+  NODE_ENV: 'development',
+  EMAIL_TRANSPORTE: 'smtp',
+  SMTP_HOST: '127.0.0.1',
+  SMTP_USUARIO: 'usuario-ficticio',
+  SMTP_SENHA: 'SENHA-SMTP-FICTICIA',
+};
+
+for (const variavel of ['SMTP_HOST', 'SMTP_USUARIO', 'SMTP_SENHA']) {
+  test(`CA8(a): EMAIL_TRANSPORTE=smtp sem ${variavel} lança citando a variável e sem o valor das outras`, () => {
+    const ambiente = { ...AMBIENTE_EMAIL_SMTP, [variavel]: '' };
+    assert.throws(
+      () => carregarConfigWorker(ambiente),
+      (erro) => {
+        assert.equal(erro.message, `${variavel} não definida`);
+        for (const outra of ['usuario-ficticio', 'SENHA-SMTP-FICTICIA']) assert.ok(!erro.message.includes(outra));
+        return true;
+      },
+    );
+  });
+}
+
+test('CA8(b): EMAIL_TRANSPORTE fora de desligado|smtp lança citando a variável', () => {
+  for (const valor of ['sendmail', 'SMTP', 'ligado']) {
+    assert.throws(
+      () => carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development', EMAIL_TRANSPORTE: valor }),
+      (erro) => {
+        assert.equal(erro.message, 'EMAIL_TRANSPORTE inválida: use desligado ou smtp');
+        assert.ok(!erro.message.includes('sendmail'));
+        return true;
+      },
+    );
+  }
+});
+
+test('CA8(c): em produção, smtp com SMTP_HOST de loopback lança citando a variável', () => {
+  for (const host of ['127.0.0.1', 'localhost', '127.1.2.3', '127.1', '0', '0.0.0.0', '::', '[::]', '::1', '[::1]', '0:0:0:0:0:0:0:1', '::ffff:127.0.0.1', '[::ffff:127.0.0.1]', 'smtp.localhost', 'a.b.localhost', 'LOCALHOST']) {
+    assert.throws(
+      () => carregarConfigWorker({ ...AMBIENTE_WORKER_PRODUCAO, ...AMBIENTE_EMAIL_SMTP, NODE_ENV: 'production', SMTP_HOST: host }),
+      (erro) => {
+        assert.match(erro.message, /SMTP_HOST inválida: em produção, use um host fora do loopback/);
+        assert.ok(!erro.message.includes('SENHA-SMTP-FICTICIA'));
+        return true;
+      },
+      host,
+    );
+  }
+});
+
+test('CA8(c): em produção, smtp com host externo exige TLS (smtpRequireTls) e usa as portas e o timeout padrão', () => {
+  const config = carregarConfigWorker({
+    ...AMBIENTE_WORKER_PRODUCAO, ...AMBIENTE_EMAIL_SMTP, NODE_ENV: 'production', SMTP_HOST: 'smtp.exemplo.test',
+  });
+  assert.equal(config.emailTransporte, 'smtp');
+  assert.equal(config.smtpHost, 'smtp.exemplo.test');
+  assert.equal(config.smtpPorta, 587);
+  assert.equal(config.smtpTimeoutMs, 10000);
+  assert.equal(config.smtpRequireTls, true);
+});
+
+test('CA8: fora de produção, smtp aceita o loopback e não exige TLS', () => {
+  const config = carregarConfigWorker({ ...AMBIENTE_EMAIL_SMTP, SMTP_PORTA: '2525' });
+  assert.equal(config.smtpHost, '127.0.0.1');
+  assert.equal(config.smtpPorta, 2525);
+  assert.equal(config.smtpRequireTls, false);
+});
+
+for (const [variavel, valor] of [['SMTP_PORTA', '0'], ['SMTP_PORTA', '65536'], ['SMTP_TIMEOUT_MS', '999'], ['EMAIL_PARADO_HORAS', '0'], ['EMAIL_PARADO_HORAS', '73'], ['EMAIL_PARADO_HORAS', '1e1']]) {
+  test(`CA8: ${variavel}=${valor} lança citando a variável`, () => {
+    assert.throws(
+      () => carregarConfigWorker({ ...AMBIENTE_EMAIL_SMTP, [variavel]: valor }),
+      (erro) => { assert.match(erro.message, new RegExp(`^${variavel} inválida`)); return true; },
+    );
+  });
+}
+
+test('CA8(d): EMAIL_REMETENTE e EMAIL_RESPONDER_PARA com CR/LF ou caractere de controle lançam, sem o valor', () => {
+  for (const variavel of ['EMAIL_REMETENTE', 'EMAIL_RESPONDER_PARA']) {
+    for (const valor of ['a@exemplo.test\r\nBcc: x@exemplo.test', 'a@exemplo.test\nBcc: x', 'a@exemplo.test\u0000']) {
+      assert.throws(
+        () => carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development', [variavel]: valor }),
+        (erro) => {
+          assert.match(erro.message, new RegExp(`^${variavel} inválida`));
+          assert.ok(!erro.message.includes('Bcc'));
+          return true;
+        },
+      );
+    }
+  }
+});
+
+test('CA8(d): remetente sem @ lança citando a variável', () => {
+  assert.throws(
+    () => carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development', EMAIL_REMETENTE: 'CITMail' }),
+    (erro) => { assert.match(erro.message, /^EMAIL_REMETENTE inválida/); return true; },
+  );
+});
+
+test('CA8(e): sem EMAIL_TRANSPORTE o transporte é desligado, com remetente padrão e alerta de parado em 6 horas', () => {
+  const config = carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development' });
+  assert.equal(config.emailTransporte, 'desligado');
+  assert.equal(config.emailRemetente, 'CITMail <naoresponda@citmail.com.br>');
+  assert.equal(config.emailResponderPara, undefined);
+  assert.equal(config.emailParadoHoras, 6);
+  assert.equal(config.smtpHost, undefined);
+});
+
+test('CA8(e): EMAIL_TRANSPORTE vazio em produção também é desligado', () => {
+  const config = carregarConfigWorker({ ...AMBIENTE_WORKER_PRODUCAO, EMAIL_TRANSPORTE: '' });
+  assert.equal(config.emailTransporte, 'desligado');
+});
+
+test('CA8: com o transporte desligado, SMTP_* incompleto não lança e a configuração não carrega a senha', () => {
+  const config = carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development', SMTP_SENHA: 'SENHA-SMTP-FICTICIA' });
+  assert.ok(!JSON.stringify(config).includes('SENHA-SMTP-FICTICIA'));
+});
+
+test('CA8: remetente e responder-para válidos são lidos sem as pontas em branco', () => {
+  const config = carregarConfigWorker({
+    ...AMBIENTE_WORKER, NODE_ENV: 'development', EMAIL_REMETENTE: '  Equipe <equipe@exemplo.test> ', EMAIL_RESPONDER_PARA: 'suporte@exemplo.test',
+  });
+  assert.equal(config.emailRemetente, 'Equipe <equipe@exemplo.test>');
+  assert.equal(config.emailResponderPara, 'suporte@exemplo.test');
+});
+
+test('CA8: a configuração da API (carregarConfig) não lê o e-mail', () => {
+  const config = carregarConfig({ ...AMBIENTE_BASE, EMAIL_TRANSPORTE: 'smtp' });
+  assert.equal(config.emailTransporte, undefined);
+});
+
+test('CA8: smtpRequireTls é true em qualquer host fora do loopback, em produção ou não, e false no loopback', () => {
+  const externo = carregarConfigWorker({ ...AMBIENTE_EMAIL_SMTP, SMTP_HOST: 'smtp.exemplo.test' });
+  assert.equal(externo.smtpRequireTls, true);
+  const loopback = carregarConfigWorker({ ...AMBIENTE_EMAIL_SMTP, SMTP_HOST: '127.0.0.1' });
+  assert.equal(loopback.smtpRequireTls, false);
+});
+
+test('CA8: EMAIL_TRANSPORTE com espaços nas pontas é aceito e só com espaços vale desligado', () => {
+  assert.equal(carregarConfigWorker({ ...AMBIENTE_EMAIL_SMTP, EMAIL_TRANSPORTE: ' smtp ' }).emailTransporte, 'smtp');
+  assert.equal(carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development', EMAIL_TRANSPORTE: '   ' }).emailTransporte, 'desligado');
+});

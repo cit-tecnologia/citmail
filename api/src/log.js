@@ -18,7 +18,12 @@ export const camposSensiveis = [
   'password', 'authorization', 'accessToken', 'access_token', 'refreshToken', 'apiKey',
   // Cliente e pagamento do Asaas (`creditCard` traz o `creditCardToken`, que permite cobrar de novo).
   'name', 'phone', 'mobilePhone', 'company', 'postalCode', 'address', 'addressNumber', 'complement', 'province',
-  'cityName', 'additionalEmails', 'municipalInscription', 'stateInscription', 'creditCard', 'creditCardToken'
+  'cityName', 'additionalEmails', 'municipalInscription', 'stateInscription', 'creditCard', 'creditCardToken',
+  // E-mail transacional (CIT-65): mensagem do `nodemailer` e variáveis do modelo. Homônimos
+  // de outro contexto (ex.: `from`/`to` de um intervalo) também saem mascarados (ADR 0010).
+  'to', 'from', 'replyTo', 'destinatario', 'variaveis', 'html', 'text', 'subject', 'assunto',
+  // Senha do SMTP: `pass` no `auth` do `nodemailer` e `smtpSenha` na configuração do worker.
+  'pass', 'smtpSenha'
 ]
 
 export const caminhosMascarados = [

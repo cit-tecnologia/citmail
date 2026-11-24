@@ -1,6 +1,7 @@
 // Processo do worker da fila (ADR 0006; CIT-56): `npm run worker`. Roda os jobs, os
 // consumidores de eventos e o publicador do outbox (CIT-166), que lê o banco, e, com
-// `WEBHOOK_ASAAS_HABILITADO`, o enfileirador e o handler do webhook do Asaas (CIT-64).
+// `WEBHOOK_ASAAS_HABILITADO`, o enfileirador e o handler do webhook do Asaas (CIT-64), e
+// o enfileirador e o handler do e-mail transacional (CIT-65), em todos os ambientes.
 // Sem CORS; o token do Telegram só existe aqui (menor privilégio).
 import { carregarConfigWorker } from './config.js'
 import { criarLogger } from './log.js'
@@ -13,6 +14,10 @@ import { consumidoresPadrao, criarHandlersDeConsumidores } from './eventos/consu
 import { iniciarPublicador } from './eventos/publicador.js'
 import { criarClienteAsaas } from './asaas/cliente.js'
 import { criarHandlerWebhook, iniciarEnfileiradorWebhook, JOB_WEBHOOK } from './asaas/webhook-processamento.js'
+import { criarHandlerEmail, JOB_EMAIL } from './email/servico.js'
+import { iniciarEnfileiradorEmail } from './email/enfileirador.js'
+import { modelosDoAmbiente } from './email/modelos/index.js'
+import { criarTransporte } from './email/transporte.js'
 
 let config
 try {
@@ -50,6 +55,20 @@ if (config.webhookAsaasHabilitado) {
   if (!asaas) log.warn('webhook do asaas sem ASAAS_API_KEY: os jobs vão falhar até a configuração')
   handlersWebhook[JOB_WEBHOOK] = criarHandlerWebhook({ pool, asaas, filas: filasPublicador, log })
 }
+// E-mail transacional (ADR 0010): `teste_exemplo` só fora de produção. Desligado (padrão
+// até haver credencial, #57), o job grava `nao_enviado`; em produção, a partida avisa.
+const transporteEmail = criarTransporte(config)
+if (config.nodeEnv === 'production' && !transporteEmail.ligado) log.warn('e-mail desligado em produção')
+const handlersEmail = {
+  [JOB_EMAIL]: criarHandlerEmail({
+    pool,
+    modelos: modelosDoAmbiente(config.nodeEnv),
+    transporte: transporteEmail,
+    remetente: config.emailRemetente,
+    responderPara: config.emailResponderPara,
+    log
+  })
+}
 const workers = criarWorkers({
   conexao,
   filas,
@@ -57,8 +76,8 @@ const workers = criarWorkers({
   log,
   nodeEnv: config.nodeEnv,
   handlers: config.nodeEnv === 'production'
-    ? { ...handlersConsumidores, ...handlersWebhook }
-    : { ...handlersPadrao, ...handlersConsumidores, ...handlersWebhook },
+    ? { ...handlersConsumidores, ...handlersWebhook, ...handlersEmail }
+    : { ...handlersPadrao, ...handlersConsumidores, ...handlersWebhook, ...handlersEmail },
   enviarAlerta: criarEnvioTelegram({ token: config.telegramBotToken, chatId: config.telegramChatId, log })
 })
 log.info({ prefixo: config.filaPrefixo }, 'worker iniciado')
@@ -73,8 +92,15 @@ const publicador = iniciarPublicador({
 const enfileiradorWebhook = config.webhookAsaasHabilitado
   ? iniciarEnfileiradorWebhook({ pool, filas: filasPublicador, log, intervaloMs: config.outboxIntervaloMs })
   : null
+const enfileiradorEmail = iniciarEnfileiradorEmail({
+  pool,
+  filas: filasPublicador,
+  log,
+  intervaloMs: config.outboxIntervaloMs,
+  paradoHoras: config.emailParadoHoras
+})
 
-// Ordem: o publicador e o enfileirador do webhook param de criar jobs; `workers.close()` espera o job ativo terminar
+// Ordem: o publicador e os enfileiradores (webhook e e-mail) param de criar jobs; `workers.close()` espera o job ativo terminar
 // e os alertas em curso serem enfileirados; depois filas, pool e conexões. Um segundo
 // sinal durante o encerramento é ignorado (a unidade systemd mata o processo após
 // `TimeoutStopSec`).
@@ -88,11 +114,13 @@ for (const sinal of ['SIGTERM', 'SIGINT']) {
     try {
       await publicador.close()
       await enfileiradorWebhook?.close()
+      await enfileiradorEmail.close()
       await workers.close()
       await filas.close()
       // Com o Redis fora, o `close()` das filas do produtor pode falhar: a conexão
       // é derrubada de qualquer jeito.
       await filasPublicador.close().catch((erro) => log.warn({ erro: erro?.name }, 'falha ao fechar filas do publicador'))
+      transporteEmail.close()
       conexaoProdutor.disconnect()
       await pool.end()
       await conexao.quit()

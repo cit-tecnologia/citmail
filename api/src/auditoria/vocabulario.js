@@ -25,6 +25,8 @@ export const CHAVES_PROIBIDAS = Object.freeze([
   'password', 'authorization', 'accesstoken', 'access_token', 'refreshtoken', 'apikey',
   'name', 'phone', 'mobilephone', 'company', 'postalcode', 'address', 'addressnumber', 'complement', 'province',
   'cityname', 'additionalemails', 'municipalinscription', 'stateinscription', 'creditcard', 'creditcardtoken',
+  // E-mail transacional (CIT-65).
+  'to', 'from', 'replyto', 'destinatario', 'variaveis', 'html', 'text', 'subject', 'assunto', 'pass', 'smtpsenha',
   'ip', 'ip_origem', 'iporigem', 'ipcliente', 'ip_cliente', 'remoteaddress', 'remote_addr', 'x-forwarded-for',
   'xforwardedfor', 'forwarded', 'x-real-ip', 'ipaceite', 'ip_aceite'
 ])

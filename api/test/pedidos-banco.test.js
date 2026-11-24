@@ -424,7 +424,7 @@ test('CA7: o down com registros é recusado com P0001 e as tabelas continuam', a
       );
       // `1795458432080_pedidos` é a antepenúltima migração (depois dela vêm o aceite, CIT-62, e o webhook, CIT-64, que
       // desfaz sem erro com `pedido` vazio): o down de 3 passos chega a ela.
-      await assert.rejects(aplicarMigracoes(url, 'down', 4), /pedidos com registros: down recusado/);
+      await assert.rejects(aplicarMigracoes(url, 'down', 5), /pedidos com registros: down recusado/);
       const { rows } = await pool.query("SELECT to_regclass('cliente') AS cliente, to_regclass('assinatura') AS assinatura");
       assert.notEqual(rows[0].cliente, null);
       assert.notEqual(rows[0].assinatura, null);
@@ -440,7 +440,7 @@ test('CA7: o down com as tabelas vazias remove as 4 tabelas e o up seguinte as r
   const { nomeBanco, url } = await criarBancoTemporario();
   try {
     await aplicarMigracoes(url);
-    await aplicarMigracoes(url, 'down', 4);
+    await aplicarMigracoes(url, 'down', 5);
     const pool = new Pool({ connectionString: url, max: 2 });
     try {
       const sem = await pool.query(
@@ -591,7 +591,7 @@ test('CA6: o down do aceite com um pedido é recusado (P0001) e as colunas conti
       [clienteId, randomUUID()]
     );
 
-    await assert.rejects(aplicarMigracoes(url, 'down', 3), (erro) => {
+    await assert.rejects(aplicarMigracoes(url, 'down', 4), (erro) => {
       assert.match(erro.message, /pedidos com aceite: down recusado/);
       assert.equal(erro.code, 'P0001');
       return true;
@@ -610,7 +610,7 @@ test('CA6: o aceite sobe e desce em banco vazio, e o up seguinte o recria', asyn
         WHERE table_name = 'pedido' AND column_name IN ('aceite_em', 'versao_termos', 'versao_privacidade', 'ip_aceite')`
     )).rows[0].n;
     assert.equal(await contarColunas(), 4);
-    await aplicarMigracoes(url, 'down', 3);
+    await aplicarMigracoes(url, 'down', 4);
     assert.equal(await contarColunas(), 0);
     await aplicarMigracoes(url, 'up', 1);
     assert.equal(await contarColunas(), 4);
