@@ -120,6 +120,8 @@ Pendências que não foram fechadas dentro do timebox do spike (3 dias úteis, a
 | Expiração de pedido `aguardando_pagamento` nunca pago (anexo de modelo de dados). | responsável | 2026-10-01 |
 | Limpeza do evento bruto do Asaas (`asaas_webhook_evento`) após 90 dias, com papel próprio (o da aplicação não tem `DELETE`); índice por `recebido_em` já criado ([ADR 0015](0015-webhook-do-asaas.md), CIT-64). História própria, no épico #41. | responsável | história a abrir |
 | Confirmar no sandbox do Asaas o formato do `id` do evento do webhook, o `value` do 1º pagamento e os status da matriz do [ADR 0015](0015-webhook-do-asaas.md) (CIT-64, CA16). | responsável | na #57 |
+| Registros SPF, DKIM e DMARC do domínio remetente do e-mail transacional (DMARC em `p=none` no início, [ADR 0010](0010-email-transacional.md)); sem eles, nenhum envio real sai pelo SMTP da Skymail (CIT-65, CA5). | responsável | na #57 |
+| Limpeza de `email_envio` após 90 dias, com papel próprio (o da aplicação não tem `DELETE`); índice por `criado_em` já criado ([ADR 0010](0010-email-transacional.md), CIT-65). História própria, no épico #45. | responsável | história a abrir |
 | Retenções propostas: evento bruto do Asaas (90 dias, ADR 0005), auditoria (IP em claro por 6 meses, registro por 5 anos, ADR 0013) e sessão (até 8 h, ADR 0008). | responsável | 2026-10-01 |
 
 ## Ajustes de critérios em outras histórias
