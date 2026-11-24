@@ -139,6 +139,64 @@ function lerWebhook(env, nodeEnv) {
   return { webhookAsaasHabilitado, asaasWebhookToken }
 }
 
+// E-mail transacional no worker (ADR 0010; CIT-65). `EMAIL_TRANSPORTE` nasce `desligado`
+// em todos os ambientes até haver credencial (#57): o job grava `nao_enviado` (em produção,
+// a partida do worker loga `warn`). `smtp` exige host, usuário e senha; em produção, exige
+// TLS (`requireTLS`) e recusa host de loopback. Remetente e Reply-To não aceitam
+// caractere de controle (CR/LF quebrariam o cabeçalho).
+const TRANSPORTES_EMAIL = ['desligado', 'smtp']
+const REMETENTE_PADRAO = 'CITMail <naoresponda@citmail.com.br>'
+// eslint-disable-next-line no-control-regex -- recusar caractere de controle é o objetivo
+const CONTROLE = /[\u0000-\u001f\u007f]/
+
+function hostLoopback(host) {
+  const semColchetes = host.replace(/^\[(.*)\]$/, '$1').toLowerCase()
+  return semColchetes === 'localhost' || semColchetes.endsWith('.localhost') || semColchetes === '::1' ||
+    semColchetes === '0.0.0.0' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(semColchetes)
+}
+
+function lerEnderecoEmail(env, nome, padrao) {
+  const valor = (env[nome] ?? '').trim()
+  if (!valor) return padrao
+  if (CONTROLE.test(valor)) throw new Error(`${nome} inválida: sem quebra de linha nem caractere de controle`)
+  if (!valor.includes('@')) throw new Error(`${nome} inválida: informe um endereço de e-mail`)
+  return valor
+}
+
+function lerEmail(env, nodeEnv) {
+  const producao = nodeEnv === 'production'
+  const emailTransporte = env.EMAIL_TRANSPORTE || 'desligado'
+  if (!TRANSPORTES_EMAIL.includes(emailTransporte)) {
+    throw new Error(`EMAIL_TRANSPORTE inválida: use ${TRANSPORTES_EMAIL.join(' ou ')}`)
+  }
+  const email = {
+    emailTransporte,
+    emailRemetente: lerEnderecoEmail(env, 'EMAIL_REMETENTE', REMETENTE_PADRAO),
+    emailResponderPara: lerEnderecoEmail(env, 'EMAIL_RESPONDER_PARA', undefined),
+    emailParadoHoras: lerInteiro(env, 'EMAIL_PARADO_HORAS', 6, 1, 72)
+  }
+  if (emailTransporte !== 'smtp') return email
+
+  const smtpHost = (env.SMTP_HOST ?? '').trim()
+  if (!smtpHost) throw new Error('SMTP_HOST não definida')
+  const smtpUsuario = (env.SMTP_USUARIO ?? '').trim()
+  if (!smtpUsuario) throw new Error('SMTP_USUARIO não definida')
+  const smtpSenha = env.SMTP_SENHA ?? ''
+  if (!smtpSenha) throw new Error('SMTP_SENHA não definida')
+  if (producao && hostLoopback(smtpHost)) {
+    throw new Error('SMTP_HOST inválida: em produção, use um host fora do loopback')
+  }
+  return {
+    ...email,
+    smtpHost,
+    smtpPorta: lerInteiro(env, 'SMTP_PORTA', 587, 1, 65535),
+    smtpUsuario,
+    smtpSenha,
+    smtpTimeoutMs: lerInteiro(env, 'SMTP_TIMEOUT_MS', 10000, 1000, 60000),
+    smtpRequireTls: producao
+  }
+}
+
 // Configuração da API. `REDIS_URL` é opcional: sem ela não há fila nem rota de exemplo
 // de job. A API não usa o Redis em produção: o webhook do Asaas (CIT-64) só grava no
 // banco, e quem enfileira é o worker. Não lê Telegram. `termosMinuta` e
@@ -201,6 +259,7 @@ export function carregarConfigFila(env = process.env) {
 // (ADR 0011), obrigatório em produção. Só este processo recebe o token (menor privilégio).
 // Com `WEBHOOK_ASAAS_HABILITADO` (mesmo padrão da API), lê também chave, URL e timeout do
 // Asaas (conferência do pagamento, CIT-64), obrigatórios em produção; nunca o token do webhook.
+// Lê também o transporte e o remetente do e-mail transacional (CIT-65, `lerEmail`).
 export function carregarConfigWorker(env = process.env) {
   const config = carregarConfigFila(env)
   const databaseUrl = (env.DATABASE_URL ?? '').trim()
@@ -217,6 +276,7 @@ export function carregarConfigWorker(env = process.env) {
   const webhookAsaasHabilitado = lerBooleano(env, 'WEBHOOK_ASAAS_HABILITADO', config.nodeEnv !== 'production')
   const asaas = webhookAsaasHabilitado ? lerCredenciaisAsaas(env, config.nodeEnv === 'production', true) : {}
   return {
-    ...config, databaseUrl, outboxIntervaloMs, telegramBotToken, telegramChatId, webhookAsaasHabilitado, ...asaas
+    ...config, databaseUrl, outboxIntervaloMs, telegramBotToken, telegramChatId, webhookAsaasHabilitado, ...asaas,
+    ...lerEmail(env, config.nodeEnv)
   }
 }
