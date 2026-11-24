@@ -609,6 +609,11 @@ s[data-preco-tabela], .sum-disc s { color: var(--cit-error); text-decoration-lin
 .pedido-faturas { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
 .pedido-faturas-texto { font-size: var(--cit-text-small); color: var(--cit-text-secondary); overflow-wrap: anywhere; }
 .pedido-faturas .btn { min-height: 44px; height: auto; padding-top: 10px; padding-bottom: 10px; text-align: center; }
+/* Regiões vivas do pedido ficam sempre no DOM (anunciáveis a cada texto novo); sem texto, não ocupam espaço. */
+#pedidoProgresso:empty, #pedidoAviso:empty { margin: 0; padding: 0; border: 0; }
+#pedidoErro:not(.pedido-erro--ativo) { margin: 0; padding: 0; border: 0; }
+#pedidoErro:not(.pedido-erro--ativo) > .icon, #pedidoErro:not(.pedido-erro--ativo) .pedido-erro-acoes, .pedido-ambiguo:empty { display: none; }
+.pedido-ambiguo { font-weight: 600; }
 
 /* ---- MISC ---- */
 .step-panel { display: none; }
@@ -631,21 +636,6 @@ s[data-preco-tabela], .sum-disc s { color: var(--cit-error); text-decoration-lin
 }
 .terms-check input[type=checkbox] { margin-top: 3px; width: 16px; height: 16px; cursor: pointer; flex-shrink: 0; }
 .terms-check a { color: var(--cit-text-link); font-weight: 600; }
-
-.loading-overlay {
-  display: none; position: fixed; inset: 0;
-  background: rgba(35,52,78,.85);
-  z-index: 9999; flex-direction: column;
-  align-items: center; justify-content: center; gap: 18px;
-}
-.loading-overlay.active { display: flex; }
-.spinner {
-  width: 48px; height: 48px; border-radius: 50%;
-  border: 3px solid rgba(255,255,255,.2);
-  border-top-color: var(--cit-turquoise-500); animation: spin .8s linear infinite;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-.loading-text { color: white; font-family: var(--font-title); font-weight: 600; font-size: 1rem; }
 
 /* Responsivo */
 @media (max-width: 520px) {

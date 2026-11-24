@@ -16,12 +16,6 @@
 
 <body>
 
-  <!-- LOADING OVERLAY -->
-  <div class="loading-overlay" id="loadingOverlay">
-    <div class="spinner"></div>
-    <div class="loading-text" id="loadingText">Gerando sua fatura…</div>
-  </div>
-
   <!-- HEADER -->
   <header class="checkout-header">
     <a href="index.html" class="logo">
@@ -650,19 +644,16 @@
           <span><strong>Contratação online em breve.</strong> Para contratar agora, fale com a nossa equipe em <a href="mailto:comercial@citmail.com.br">comercial@citmail.com.br</a>.</span>
         </div>
 
-        <p class="pedido-progresso" id="pedidoProgresso" role="status" hidden>Gerando sua fatura…</p>
+        <!-- Regiões vivas do pedido: sempre no DOM, vazias até o JS escrever o texto (sem texto, não ocupam espaço). -->
+        <p class="pedido-progresso" id="pedidoProgresso" role="status"></p>
 
-        <div class="alert-box alert-warn" id="pedidoAmbiguoAviso" role="alert" hidden>
-          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#triangle-alert"></use></svg>
-          <span>Seu pedido pode já ter sido criado. Tente de novo para recuperar a fatura; não altere os dados.</span>
-        </div>
-
-        <div class="alert-box alert-err pedido-erro" id="pedidoErro" role="alert" hidden>
+        <div class="alert-box alert-err pedido-erro" id="pedidoErro" role="alert">
           <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#triangle-alert"></use></svg>
           <div class="pedido-erro-corpo">
-            <span id="pedidoErroTexto">Não foi possível gerar a fatura agora. Tente novamente.</span>
+            <span id="pedidoErroTexto"></span>
+            <span class="pedido-ambiguo" id="pedidoAmbiguoAviso"></span>
             <div class="pedido-erro-acoes">
-              <button class="btn btn-outline pedido-acao" id="btnPedidoRetry" type="button">
+              <button class="btn btn-outline pedido-acao" id="btnPedidoRetry" type="button" hidden>
                 <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#refresh-cw"></use></svg> Tentar novamente
               </button>
               <button class="btn btn-outline pedido-acao" id="btnPedidoRevisar" type="button" hidden>
@@ -672,7 +663,7 @@
           </div>
         </div>
 
-        <p class="alert-box alert-info" id="pedidoAviso" role="status" hidden>Pedido recebido.</p>
+        <p class="alert-box alert-info" id="pedidoAviso" role="status"></p>
 
         <div class="pedido-faturas" id="pedidoFaturas" hidden>
           <p class="pedido-faturas-texto" id="pedidoFaturasTexto">Pedido recebido. Abra as faturas abaixo para pagar; a que não aparecer foi enviada para o seu e-mail.</p>

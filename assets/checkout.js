@@ -69,6 +69,8 @@ function marcarCampoInvalido(campo, erroId, msg) {
 function validarDominioPrincipal() {
   const errEl = document.getElementById('step2Error');
   if (!Object.keys(DOMAIN_OPTS).includes(domainChoice)) { errEl.style.display = 'flex'; return errEl; }
+  limparErroDominio('fDomNew', 'err-dom-new');
+  limparErroDominio('fDomExist', 'err-dom-exist');
   if (domainChoice === 'new-br') {
     const campo = document.getElementById('fDomNew');
     const bruto = campo.value.trim();
@@ -846,6 +848,7 @@ function renderResumoApi(r) {
    FORM — DOCUMENT TYPE
 ================================================================ */
 function setDocType(type) {
+  ['fCPF', 'fCNPJ'].forEach(id => limparMarcaCadastro(id));
   document.getElementById('btnCPF').classList.toggle('active', type === 'cpf');
   document.getElementById('btnCNPJ').classList.toggle('active', type === 'cnpj');
   document.getElementById('cpfRow').style.display  = type === 'cpf'  ? 'grid' : 'none';
@@ -910,6 +913,12 @@ function clearErr(id) {
   const el = document.getElementById(id);
   if (el) el.classList.remove('visible');
 }
+// Campos do cadastro e o elemento de erro de cada um (marcados por um 400 do pedido).
+const ERROS_CADASTRO = { fNome: 'err-nome', fEmail: 'err-email', fTelefone: 'err-telefone', fCPF: 'err-cpf', fCNPJ: 'err-cnpj' };
+function limparMarcaCadastro(id) {
+  document.getElementById(id).removeAttribute('aria-invalid');
+  clearErr(ERROS_CADASTRO[id]);
+}
 
 function submitCadastro() {
   let ok = true;
@@ -920,6 +929,7 @@ function submitCadastro() {
   const cep   = document.getElementById('fCEP').value.trim();
   const terms = document.getElementById('termsCheck').checked;
 
+  ['fNome', 'fEmail', 'fTelefone', 'fCPF', 'fCNPJ'].forEach(id => limparMarcaCadastro(id));
   clearErr('err-nome'); clearErr('err-email'); clearErr('err-telefone');
   clearErr('err-cpf'); clearErr('err-cnpj');
   clearErr('err-razao'); clearErr('err-cep');
@@ -983,7 +993,7 @@ function renderRevisao() {
   document.getElementById('revisaoResumo').replaceChildren(...itens);
   document.getElementById('revisaoAvisoDominio').hidden = !temDominioNovo();
   // Erro de uma tentativa anterior sai ao voltar à revisão, salvo quando a edição está travada ou o envio, bloqueado.
-  if (!pedidoAmbiguo && !pedidoBloqueado) document.getElementById('pedidoErro').hidden = true;
+  if (!pedidoAmbiguo && !pedidoBloqueado) limparErroPedido();
   atualizarBotaoPedido();
 }
 
@@ -998,10 +1008,12 @@ const HOSTS_FATURA = Object.freeze(['www.asaas.com', 'sandbox.asaas.com']);
 const PEDIDO_TIMEOUT_MS = 90000;
 const CONTATO_COMERCIAL = 'comercial@citmail.com.br';
 const MSG_PEDIDO_GENERICA = 'Não foi possível gerar a fatura agora. Tente novamente.';
+const MSG_PEDIDO_AMBIGUO = 'Seu pedido pode já ter sido criado. Tente de novo para recuperar a fatura; não altere os dados.';
 
 // Regra da chave de idempotência (ADR 0014): a chave nasce no 1º envio e vive só em memória com o corpo enviado.
-// Falha definitiva → chave nova no próximo envio; retomável (500 interno) → mesma chave;
-// ambígua → mesma chave e mesmo corpo, com a edição travada até um 201 (ou uma resposta definitiva).
+// Falha definitiva → chave nova no próximo envio; ambígua (inclusive o 1º 500 interno) → mesma chave e mesmo corpo,
+// com a edição travada até um 201 ou uma resposta definitiva. O 2º 500 interno seguido na mesma chave é definitivo
+// (o servidor pode ter gravado a falha e repetir o 500): chave nova e edição destravada.
 let chavePedido = null;          // UUID em uso (null = o próximo envio gera outra)
 let corpoPedidoEnviado = null;   // JSON do último envio (reenviado byte a byte no estado ambíguo)
 let pedidoEnviando = false;      // guarda contra clique duplo (não depende só do disabled)
@@ -1009,6 +1021,7 @@ let pedidoAmbiguo = false;       // o pedido pode já existir
 let pedidoBloqueado = false;     // sem novo envio pela página (404 ou chave reutilizada no ambíguo)
 let pedidoConcluido = false;     // 201 válido: nada de 2º pedido na mesma página
 let passoComErroPedido = null;   // 1º passo com campo acusado por um 400 (destino de #btnPedidoRevisar)
+let ultimoErroInterno = false;   // a resposta anterior desta chave foi 500 interno
 
 function urlFaturaSegura(url) {
   if (typeof url !== 'string') return null;
@@ -1062,8 +1075,7 @@ function atualizarBotaoPedido() {
   btn.disabled = pedidoEnviando;
   if (pedidoEnviando) btn.setAttribute('aria-busy', 'true');
   else btn.removeAttribute('aria-busy');
-  document.getElementById('pedidoProgresso').hidden = !pedidoEnviando;
-  document.getElementById('pedidoAmbiguoAviso').hidden = !pedidoAmbiguo;
+  document.getElementById('pedidoProgresso').textContent = pedidoEnviando ? 'Gerando sua fatura…' : '';
   // Edição dos passos 1-4 travada durante o envio e no estado ambíguo (goStep também recusa).
   document.querySelectorAll('#step5 [data-ir-passo]').forEach(b => { b.disabled = pedidoEnviando || pedidoAmbiguo; });
 }
@@ -1081,8 +1093,9 @@ async function enviarPedido() {
   }
   corpoPedidoEnviado = corpoTexto;
   pedidoEnviando = true;
-  document.getElementById('pedidoErro').hidden = true;
-  document.getElementById('pedidoAviso').hidden = true;
+  // Esvazia as regiões vivas: o texto da resposta (mesmo que repetido) é anunciado de novo.
+  limparErroPedido();
+  document.getElementById('pedidoAviso').textContent = '';
   atualizarBotaoPedido();
   const controlador = new AbortController();
   // setTimeout + abort (e não AbortSignal.timeout) para o page.clock dos testes controlar o prazo.
@@ -1127,26 +1140,25 @@ function classificarRespostaPedido(status, d) {
   if (status === 409 && erro === 'versao_termos_divergente') return 'termos';
   if (status === 422 && erro === 'chave_reutilizada') return pedidoAmbiguo ? 'irrecuperavel' : 'definitiva';
   if ((status === 502 || status === 504) && erro === 'asaas_indisponivel') return 'definitiva';
-  if (status === 500 && erro === 'interno') return 'retomavel';
+  if (status === 500 && erro === 'interno') return ultimoErroInterno ? 'definitiva' : 'retomavel';
   return 'ambigua';
 }
 
 function tratarRespostaPedido(status, d) {
   const classe = classificarRespostaPedido(status, d);
+  ultimoErroInterno = classe === 'retomavel';
   if (classe === 'criado') {
     pedidoAmbiguo = false;
     pedidoConcluido = true;
     chavePedido = null;
+    limparMarcasPedido();
     mostrarResultadoPedido(d);
     return;
   }
-  if (classe === 'ambigua') {
+  // Ambígua ou 1º 500 interno (o pedido pode estar em "criando"): mesma chave e mesmo corpo, edição travada.
+  if (classe === 'ambigua' || classe === 'retomavel') {
     pedidoAmbiguo = true;
-    mostrarErroPedido(MSG_PEDIDO_GENERICA, { retry: true });
-    return;
-  }
-  if (classe === 'retomavel') {   // o pedido fica em "criando": a mesma chave o retoma
-    mostrarErroPedido(MSG_PEDIDO_GENERICA, { retry: true });
+    mostrarErroPedido(MSG_PEDIDO_GENERICA, { retry: true, ambiguo: true });
     return;
   }
   if (classe === 'irrecuperavel') {   // sem chave nova silenciosa e sem novo envio pela página
@@ -1154,12 +1166,18 @@ function tratarRespostaPedido(status, d) {
     mostrarErroPedido(`Não conseguimos confirmar seu pedido. Fale com ${CONTATO_COMERCIAL} informando o e-mail do cadastro.`, {});
     return;
   }
+  const msgIndisponivel = `A contratação online está indisponível no momento. Fale com ${CONTATO_COMERCIAL}.`;
+  if (classe === 'indisponivel' && pedidoAmbiguo) {   // o pedido pode existir: mantém a chave e o aviso
+    pedidoBloqueado = true;
+    mostrarErroPedido(msgIndisponivel, { ambiguo: true });
+    return;
+  }
   // Definitivas: nenhum pedido ficou pendente com esta chave; o próximo envio gera outra (e o corpo pode mudar).
   chavePedido = null;
   pedidoAmbiguo = false;
   if (classe === 'indisponivel') {
     pedidoBloqueado = true;
-    mostrarErroPedido(`A contratação online está indisponível no momento. Fale com ${CONTATO_COMERCIAL}.`, {});
+    mostrarErroPedido(msgIndisponivel, {});
   } else if (classe === 'validacao') {
     const marcados = Array.isArray(d.campos) && marcarCamposPedido(d.campos);
     if (marcados) mostrarErroPedido('Revise os dados destacados.', { revisar: true });
@@ -1177,14 +1195,25 @@ function tratarRespostaPedido(status, d) {
   }
 }
 
-// opcoes: retry (mostra "Tentar novamente"), revisar (mostra "Revisar dados"), foco (id a focar sem esses botões).
+// #pedidoErro é a única região role="alert" do pedido: fica sempre no DOM e recebe o texto a cada resposta.
+function limparErroPedido() {
+  document.getElementById('pedidoErroTexto').textContent = '';
+  document.getElementById('pedidoAmbiguoAviso').textContent = '';
+  document.getElementById('btnPedidoRetry').hidden = true;
+  document.getElementById('btnPedidoRevisar').hidden = true;
+  document.getElementById('pedidoErro').classList.remove('pedido-erro--ativo');
+}
+
+// opcoes: retry (mostra "Tentar novamente"), revisar (mostra "Revisar dados"), ambiguo (acrescenta o aviso de que o
+// pedido pode já existir), foco (id a focar sem esses botões).
 function mostrarErroPedido(texto, opcoes) {
   const retry = document.getElementById('btnPedidoRetry');
   const revisar = document.getElementById('btnPedidoRevisar');
   document.getElementById('pedidoErroTexto').textContent = texto;
+  document.getElementById('pedidoAmbiguoAviso').textContent = opcoes.ambiguo ? MSG_PEDIDO_AMBIGUO : '';
   retry.hidden = !opcoes.retry;
   revisar.hidden = !opcoes.revisar;
-  document.getElementById('pedidoErro').hidden = false;
+  document.getElementById('pedidoErro').classList.add('pedido-erro--ativo');
   atualizarBotaoPedido();
   const foco = opcoes.retry ? retry : opcoes.revisar ? revisar : opcoes.foco && document.getElementById(opcoes.foco);
   if (foco && !foco.hidden) foco.focus();
@@ -1224,6 +1253,15 @@ function marcarCamposPedido(campos) {
   return passoComErroPedido !== null;
 }
 
+// Tira as marcas de um 400 de todos os campos (depois de um 201).
+function limparMarcasPedido() {
+  passoComErroPedido = null;
+  Object.keys(ERROS_CADASTRO).forEach(id => limparMarcaCadastro(id));
+  limparErroDominio('fDomNew', 'err-dom-new');
+  limparErroDominio('fDomExist', 'err-dom-exist');
+  camposExtras().forEach((campo, i) => limparErroDominio(campo.id, `err-dom-extra-${i + 1}`));
+}
+
 function revisarDadosPedido() {
   if (passoComErroPedido === null) return;
   goStep(passoComErroPedido);
@@ -1236,11 +1274,10 @@ function mostrarResultadoPedido(d) {
   const contas = d.faturas.find(f => f.tipo === 'contas');
   const dominios = d.faturas.find(f => f.tipo === 'dominios');
   const urlContas = contas ? urlFaturaSegura(contas.url) : null;
-  document.getElementById('pedidoErro').hidden = true;
+  limparErroPedido();
   if (d.aviso === 'fatura_pendente' || !urlContas) {
-    const aviso = document.getElementById('pedidoAviso');
-    aviso.textContent = `Pedido recebido. Número do pedido: ${d.pedidoId}. Se não receber a fatura por e-mail, fale com ${CONTATO_COMERCIAL}.`;
-    aviso.hidden = false;
+    document.getElementById('pedidoAviso').textContent =
+      `Pedido recebido. Número do pedido: ${d.pedidoId}. Se não receber a fatura por e-mail, fale com ${CONTATO_COMERCIAL}.`;
     return;
   }
   if (!dominios) {
