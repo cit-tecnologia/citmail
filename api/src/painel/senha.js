@@ -13,11 +13,13 @@ export function gerarHashSenha(senha) {
   return hash(senha, PARAMETROS_ARGON2)
 }
 
-// Hash malformado no banco conta como senha errada, sem 500.
+// Hash malformado no banco conta como senha errada, sem 500. A verificação contra o hash
+// falso (resultado ignorado) mantém o tempo da resposta igual ao das outras recusas.
 export async function verificarSenha(hashArmazenado, senha) {
   try {
     return await verify(hashArmazenado, senha)
   } catch {
+    await verify(HASH_FALSO, senha).catch(() => {})
     return false
   }
 }

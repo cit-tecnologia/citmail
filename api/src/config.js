@@ -226,11 +226,12 @@ function lerOrigens(env, nome) {
   return origens
 }
 
-// Login do painel (ADR 0008; CIT-70). Nasce desligado em produção e ligado fora dela.
-// Ligado em produção, `REDIS_URL` (sessões) e `PAINEL_ORIGENS` são obrigatórias; fora
-// dela, sem `REDIS_URL` as rotas respondem 503. `PAINEL_ORIGENS` (origens com cookie e
-// as únicas aceitas no `Origin` do login e do logout) é subconjunto de `CORS_ORIGENS`.
-function lerPainel(env, nodeEnv, corsOrigens, redisUrl) {
+// Login do painel (ADR 0008; CIT-70). Desligado em produção e ligado fora dela. Ligado em
+// produção, a API não sobe enquanto não houver limitador de tentativas (CIT-78, ADR 0013):
+// cada tentativa custa 19 MiB no Argon2id. Fora de produção, sem `REDIS_URL`, as rotas
+// respondem 503. `PAINEL_ORIGENS` (origens com cookie e as únicas aceitas no `Origin` do
+// login e do logout) é subconjunto de `CORS_ORIGENS`.
+function lerPainel(env, nodeEnv, corsOrigens) {
   const producao = nodeEnv === 'production'
   const painelHabilitado = lerBooleano(env, 'PAINEL_HABILITADO', !producao)
   const painelOrigens = lerOrigens(env, 'PAINEL_ORIGENS')
@@ -238,16 +239,17 @@ function lerPainel(env, nodeEnv, corsOrigens, redisUrl) {
     throw new Error('PAINEL_ORIGENS inválida: cada origem deve estar também em CORS_ORIGENS')
   }
   if (painelHabilitado && producao) {
-    if (!redisUrl) throw new Error('REDIS_URL não definida: obrigatória com PAINEL_HABILITADO em produção')
-    if (painelOrigens.length === 0) throw new Error('PAINEL_ORIGENS vazia: obrigatória com PAINEL_HABILITADO em produção')
+    throw new Error(
+      'PAINEL_HABILITADO recusada em produção: sem limitador de tentativas no login (CIT-78, ADR 0013)'
+    )
   }
   return { painelHabilitado, painelOrigens }
 }
 
-// Configuração da API. `REDIS_URL` é opcional fora de produção: sem ela não há fila, rota
-// de exemplo de job nem sessão do painel (503). Em produção, a API só usa o Redis para a
-// sessão do painel (CIT-70), quando `PAINEL_HABILITADO` está ligada: o webhook do Asaas
-// (CIT-64) só grava no banco, e quem enfileira é o worker. Não lê Telegram. `termosMinuta` e
+// Configuração da API. `REDIS_URL` é opcional: sem ela não há fila, rota de exemplo de job
+// nem sessão do painel (503). A API ainda não usa o Redis em produção: o painel (CIT-70),
+// único uso lá, fica recusado até o limitador de tentativas; o webhook do Asaas (CIT-64) só
+// grava no banco, e quem enfileira é o worker. Não lê Telegram. `termosMinuta` e
 // `privacidadeProvisoria` são injetáveis para os testes (padrão: as constantes de
 // pedidos/aceite.js).
 export function carregarConfig(
@@ -271,7 +273,6 @@ export function carregarConfig(
     throw new Error('PORT inválida')
   }
 
-  const fila = lerFila(env)
   return {
     databaseUrl,
     host: env.HOST || '127.0.0.1',
@@ -279,10 +280,10 @@ export function carregarConfig(
     corsOrigens,
     logLevel: env.LOG_LEVEL || 'info',
     nodeEnv,
-    ...fila,
+    ...lerFila(env),
     ...lerAsaas(env, nodeEnv, termosMinuta, privacidadeProvisoria),
     ...lerWebhook(env, nodeEnv),
-    ...lerPainel(env, nodeEnv, corsOrigens, fila.redisUrl)
+    ...lerPainel(env, nodeEnv, corsOrigens)
   }
 }
 

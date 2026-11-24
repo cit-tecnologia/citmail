@@ -9,7 +9,7 @@ export function criarConexaoWorker(redisUrl) {
   return new Redis(redisUrl, { maxRetriesPerRequest: null })
 }
 
-// Produtor (API e CLI): com o Redis fora, o comando falha em vez de ficar em memória
+// Produtor (API e CLI) e sessões do painel na API (CIT-70): com o Redis fora, o comando falha em vez de ficar em memória
 // esperando a reconexão. O limite de tempo da resposta fica na rota (`Promise.race`).
 export function criarConexaoProdutor(redisUrl) {
   return new Redis(redisUrl, { enableOfflineQueue: false, maxRetriesPerRequest: 1, connectTimeout: 2000 })

@@ -266,13 +266,20 @@ test('CA9: PAINEL_HABILITADO=false → as três rotas 404', { tag: '@CIT-70' }, 
   }
 });
 
+// Logout fica fora: responde 204 sempre (abaixo).
 const ROTAS = [
   ['POST', '/api/painel/login', { email: EMAIL, senha: SENHA }],
-  ['POST', '/api/painel/logout', {}],
   ['GET', '/api/painel/sessao', undefined],
 ];
 
-test('CA9: ligada sem REDIS_URL fora de produção → 503 sessao_indisponivel com no-store', { tag: '@CIT-70' }, async (t) => {
+async function conferirLogout204(app) {
+  const resposta = await app.inject({ method: 'POST', url: '/api/painel/logout', headers: { origin: ORIGEM_PAINEL }, payload: {} });
+  assert.equal(resposta.statusCode, 204);
+  assert.match(resposta.headers['set-cookie'], /^__Host-citmail_sessao=; .*Max-Age=0/);
+  assert.equal(resposta.headers['cache-control'], 'no-store');
+}
+
+test('CA9: ligada sem REDIS_URL fora de produção → login e sessão 503 sessao_indisponivel com no-store; logout 204', { tag: '@CIT-70' }, async (t) => {
   const semRedis = await construirAppTeste({ comBanco: false, sobrescritasConfig: configPainel });
   t.after(semRedis.fechar);
   for (const [method, url, payload] of ROTAS) {
@@ -281,9 +288,10 @@ test('CA9: ligada sem REDIS_URL fora de produção → 503 sessao_indisponivel c
     assert.equal(resposta.body, '{"erro":"sessao_indisponivel"}');
     assert.equal(resposta.headers['cache-control'], 'no-store');
   }
+  await conferirLogout204(semRedis.app);
 });
 
-test('CA9: Redis fora do ar → 503 em até 3 s nas três rotas, sem banco nem Argon2', { tag: '@CIT-70' }, async (t) => {
+test('CA9: Redis fora do ar → 503 em até 3 s no login e na sessão (logout 204), sem banco nem Argon2', { tag: '@CIT-70' }, async (t) => {
   const fora = criarSessoesTeste({ url: 'redis://127.0.0.1:1' });
   let consultas = 0;
   let verificacoes = 0;
@@ -304,6 +312,16 @@ test('CA9: Redis fora do ar → 503 em até 3 s nas três rotas, sem banco nem A
     assert.equal(resposta.body, '{"erro":"sessao_indisponivel"}');
     assert.ok(Date.now() - inicio < 3000, `${url} em até 3 s`);
   }
+  const inicio = Date.now();
+  await conferirLogout204(app.app);
+  assert.ok(Date.now() - inicio < 3000, 'logout em até 3 s');
   assert.equal(consultas, 0);
   assert.equal(verificacoes, 0);
+});
+
+test('CA2: hash malformado no banco → o mesmo 401, sem 500', { tag: '@CIT-70' }, async (t) => {
+  await teste.pool.query("UPDATE conta_titular SET senha_hash = 'nao-e-um-hash' WHERE email = $1", ['suspensa@exemplo.com.br']);
+  await teste.pool.query("UPDATE conta_titular SET estado = 'ativa' WHERE email = $1", ['suspensa@exemplo.com.br']);
+  t.after(() => teste.pool.query("UPDATE conta_titular SET estado = 'suspensa' WHERE email = $1", ['suspensa@exemplo.com.br']));
+  assert.deepEqual(cabecalhosDo401(await login({ email: 'suspensa@exemplo.com.br', senha: SENHA })), ESPERADO_401);
 });

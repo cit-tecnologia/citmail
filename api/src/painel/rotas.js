@@ -96,6 +96,12 @@ export default async function rotasPainel(app, { origens, sessoes, hash = hashPa
       request.log.error({ codigo: erro.code ?? erro.name }, 'falha ao gravar a sessão do painel')
       return falhaDeLogin(request, reply)
     }
+    // Limpeza do conjunto é manutenção: a falha vai ao log e não derruba o login.
+    try {
+      await sessoes.limparConjunto(conta.id)
+    } catch (erro) {
+      request.log.warn({ codigo: erro.code ?? erro.name }, 'falha ao limpar as sessões vencidas da conta')
+    }
 
     await auditar(request, {
       autor: { tipo: 'cliente', id: conta.cliente_id },
@@ -107,14 +113,14 @@ export default async function rotasPainel(app, { origens, sessoes, hash = hashPa
     return reply.code(204).send()
   })
 
-  // Sempre 204 com o cookie expirado, com ou sem sessão, mesmo se a remoção falhar.
+  // Sempre 204 com o cookie expirado, com ou sem sessão, com o Redis fora ou sem ele
+  // (sem `REDIS_URL`): a falha da remoção vai só para o log.
   app.post('/painel/logout', {
     onRequest: exigirOrigem,
-    schema: { body: corpoVazio, response: { 403: respostaErro, 503: respostaErro } }
+    schema: { body: corpoVazio, response: { 403: respostaErro } }
   }, async (request, reply) => {
-    if (!sessoes?.pronto()) return indisponivel(reply)
     try {
-      await sessoes.encerrar(request.cookies[COOKIE_SESSAO])
+      if (sessoes) await sessoes.encerrar(request.cookies[COOKIE_SESSAO])
     } catch (erro) {
       request.log.error({ codigo: erro.code ?? erro.name }, 'falha ao apagar a sessão do painel')
     }
@@ -143,15 +149,16 @@ export default async function rotasPainel(app, { origens, sessoes, hash = hashPa
     }
     if (!sessao) return semSessao()
 
-    const conta = await buscarContaPorId(app.banco, sessao.dados.contaId)
+    let conta
     try {
+      conta = await buscarContaPorId(app.banco, sessao.dados.contaId)
       if (conta?.estado !== 'ativa') {
         await sessoes.apagar(sessao.idHash, sessao.dados.contaId)
         return semSessao()
       }
       if (!(await sessoes.renovar(sessao))) return semSessao()
     } catch (erro) {
-      request.log.error({ codigo: erro.code ?? erro.name }, 'falha ao renovar a sessão do painel')
+      request.log.error({ codigo: erro.code ?? erro.name }, 'falha ao conferir a sessão do painel')
       return indisponivel(reply)
     }
     return { email: conta.email }

@@ -128,7 +128,7 @@ Fila e alertas (ADRs 0005 e 0011). Cada processo exige só o que usa: a API (`np
 
 | Variável | API | Worker | CLI | Uso | Padrão |
 |---|---|---|---|---|---|
-| `REDIS_URL` | opcional | obrigatória | obrigatória | Conexão com o Redis da fila. Sem ela, a API sobe sem fila, sem `POST /api/exemplos/job` e com as rotas do painel em 503. Em produção, a API só usa o Redis para a sessão do painel, com `PAINEL_HABILITADO` (aí ela é obrigatória); o webhook do Asaas só grava no banco, e quem enfileira é o worker (CIT-64). Nunca vai para o log. | sem padrão |
+| `REDIS_URL` | opcional | obrigatória | obrigatória | Conexão com o Redis da fila. Sem ela, a API sobe sem fila, sem `POST /api/exemplos/job` e com o login e a sessão do painel em 503. A API ainda não usa o Redis em produção: o painel, único uso lá, fica recusado até o limitador de tentativas (CIT-78); o webhook do Asaas só grava no banco, e quem enfileira é o worker (CIT-64). Nunca vai para o log. | sem padrão |
 | `FILA_PREFIXO` | lida | lida | lida | Prefixo das chaves no Redis; separa ambientes no mesmo Redis (ADR 0006). Só letras minúsculas, dígitos e hífen. | `citmail` |
 | `FILA_TENTATIVAS` | lida | lida | lida | Tentativas por job (inteiro de 1 a 20). | `8` |
 | `FILA_BACKOFF_MS` | lida | lida | lida | Espera antes da 2ª tentativa, em ms (inteiro de 1 a 3600000); dobra a cada tentativa (exponencial: com os padrões, cerca de 2 h até esgotar). | `60000` |
@@ -162,16 +162,16 @@ Login do painel ([ADR 0008](../docs/adr/0008-sessao-do-painel-e-senhas.md); CIT-
 
 | Variável | Uso | Padrão |
 |---|---|---|
-| `PAINEL_HABILITADO` | `true` ou `false` (outro valor impede a subida). Desligada, `/api/painel/login`, `/api/painel/logout` e `/api/painel/sessao` não são registradas (404). Ligada em produção, `REDIS_URL` e `PAINEL_ORIGENS` são obrigatórias; fora de produção, sem `REDIS_URL`, as rotas respondem 503 `sessao_indisponivel`. **Só ligar em produção depois do limite de taxa (E6-H4, ADR 0013)**: cada tentativa usa 19 MiB de memória no Argon2id. | `false` em produção; `true` fora dela |
+| `PAINEL_HABILITADO` | `true` ou `false` (outro valor impede a subida). Desligada, `/api/painel/login`, `/api/painel/logout` e `/api/painel/sessao` não são registradas (404). **Ligada em produção, a API não sobe** (`PAINEL_HABILITADO recusada em produção`) enquanto não houver limitador de tentativas no login (CIT-78, ADR 0013): cada tentativa usa 19 MiB de memória no Argon2id. Fora de produção, sem `REDIS_URL`, login e sessão respondem 503 `sessao_indisponivel` (o logout, 204). | `false` em produção; `true` fora dela |
 | `PAINEL_ORIGENS` | Origens do painel, separadas por vírgula, com a mesma regra de `CORS_ORIGENS` e contidas nela. Só elas recebem `access-control-allow-credentials` em `/api/painel/*` e são aceitas no `Origin` do login e do logout (senão 403 `origem_recusada`). | vazia (login e logout sempre 403) |
 
 As chaves da sessão usam o prefixo `FILA_PREFIXO` (`<prefixo>:sessao:<sha256 do id>` e `<prefixo>:sessoes:conta:<contaId>`).
 
 ## Painel
 
-- `POST /api/painel/login` `{ email, senha }` (corpo fechado; `email` 3..254, `senha` 1..1024): 204 com `Set-Cookie: __Host-citmail_sessao=<id>; Path=/; HttpOnly; Secure; SameSite=Lax` (sem `Domain`, `Max-Age` nem `Expires`); 401 `credenciais_invalidas` para e-mail inexistente, senha errada, conta `sem_senha`, `suspensa` ou `cancelada` e falha ao gravar a sessão (sempre uma verificação Argon2id, com hash falso quando não há conta ativa); 400 do schema; 403 `origem_recusada`; 503 `sessao_indisponivel`. Login com cookie anterior apaga a sessão anterior. Audita `login` e `login_falhou` (sem e-mail).
-- `POST /api/painel/logout` `{}`: 204 com o cookie expirado (`Max-Age=0`), com ou sem sessão, mesmo se a remoção no Redis falhar (logada); 403 sem `Origin` do painel; 503 com o Redis fora.
-- `GET /api/painel/sessao` (sem exigência de `Origin`): 200 `{ email }` e renova a sessão (só `SET XX`: um logout concorrente não é desfeito); 401 `sem_sessao` sem cookie, sessão vencida (30 min sem uso ou 8 h desde o login, conferidos também na leitura) ou conta que deixou de ser `ativa` (a sessão é apagada); 503 com o Redis fora.
+- `POST /api/painel/login` `{ email, senha }` (corpo fechado; `email` 3..254, `senha` 1..1024): 204 com `Set-Cookie: __Host-citmail_sessao=<id>; Path=/; HttpOnly; Secure; SameSite=Lax` (sem `Domain`, `Max-Age` nem `Expires`); 401 `credenciais_invalidas` para e-mail inexistente, senha errada, conta `sem_senha`, `suspensa` ou `cancelada` e falha ao gravar a sessão (sempre uma verificação Argon2id, com hash falso quando não há conta ativa); 400 do schema; 403 `origem_recusada`; 503 `sessao_indisponivel`. Login com cookie anterior apaga a sessão anterior. A limpeza dos membros vencidos do conjunto da conta é manutenção: a falha vai ao log (`warn`) e não derruba o login. Audita `login` e `login_falhou` (sem e-mail).
+- `POST /api/painel/logout` `{}`: sempre 204 com o cookie expirado (`Max-Age=0`), com ou sem sessão, com o Redis fora ou sem `REDIS_URL` (a falha da remoção vai só para o log); 403 sem `Origin` do painel.
+- `GET /api/painel/sessao` (sem exigência de `Origin`): 200 `{ email }` e renova a sessão (só `SET XX`: um logout concorrente não é desfeito); 401 `sem_sessao` sem cookie, sessão vencida (30 min sem uso ou 8 h desde o login, conferidos também na leitura) ou conta que deixou de ser `ativa` (a sessão é apagada); 503 com o Redis ou o banco fora.
 - Toda resposta de `/api/painel/*` leva `Cache-Control: no-store`. Ordem no login: `Origin` (403) → Redis pronto (503) → conta → Argon2id → sessão.
 
 ## Logs

@@ -124,7 +124,8 @@ export function construirApp(config, { pool, logStream, filas, asaas, pedidos, p
     app.register(rotasWebhookAsaas, { prefix: '/api', token: config.asaasWebhookToken })
   }
   // ADR 0008 (CIT-70): mesmo padrão; desligada, as rotas não são registradas (404). Sem
-  // `REDIS_URL` (só fora de produção; `carregarConfig` a exige lá), respondem 503.
+  // `REDIS_URL`, login e sessão respondem 503 e o logout, 204. Em produção, `carregarConfig`
+  // recusa a flag ligada até o limitador de tentativas (CIT-78).
   if (config.painelHabilitado ?? config.nodeEnv !== 'production') {
     app.register(cookie)
     let sessoes = painel.sessoes

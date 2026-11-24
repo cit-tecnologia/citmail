@@ -18,20 +18,18 @@ export function criarSessoes({ redis, prefixo, agora = Date.now, antesDeRenovar 
   const chave = (idHash) => `${prefixo}:sessao:${idHash}`
   const conjunto = (contaId) => `${prefixo}:sessoes:conta:${contaId}`
 
+  // `exec()` de `multi`/`pipeline` não lança erro de comando: devolve pares `[erro, resultado]`.
+  async function executar(lote) {
+    const resultados = await lote.exec()
+    const comErro = resultados?.find(([erro]) => erro)
+    if (comErro) throw comErro[0]
+    return resultados.map(([, resultado]) => resultado)
+  }
+
   async function apagar(idHash, contaId) {
     const transacao = redis.multi().del(chave(idHash))
     if (contaId) transacao.srem(conjunto(contaId), idHash)
-    await transacao.exec()
-  }
-
-  // Membros cujo `sessao:` já expirou saem do conjunto a cada login.
-  async function limparConjunto(contaId) {
-    const membros = await redis.smembers(conjunto(contaId))
-    const vencidos = []
-    for (const membro of membros) {
-      if ((await redis.exists(chave(membro))) === 0) vencidos.push(membro)
-    }
-    if (vencidos.length > 0) await redis.srem(conjunto(contaId), ...vencidos)
+    await executar(transacao)
   }
 
   return {
@@ -55,8 +53,7 @@ export function criarSessoes({ redis, prefixo, agora = Date.now, antesDeRenovar 
       const gravado = await redis.set(chave(idHash), JSON.stringify(dados), 'PX', INATIVIDADE_MS, 'NX')
       if (gravado !== 'OK') throw new Error('sessão não gravada')
       try {
-        await redis.multi().sadd(conjunto(contaId), idHash).pexpire(conjunto(contaId), ABSOLUTO_MS).exec()
-        await limparConjunto(contaId)
+        await executar(redis.multi().sadd(conjunto(contaId), idHash).pexpire(conjunto(contaId), ABSOLUTO_MS))
       } catch (erro) {
         // Sem sessão órfã: a chave sai (melhor esforço) antes de o erro subir.
         await redis.del(chave(idHash)).catch(() => {})
@@ -94,6 +91,17 @@ export function criarSessoes({ redis, prefixo, agora = Date.now, antesDeRenovar 
     },
 
     apagar,
+
+    // Membros cujo `sessao:` já expirou saem do conjunto a cada login (EXISTS num só pipeline).
+    async limparConjunto(contaId) {
+      const membros = await redis.smembers(conjunto(contaId))
+      if (membros.length === 0) return
+      const lote = redis.pipeline()
+      for (const membro of membros) lote.exists(chave(membro))
+      const existentes = await executar(lote)
+      const vencidos = membros.filter((_, indice) => existentes[indice] === 0)
+      if (vencidos.length > 0) await redis.srem(conjunto(contaId), ...vencidos)
+    },
 
     // Logout e troca de sessão no login: apaga a sessão do id, se existir.
     async encerrar(id) {

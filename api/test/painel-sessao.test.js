@@ -224,12 +224,16 @@ test('CA7: cookie fora do formato ou ausente → 401 sem tocar o Redis', { tag: 
   assert.equal(comandos.mock.callCount(), 0);
 });
 
-test('CA2/CA7: falha depois do SET NX (conjunto da conta) apaga a chave recém-gravada e o login dá 401', { tag: '@CIT-70' }, async (t) => {
+test('CA2/CA7: erro de comando no MULTI do conjunto (par [erro] do exec) apaga a chave recém-gravada e o login dá 401', { tag: '@CIT-70' }, async (t) => {
   const chavesDeSessao = async () => (await ctx.redis.keys(`${ctx.prefixo}:sessao:*`)).sort();
   const antes = await chavesDeSessao();
-  t.mock.method(ctx.redis, 'smembers', async () => {
-    throw Object.assign(new Error('falha injetada'), { code: 'FALHA_INJETADA' });
-  }, { times: 1 });
+  // O exec() do ioredis não lança erro de comando: devolve o par `[erro, resultado]`.
+  const loteComErro = {
+    sadd() { return this; },
+    pexpire() { return this; },
+    exec: async () => [[Object.assign(new Error('falha injetada'), { code: 'FALHA_INJETADA' }), null], [null, 1]],
+  };
+  t.mock.method(ctx.redis, 'multi', () => loteComErro, { times: 1 });
 
   const resposta = await teste.app.inject({
     method: 'POST',
@@ -241,4 +245,35 @@ test('CA2/CA7: falha depois do SET NX (conjunto da conta) apaga a chave recém-g
   assert.equal(resposta.statusCode, 401);
   assert.equal(resposta.headers['set-cookie'], undefined);
   assert.deepEqual(await chavesDeSessao(), antes, 'sem sessão órfã');
+  assert.ok(teste.captura.linhas().some((l) => l.msg === 'falha ao gravar a sessão do painel' && l.codigo === 'FALHA_INJETADA'));
+});
+
+test('CA7: falha na limpeza do conjunto vai ao log e não derruba o login', { tag: '@CIT-70' }, async (t) => {
+  t.mock.method(ctx.redis, 'smembers', async () => {
+    throw Object.assign(new Error('falha injetada'), { code: 'FALHA_INJETADA' });
+  }, { times: 1 });
+
+  const id = await entrar();
+
+  assert.equal(await ctx.redis.exists(chave(id)), 1);
+  assert.equal(await ctx.redis.sismember(conjunto(), hashDoId(id)), 1);
+  const linha = teste.captura.linhas().find((l) => l.msg === 'falha ao limpar as sessões vencidas da conta');
+  assert.ok(linha);
+  assert.equal(linha.level, 40);
+});
+
+test('CA7: falha do banco ao conferir a conta da sessão → 503 sessao_indisponivel', { tag: '@CIT-70' }, async (t) => {
+  const id = await entrar();
+  const original = teste.pool.query.bind(teste.pool);
+  t.mock.method(teste.pool, 'query', async (sql, ...resto) => {
+    if (typeof sql === 'string' && sql.includes('FROM conta_titular WHERE id')) throw new Error('banco fora');
+    return original(sql, ...resto);
+  });
+
+  const resposta = await consultar(id);
+
+  assert.equal(resposta.statusCode, 503);
+  assert.equal(resposta.body, '{"erro":"sessao_indisponivel"}');
+  assert.equal(resposta.headers['cache-control'], 'no-store');
+  assert.equal(await ctx.redis.exists(chave(id)), 1, 'sessão intacta');
 });

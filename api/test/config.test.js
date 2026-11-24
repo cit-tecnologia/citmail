@@ -791,25 +791,24 @@ test('CA9 (CIT-70): PAINEL_HABILITADO desligada por padrão em produção e liga
   assert.throws(() => carregarConfig({ ...AMBIENTE_BASE, PAINEL_HABILITADO: 'sim' }), /PAINEL_HABILITADO inválida/);
 });
 
-test('CA9 (CIT-70): produção com o painel ligado e tudo definido sobe', { tag: '@CIT-70' }, () => {
-  const config = carregarConfig({ ...AMBIENTE_PRODUCAO, ...AMBIENTE_PAINEL, PAINEL_HABILITADO: 'true' });
-  assert.equal(config.painelHabilitado, true);
-  assert.deepEqual(config.painelOrigens, ['https://painel.exemplo.test']);
-});
-
-test('CA9 (CIT-70): produção com o painel ligado sem REDIS_URL ou sem PAINEL_ORIGENS lança', { tag: '@CIT-70' }, () => {
-  const { REDIS_URL: _r, ...semRedis } = AMBIENTE_PAINEL;
-  const { PAINEL_ORIGENS: _p, ...semOrigens } = AMBIENTE_PAINEL;
-  assert.throws(
-    () => carregarConfig({ ...AMBIENTE_PRODUCAO, ...semRedis, PAINEL_HABILITADO: 'true' }),
-    /^Error: REDIS_URL não definida/,
-  );
-  assert.throws(
-    () => carregarConfig({ ...AMBIENTE_PRODUCAO, ...semOrigens, PAINEL_HABILITADO: 'true' }),
-    /^Error: PAINEL_ORIGENS vazia/,
-  );
-  // Desligado em produção, nenhuma das duas é exigida.
-  assert.equal(carregarConfig({ ...AMBIENTE_PRODUCAO, ...semRedis, ...semOrigens }).painelHabilitado, false);
+test('CA9 (CIT-70): produção com o painel ligado é recusada (sem limitador de tentativas, CIT-78), mesmo com tudo definido', { tag: '@CIT-70' }, () => {
+  const { REDIS_URL: _r, PAINEL_ORIGENS: _p, ...semRedisNemOrigens } = AMBIENTE_PAINEL;
+  for (const ambiente of [AMBIENTE_PAINEL, semRedisNemOrigens]) {
+    assert.throws(
+      () => carregarConfig({ ...AMBIENTE_PRODUCAO, ...ambiente, PAINEL_HABILITADO: 'true' }),
+      (erro) => {
+        assert.equal(
+          erro.message,
+          'PAINEL_HABILITADO recusada em produção: sem limitador de tentativas no login (CIT-78, ADR 0013)',
+        );
+        return true;
+      },
+    );
+  }
+  // Desligado em produção, sobe sem REDIS_URL nem PAINEL_ORIGENS.
+  assert.equal(carregarConfig({ ...AMBIENTE_PRODUCAO, ...semRedisNemOrigens }).painelHabilitado, false);
+  // Fora de produção, ligado e com tudo definido, sobe.
+  assert.deepEqual(carregarConfig({ ...AMBIENTE_BASE, ...AMBIENTE_PAINEL }).painelOrigens, ['https://painel.exemplo.test']);
 });
 
 test('CA9 (CIT-70): PAINEL_ORIGENS fora de CORS_ORIGENS, com curinga ou não exata lança', { tag: '@CIT-70' }, () => {
