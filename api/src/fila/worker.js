@@ -100,7 +100,9 @@ export function criarWorkers({
           ? { brutoId: pedidoSeguro(job.data?.brutoId) }
           : job.data?.tipo === 'email_parado'
             ? { envioId: pedidoSeguro(job.data?.envioId) }
-            : { jobId: job.data?.jobId }
+            : job.data?.tipo === 'dominio'
+              ? { tarefaId: pedidoSeguro(job.data?.tarefaId), pedidoId: pedidoSeguro(job.data?.pedidoId) }
+              : { jobId: job.data?.jobId }
         log.error(ids, 'alerta falhou')
       }
     } catch (err) {
