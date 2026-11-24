@@ -547,9 +547,9 @@ test('CA7: o pedido de domínios e contas grava pedido, domínios, assinaturas e
   assert.equal(cliente.documento, corpo.cliente.documento);
 });
 
-test('CA7: nenhuma tabela de conta do titular é criada por esta história (fica para a #64)', async () => {
+test('CA7: nenhuma tabela de conta do titular além de conta_titular (da #64) é criada por esta história', async () => {
   const tabelas = (await linhas("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")).map((t) => t.table_name);
-  assert.deepEqual(tabelas.filter((t) => /conta|titular|usuario|mailbox/.test(t)), []);
+  assert.deepEqual(tabelas.filter((t) => /conta|titular|usuario|mailbox/.test(t) && t !== 'conta_titular'), []);
 });
 
 // ---------------------------------------------------------------------------

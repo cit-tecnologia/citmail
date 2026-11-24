@@ -9,6 +9,7 @@ import rotasExemplo from './exemplo/rotas.js'
 import rotasPrecos from './precos/rotas.js'
 import rotasPedidos from './pedidos/rotas.js'
 import { criarClienteAsaas } from './asaas/cliente.js'
+import rotasWebhookAsaas from './asaas/webhook-rotas.js'
 import { caminhosMascarados, LogCitmail, serializadores } from './log.js'
 import { criarConexaoProdutor } from './fila/conexao.js'
 import { criarFilas } from './fila/filas.js'
@@ -103,6 +104,11 @@ export function construirApp(config, { pool, logStream, filas, asaas, pedidos } 
       ? criarClienteAsaas({ baseUrl: config.asaasBaseUrl, apiKey: config.asaasApiKey, timeoutMs: asaasTimeoutMs })
       : undefined)
     app.register(rotasPedidos, { prefix: '/api', asaas: adaptador, asaasTimeoutMs, ...pedidos })
+  }
+  // ADR 0015 (CIT-64): mesmo padrão da rota de pedidos; desligada, não é registrada (404).
+  // Sem token (só fora de produção; `carregarConfig` o exige lá), responde 503.
+  if (config.webhookAsaasHabilitado ?? config.nodeEnv !== 'production') {
+    app.register(rotasWebhookAsaas, { prefix: '/api', token: config.asaasWebhookToken })
   }
   // A guarda de produção vem antes de qualquer fila: lá a rota de exemplo não existe,
   // nem com `filas` injetado. Fora de produção, `filas` injetado é de quem o criou

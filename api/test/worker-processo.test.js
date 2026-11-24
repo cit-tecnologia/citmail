@@ -9,7 +9,10 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as esperar } from 'node:timers/promises';
+import { Pool } from 'pg';
 import { urlRedisTeste, criarFilasTeste, criarBancoTemporario, removerBancoTemporario, aplicarMigracoes } from './auxiliares.js';
+import { criarStubAsaas } from './stub-asaas.js';
+import { estadoDoPedido, semearBruto, semearPagamentoNoStub, semearPedido } from './webhook-fixtures.js';
 
 const CAMINHO_API = fileURLToPath(new URL('..', import.meta.url));
 
@@ -177,4 +180,100 @@ test('CA6: o worker sobe o publicador ("publicador iniciado") e sai com código 
   const saida = obterSaida();
   assert.ok(saida.includes('"worker iniciado"'));
   assert.ok(saida.includes('"encerrando"'));
+});
+
+// CIT-64: webhook do Asaas no processo do worker.
+function aguardarSaida(obterSaida, filho, trecho) {
+  return new Promise((resolve) => {
+    const verificar = () => { if (obterSaida().includes(trecho)) resolve(); };
+    filho.stdout.on('data', verificar);
+    filho.stderr.on('data', verificar);
+    verificar();
+  });
+}
+
+test('CA13(a): com a flag ligada, o worker enfileira e processa um bruto pendente de ponta a ponta', { timeout: 30000 }, async (t) => {
+  const aux = criarFilasTeste({ tentativas: 1, backoffMs: 300 });
+  t.after(aux.fechar);
+  const databaseUrl = await criarBancoParaWorker(t);
+  const stub = await criarStubAsaas();
+  t.after(() => stub.fechar());
+  const admin = new Pool({ connectionString: databaseUrl, max: 2 });
+  const pedido = await semearPedido(admin);
+  const referencia = `pedido:${pedido.pedidoId}:contas`;
+  semearPagamentoNoStub(stub, { externalReference: referencia });
+  await semearBruto(admin, { referenciaExterna: referencia });
+
+  const env = {
+    PATH: process.env.PATH,
+    NODE_ENV: 'test',
+    REDIS_URL: urlRedisTeste(),
+    DATABASE_URL: databaseUrl,
+    FILA_PREFIXO: aux.prefixo,
+    OUTBOX_INTERVALO_MS: '100',
+    ASAAS_API_KEY: 'CHAVE-FICTICIA',
+    ASAAS_BASE_URL: stub.baseUrl,
+  };
+  const { filho, obterSaida } = spawnWorker(env);
+  const encerrado = new Promise((resolve) => { filho.on('exit', resolve); });
+  t.after(() => { if (filho.exitCode === null) filho.kill('SIGKILL'); });
+
+  await Promise.race([
+    aguardarSaida(obterSaida, filho, '"webhook processado"'),
+    esperar(12000).then(() => { throw new Error(`worker sem processar o webhook; saída: ${obterSaida()}`); }),
+  ]);
+  filho.kill('SIGTERM');
+  assert.equal(await encerrado, 0);
+
+  assert.ok(obterSaida().includes('"enfileirador do webhook iniciado"'));
+  const estado = (await estadoDoPedido(admin, pedido.pedidoId)).estado;
+  await admin.end();
+  assert.equal(estado, 'pago');
+  assert.equal(stub.chamadasDe('GET /payments/{id}').length, 1);
+});
+
+test('CA13(a): em produção sem a flag, o worker não sobe o enfileirador nem registra o handler asaas_webhook', { timeout: 20000 }, async (t) => {
+  const aux = criarFilasTeste({ tentativas: 1, backoffMs: 300 });
+  t.after(aux.fechar);
+  const databaseUrl = await criarBancoParaWorker(t);
+  const job = await aux.filas.jobs.add('asaas_webhook', { brutoId: '00000000-0000-4000-8000-000000000001' });
+
+  const env = {
+    PATH: process.env.PATH,
+    NODE_ENV: 'production',
+    REDIS_URL: urlRedisTeste(),
+    DATABASE_URL: databaseUrl,
+    FILA_PREFIXO: aux.prefixo,
+    TELEGRAM_BOT_TOKEN: 'TOKEN-FICTICIO',
+    TELEGRAM_CHAT_ID: 'CHAT-FICTICIO',
+  };
+  const { filho, obterSaida } = spawnWorker(env);
+  t.after(() => { if (filho.exitCode === null) filho.kill('SIGKILL'); });
+
+  await aguardarCondicao(async () => {
+    const atual = await aux.filas.jobs.getJob(job.id);
+    return atual ? (await atual.getState()) === 'failed' : false;
+  }, { timeoutMs: 15000 });
+
+  assert.equal((await aux.filas.jobs.getJob(job.id)).failedReason, 'job desconhecido');
+  assert.ok(!obterSaida().includes('enfileirador do webhook iniciado'));
+  filho.kill('SIGTERM');
+});
+
+test('CA13(c): em produção com a flag ligada e sem ASAAS_API_KEY, o worker sai com código 1 citando a variável', { timeout: 10000 }, async (t) => {
+  const env = {
+    PATH: process.env.PATH,
+    NODE_ENV: 'production',
+    REDIS_URL: urlRedisTeste(),
+    DATABASE_URL: 'postgres://postgres@127.0.0.1:55433/postgres',
+    TELEGRAM_BOT_TOKEN: 'TOKEN-FICTICIO',
+    TELEGRAM_CHAT_ID: 'CHAT-FICTICIO',
+    WEBHOOK_ASAAS_HABILITADO: 'true',
+  };
+  const { filho, obterSaida } = spawnWorker(env);
+  const encerrado = new Promise((resolve) => { filho.on('exit', resolve); });
+  t.after(() => { if (filho.exitCode === null) filho.kill('SIGKILL'); });
+
+  assert.equal(await encerrado, 1);
+  assert.match(obterSaida(), /ASAAS_API_KEY/);
 });

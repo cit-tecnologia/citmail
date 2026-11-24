@@ -267,3 +267,71 @@ async function criarServidorTexto(texto) {
     }
   };
 }
+
+// CIT-64: conferência do pagamento do webhook (`buscarPagamento`).
+const PAGAMENTO = {
+  id: 'pay_1', subscription: 'sub_1', status: 'RECEIVED', value: 49.9, dueDate: '2026-12-10', externalReference: 'pedido:p1:contas'
+};
+
+test('CA9: buscarPagamento consulta GET /payments/{id} e devolve id, subscription, status, value em reais, dueDate e externalReference', async () => {
+  stub.semearPagamento(PAGAMENTO);
+  const pagamento = await adaptador().buscarPagamento('pay_1');
+  assert.deepEqual(pagamento, PAGAMENTO);
+  assert.equal(Math.round(pagamento.value * 100), 4990);
+  assert.deepEqual(stub.rotulos(), ['GET /payments/{id}']);
+  assert.equal(stub.chamadas[0].caminho, '/payments/pay_1');
+  assert.equal(stub.chamadas[0].cabecalhos.access_token, CHAVE);
+});
+
+test('CA9: buscarPagamento devolve null nos campos opcionais ausentes (subscription, dueDate, externalReference)', async () => {
+  stub.semearPagamento({ id: 'pay_1', status: 'PENDING', value: 10 });
+  assert.deepEqual(await adaptador().buscarPagamento('pay_1'), {
+    id: 'pay_1', subscription: null, status: 'PENDING', value: 10, dueDate: null, externalReference: null
+  });
+});
+
+test('CA9: buscarPagamento com 404 vira ErroAsaas nao_encontrado, sem o corpo na mensagem', async () => {
+  const erro = await erroDe(adaptador().buscarPagamento('pay_inexistente'));
+  assert.equal(erro.tipo, 'nao_encontrado');
+  assert.equal(erro.status, 404);
+  assert.ok(!JSON.stringify(erro).includes(MARCADOR_CORPO));
+  assert.ok(!erro.message.includes(MARCADOR_CORPO));
+});
+
+test('CA9: buscarPagamento com 500 vira ErroAsaas http_5xx (o handler tenta de novo)', async () => {
+  stub.definir('GET /payments/{id}', { status: 500 });
+  const erro = await erroDe(adaptador().buscarPagamento('pay_1'));
+  assert.equal(erro.tipo, 'http_5xx');
+});
+
+const PAGAMENTOS_INVALIDOS = [
+  ['sem id', { ...PAGAMENTO, id: undefined }],
+  ['id fora do padrão', { ...PAGAMENTO, id: 'id com espaço' }],
+  ['subscription fora do padrão', { ...PAGAMENTO, subscription: 'a/b' }],
+  ['status em minúsculas', { ...PAGAMENTO, status: 'received' }],
+  ['sem status', { ...PAGAMENTO, status: undefined }],
+  ['value em texto', { ...PAGAMENTO, value: '49.90' }],
+  ['value negativo', { ...PAGAMENTO, value: -1 }],
+  ['dueDate fora do formato', { ...PAGAMENTO, dueDate: '10/12/2026' }],
+  ['externalReference que não é texto', { ...PAGAMENTO, externalReference: 42 }]
+];
+
+for (const [rotulo, corpo] of PAGAMENTOS_INVALIDOS) {
+  test(`CA9: buscarPagamento com ${rotulo} na resposta vira ErroAsaas resposta_invalida`, async () => {
+    stub.definir('GET /payments/{id}', { status: 200, corpo });
+    const erro = await erroDe(adaptador().buscarPagamento('pay_1'));
+    assert.equal(erro.tipo, 'resposta_invalida');
+  });
+}
+
+test('CA9: buscarPagamento recusa id fora do padrão sem chamar o Asaas', async () => {
+  const erro = await erroDe(adaptador().buscarPagamento('../customers'));
+  assert.equal(erro.tipo, 'resposta_invalida');
+  assert.deepEqual(stub.rotulos(), []);
+});
+
+test('CA9: buscarPagamento com id diferente do consultado na resposta vira ErroAsaas resposta_invalida', async () => {
+  stub.definir('GET /payments/{id}', { status: 200, corpo: { ...PAGAMENTO, id: 'pay_outro' } });
+  const erro = await erroDe(adaptador().buscarPagamento('pay_1'));
+  assert.equal(erro.tipo, 'resposta_invalida');
+});

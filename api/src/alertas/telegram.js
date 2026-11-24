@@ -1,8 +1,10 @@
-// Alerta de job esgotado pelo Telegram (ADR 0011; CIT-56). O texto leva só ids, nunca
-// dado pessoal. O token vai na URL: nunca entra em log nem no erro lançado (erro novo,
-// sem `cause`, porque a `cause` do `fetch` pode repetir a URL).
+// Alertas pelo Telegram (ADR 0011): job esgotado (CIT-56) e resultado do webhook do
+// Asaas (`tipo: 'webhook'`, CIT-64). O texto leva só ids e códigos, nunca dado pessoal.
+// O token vai na URL: nunca entra em log nem no erro lançado (erro novo, sem `cause`,
+// porque a `cause` do `fetch` pode repetir a URL).
 
 const UUID_ESTRITO = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+const CODIGO = /^[a-z][a-z0-9_]{0,47}$/
 const LIMITE_MS = 10000
 
 export class ErroTelegram extends Error {
@@ -17,20 +19,46 @@ export function pedidoSeguro(pedidoId) {
   return typeof pedidoId === 'string' && UUID_ESTRITO.test(pedidoId) ? pedidoId : '-'
 }
 
-export function montarTextoAlerta({ jobId, job, pedidoId } = {}) {
+// `codigo` fora do padrão de código vira `-`.
+export function codigoSeguro(codigo) {
+  return typeof codigo === 'string' && CODIGO.test(codigo) ? codigo : '-'
+}
+
+// Dois formatos: `{ jobId, job, pedidoId }` (job esgotado) e
+// `{ tipo: 'webhook', codigo, brutoId, pedidoId }` (webhook do Asaas, ids validados).
+export function montarTextoAlerta(dados = {}) {
+  if (dados.tipo === 'webhook') {
+    return `Webhook do Asaas: codigo=${codigoSeguro(dados.codigo)} bruto=${pedidoSeguro(dados.brutoId)} ` +
+      `pedido=${pedidoSeguro(dados.pedidoId)}`
+  }
+  const { jobId, job, pedidoId } = dados
   return `Job falhou: job=${jobId} tipo=${job} pedido=${pedidoSeguro(pedidoId)}`
 }
 
+// Campos do log sem Telegram, com os mesmos ids validados do texto.
+function camposDoLog(dados) {
+  if (dados.tipo === 'webhook') {
+    return {
+      tipo: 'webhook',
+      codigo: codigoSeguro(dados.codigo),
+      bruto: pedidoSeguro(dados.brutoId),
+      pedido: pedidoSeguro(dados.pedidoId)
+    }
+  }
+  return { jobId: dados.jobId, job: dados.job, pedido: pedidoSeguro(dados.pedidoId) }
+}
+
 /**
- * Devolve `enviarAlerta({ jobId, job, pedidoId })`. Sem token ou chat id (só fora de
- * produção; o worker exige os dois em produção), o alerta sai só no log.
+ * Devolve `enviarAlerta(dados)`, com `dados` num dos dois formatos de `montarTextoAlerta`.
+ * Sem token ou chat id (só fora de produção; o worker exige os dois em produção), o
+ * alerta sai só no log.
  * Erro de rede ou status não 2xx: `warn` só com o nome do erro ou o status e lança
  * `ErroTelegram` (a fila de alertas tenta de novo com backoff).
  */
 export function criarEnvioTelegram({ token, chatId, fetch = globalThis.fetch, log }) {
-  return async function enviarAlerta({ jobId, job, pedidoId } = {}) {
+  return async function enviarAlerta(dados = {}) {
     if (!token || !chatId) {
-      log.warn({ jobId, job, pedido: pedidoSeguro(pedidoId) }, 'alerta sem telegram')
+      log.warn(camposDoLog(dados), 'alerta sem telegram')
       return
     }
     let resposta
@@ -38,7 +66,7 @@ export function criarEnvioTelegram({ token, chatId, fetch = globalThis.fetch, lo
       resposta = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text: montarTextoAlerta({ jobId, job, pedidoId }) }),
+        body: JSON.stringify({ chat_id: chatId, text: montarTextoAlerta(dados) }),
         signal: AbortSignal.timeout(LIMITE_MS)
       })
     } catch (err) {

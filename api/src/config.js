@@ -71,15 +71,14 @@ function lerBooleano(env, nome, padrao) {
 // `TERMOS_MINUTA_ACEITA` é validada sempre, mesmo sem uso.
 const HOSTS_ASAAS = ['api.asaas.com', 'api-sandbox.asaas.com']
 
-function lerAsaas(env, nodeEnv, termosMinuta, privacidadeProvisoria) {
-  const producao = nodeEnv === 'production'
-  const pedidosHabilitado = lerBooleano(env, 'PEDIDOS_HABILITADO', !producao)
-  const termosMinutaAceita = lerBooleano(env, 'TERMOS_MINUTA_ACEITA', false)
+// Chave, URL e timeout do Asaas, com a mesma validação na API (pedidos) e no worker
+// (webhook, CIT-64). `obrigatorio`: em produção, chave e URL não podem faltar.
+function lerCredenciaisAsaas(env, producao, obrigatorio) {
   const asaasApiKey = (env.ASAAS_API_KEY ?? '').trim() || undefined
   const asaasBaseUrl = (env.ASAAS_BASE_URL ?? '').trim() || undefined
   const asaasTimeoutMs = lerInteiro(env, 'ASAAS_TIMEOUT_MS', 10000, 1000, 30000)
 
-  if (pedidosHabilitado && producao) {
+  if (obrigatorio && producao) {
     if (!asaasApiKey) throw new Error('ASAAS_API_KEY não definida')
     if (!asaasBaseUrl) throw new Error('ASAAS_BASE_URL não definida')
   }
@@ -101,6 +100,15 @@ function lerAsaas(env, nodeEnv, termosMinuta, privacidadeProvisoria) {
       throw new Error(`ASAAS_BASE_URL inválida: em produção, use o host ${HOSTS_ASAAS.join(' ou ')}`)
     }
   }
+  return { asaasApiKey, asaasBaseUrl, asaasTimeoutMs }
+}
+
+function lerAsaas(env, nodeEnv, termosMinuta, privacidadeProvisoria) {
+  const producao = nodeEnv === 'production'
+  const pedidosHabilitado = lerBooleano(env, 'PEDIDOS_HABILITADO', !producao)
+  const termosMinutaAceita = lerBooleano(env, 'TERMOS_MINUTA_ACEITA', false)
+  const { asaasApiKey, asaasBaseUrl, asaasTimeoutMs } = lerCredenciaisAsaas(env, producao, pedidosHabilitado)
+
   const aceiteProvisorio = pedidosHabilitado && producao && (termosMinuta === true || privacidadeProvisoria === true)
   if (aceiteProvisorio && !termosMinutaAceita) {
     throw new Error(
@@ -113,8 +121,27 @@ function lerAsaas(env, nodeEnv, termosMinuta, privacidadeProvisoria) {
   return { pedidosHabilitado, asaasApiKey, asaasBaseUrl, asaasTimeoutMs, aceiteLiberado }
 }
 
+// Webhook do Asaas na API (ADR 0015; CIT-64). A rota nasce desligada em produção e
+// ligada fora dela. Ligada em produção, `ASAAS_WEBHOOK_TOKEN` é obrigatório, com ao
+// menos 32 caracteres; fora dela, sem token, a rota responde 503. Só a API recebe o token.
+const TOKEN_WEBHOOK_MIN = 32
+
+function lerWebhook(env, nodeEnv) {
+  const producao = nodeEnv === 'production'
+  const webhookAsaasHabilitado = lerBooleano(env, 'WEBHOOK_ASAAS_HABILITADO', !producao)
+  const asaasWebhookToken = (env.ASAAS_WEBHOOK_TOKEN ?? '').trim() || undefined
+  if (webhookAsaasHabilitado && producao) {
+    if (!asaasWebhookToken) throw new Error('ASAAS_WEBHOOK_TOKEN não definida')
+    if (asaasWebhookToken.length < TOKEN_WEBHOOK_MIN) {
+      throw new Error(`ASAAS_WEBHOOK_TOKEN inválida: use ao menos ${TOKEN_WEBHOOK_MIN} caracteres`)
+    }
+  }
+  return { webhookAsaasHabilitado, asaasWebhookToken }
+}
+
 // Configuração da API. `REDIS_URL` é opcional: sem ela não há fila nem rota de exemplo
-// de job (a #64 a torna obrigatória em produção). Não lê Telegram. `termosMinuta` e
+// de job. A API não usa o Redis em produção: o webhook do Asaas (CIT-64) só grava no
+// banco, e quem enfileira é o worker. Não lê Telegram. `termosMinuta` e
 // `privacidadeProvisoria` são injetáveis para os testes (padrão: as constantes de
 // pedidos/aceite.js).
 export function carregarConfig(
@@ -155,7 +182,8 @@ export function carregarConfig(
     logLevel: env.LOG_LEVEL || 'info',
     nodeEnv,
     ...lerFila(env),
-    ...lerAsaas(env, nodeEnv, termosMinuta, privacidadeProvisoria)
+    ...lerAsaas(env, nodeEnv, termosMinuta, privacidadeProvisoria),
+    ...lerWebhook(env, nodeEnv)
   }
 }
 
@@ -171,6 +199,8 @@ export function carregarConfigFila(env = process.env) {
 
 // Configuração do worker: a da fila, o banco (outbox de eventos, CIT-166) e o Telegram
 // (ADR 0011), obrigatório em produção. Só este processo recebe o token (menor privilégio).
+// Com `WEBHOOK_ASAAS_HABILITADO` (mesmo padrão da API), lê também chave, URL e timeout do
+// Asaas (conferência do pagamento, CIT-64), obrigatórios em produção; nunca o token do webhook.
 export function carregarConfigWorker(env = process.env) {
   const config = carregarConfigFila(env)
   const databaseUrl = (env.DATABASE_URL ?? '').trim()
@@ -184,5 +214,9 @@ export function carregarConfigWorker(env = process.env) {
     if (!telegramBotToken) throw new Error('TELEGRAM_BOT_TOKEN não definida')
     if (!telegramChatId) throw new Error('TELEGRAM_CHAT_ID não definida')
   }
-  return { ...config, databaseUrl, outboxIntervaloMs, telegramBotToken, telegramChatId }
+  const webhookAsaasHabilitado = lerBooleano(env, 'WEBHOOK_ASAAS_HABILITADO', config.nodeEnv !== 'production')
+  const asaas = webhookAsaasHabilitado ? lerCredenciaisAsaas(env, config.nodeEnv === 'production', true) : {}
+  return {
+    ...config, databaseUrl, outboxIntervaloMs, telegramBotToken, telegramChatId, webhookAsaasHabilitado, ...asaas
+  }
 }

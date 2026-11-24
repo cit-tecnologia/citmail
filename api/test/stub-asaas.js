@@ -8,6 +8,7 @@ import http from 'node:http';
 export const MARCADOR_CORPO = 'CORPO-DO-STUB';
 
 function rotuloDaRota(metodo, caminho) {
+  if (/^\/payments\/[^/]+$/.test(caminho)) return `${metodo} /payments/{id}`;
   if (/^\/subscriptions\/[^/]+\/payments$/.test(caminho)) return `${metodo} /subscriptions/{id}/payments`;
   if (/^\/subscriptions\/[^/]+$/.test(caminho)) return `${metodo} /subscriptions/{id}`;
   return `${metodo} ${caminho}`;
@@ -46,6 +47,7 @@ export async function criarStubAsaas() {
   const timers = new Set();
   let clientes = [];
   let assinaturas = [];
+  let pagamentos = [];
   let sequencia = 0;
   let esperas = [];
 
@@ -105,6 +107,13 @@ export async function criarStubAsaas() {
       const assinatura = assinaturas.find((a) => a.id === payments[1]);
       const urlFatura = `https://stub.test/f/${assinatura?.numero ?? 0}`;
       return { status: 200, corpo: { data: assinatura ? [{ invoiceUrl: urlFatura }] : [] } };
+    }
+    const pagamento = caminho.match(/^\/payments\/([^/]+)$/);
+    if (metodo === 'GET' && pagamento) {
+      const achado = pagamentos.find((p) => p.id === pagamento[1]);
+      return achado
+        ? { status: 200, corpo: achado }
+        : { status: 404, corpo: { errors: [{ description: MARCADOR_CORPO }] } };
     }
     const remocao = caminho.match(/^\/subscriptions\/([^/]+)$/);
     if (metodo === 'DELETE' && remocao) {
@@ -194,6 +203,11 @@ export async function criarStubAsaas() {
         ...(deleted ? { deleted: true } : {})
       });
     },
+    /** Pagamento já existente no Asaas (para o `GET /payments/{id}`); `value` em reais. */
+    semearPagamento(pagamento) {
+      pagamentos = pagamentos.filter((p) => p.id !== pagamento.id);
+      pagamentos.push(pagamento);
+    },
     /** Resolve quando a `n`-ésima chamada à rota chegar ao stub (sem polling). */
     esperarChamada(rotulo, n = 1) {
       if ((contagemPorRota.get(rotulo) ?? 0) >= n) return Promise.resolve();
@@ -210,6 +224,7 @@ export async function criarStubAsaas() {
       esperas = [];
       clientes = [];
       assinaturas = [];
+      pagamentos = [];
     },
     async fechar() {
       for (const timer of timers) clearTimeout(timer);

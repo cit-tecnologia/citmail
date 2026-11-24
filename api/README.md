@@ -21,7 +21,7 @@ api/
     log.js             log técnico: lista de campos mascarados, serializers, LogCitmail (linha única por requisição) e criarLogger (worker)
     erros.js           tratamento padronizado de erro (400 por campo, 404, 500) e ErroDeDominio
     servidor.js        ponto de entrada da API: carrega a config, sobe o Fastify, encerra em SIGTERM/SIGINT
-    worker.js          ponto de entrada do worker da fila (npm run worker): pool do banco, publicador do outbox e workers, sem CORS; encerra em SIGTERM/SIGINT esperando o ciclo do publicador, o job ativo e os alertas em curso
+    worker.js          ponto de entrada do worker da fila (npm run worker): pool do banco, publicador do outbox, enfileirador e handler do webhook do Asaas (com WEBHOOK_ASAAS_HABILITADO) e workers, sem CORS; encerra em SIGTERM/SIGINT esperando os ciclos do publicador e do enfileirador, o job ativo e os alertas em curso
     saude/rotas.js      GET /api/health
     precos/             POST /api/orcamento (público, sem banco): tabela.js (tabela do servidor, limites e tetoAddon; paridade com assets/precos.js), servico.js (validarLimites e calcularOrcamento), rotas.js (schemas gerados da tabela); o corpo aceita `dominio: { tipo: 'novo' | 'existente' }` (opcional) e, com `novo`, `avulsos` traz o item `dominio_principal` (1 por ano, mesmo preço do domínio extra)
     exemplo/rotas.js    POST /api/exemplos e POST /api/exemplos/job (só fora de produção; padrão de schema, erro e de rota que só enfileira)
@@ -30,10 +30,14 @@ api/
     fila/conexao.js     conexões com o Redis: de worker (espera o Redis voltar) e de produtor (falha rápido)
     fila/filas.js       filas jobs e alertas (tentativas, backoff exponencial, retenção)
     fila/worker.js      workers: roda os handlers, alerta de job esgotado, envio de alertas com limite por minuto
-    alertas/telegram.js envio do alerta ao Telegram (só ids, token fora de log e erro)
+    alertas/telegram.js envio do alerta ao Telegram (job esgotado e webhook do Asaas; só ids e códigos, token fora de log e erro)
     cli/reprocessar.js  npm run reprocessar -- <jobId>: devolve um job falhado à fila
     asaas/resumo.js     resumoEventoAsaas: o que do webhook do Asaas pode ir para o log
-    asaas/cliente.js    criarClienteAsaas: adaptador HTTP da API v3 do Asaas (cliente, assinaturas, URL da 1ª fatura, remoção), ErroAsaas e centavosParaReais
+    asaas/cliente.js    criarClienteAsaas: adaptador HTTP da API v3 do Asaas (cliente, assinaturas, URL da 1ª fatura, remoção, buscarPagamento), ErroAsaas e centavosParaReais
+    asaas/webhook-rotas.js POST /api/asaas/webhook (ADR 0015): token, schema, lista branca (extrairCamposBrutos) e gravação do bruto
+    asaas/webhook-processamento.js enfileirador (iniciarEnfileiradorWebhook) e handler do job asaas_webhook (criarHandlerWebhook): conferência, matriz de status, pedido, conta do titular e eventos
+    asaas/webhook-repositorio.js acesso a asaas_webhook_evento e às leituras de pedido e assinatura do processamento
+    contas/repositorio.js conta_titular: inserirContaSeNova e buscarContaPorClienteOuEmail
     pedidos/            POST /api/pedidos (ADR 0014): rotas.js (schema a partir do orçamento), servico.js (fluxo de criação, idempotência, retomada e compensação), repositorio.js, documento.js (CPF e CNPJ, inclusive alfanumérico), dominio.js (mesmas regras de assets/checkout.js)
     eventos/            eventos de domínio pelo outbox (sem rota): servico.js (registrarEvento), publicador.js (publicarPendentes, iniciarPublicador), consumidores.js (registro, processarEvento, criarHandlersDeConsumidores), repositorio.js, vocabulario.js (12 nomes)
     auditoria/          trilha de auditoria (só serviço e repositório, sem rota): servico.js (registrarAuditoria), repositorio.js (INSERT), vocabulario.js (ações, autores, alvos, resultados e chaves proibidas)
@@ -121,7 +125,7 @@ Fila e alertas (ADRs 0005 e 0011). Cada processo exige só o que usa: a API (`np
 
 | Variável | API | Worker | CLI | Uso | Padrão |
 |---|---|---|---|---|---|
-| `REDIS_URL` | opcional | obrigatória | obrigatória | Conexão com o Redis da fila. Sem ela, a API sobe sem fila e sem `POST /api/exemplos/job` (a #64 a torna obrigatória na API em produção). Nunca vai para o log. | sem padrão |
+| `REDIS_URL` | opcional | obrigatória | obrigatória | Conexão com o Redis da fila. Sem ela, a API sobe sem fila e sem `POST /api/exemplos/job`. A API não usa o Redis em produção: o webhook do Asaas só grava no banco, e quem enfileira é o worker (CIT-64). Nunca vai para o log. | sem padrão |
 | `FILA_PREFIXO` | lida | lida | lida | Prefixo das chaves no Redis; separa ambientes no mesmo Redis (ADR 0006). Só letras minúsculas, dígitos e hífen. | `citmail` |
 | `FILA_TENTATIVAS` | lida | lida | lida | Tentativas por job (inteiro de 1 a 20). | `8` |
 | `FILA_BACKOFF_MS` | lida | lida | lida | Espera antes da 2ª tentativa, em ms (inteiro de 1 a 3600000); dobra a cada tentativa (exponencial: com os padrões, cerca de 2 h até esgotar). | `60000` |
@@ -132,7 +136,7 @@ Fila e alertas (ADRs 0005 e 0011). Cada processo exige só o que usa: a API (`np
 
 Fora de produção, sem as duas variáveis do Telegram, o alerta sai só no log (`alerta sem telegram`).
 
-Pedido no Asaas ([ADR 0014](../docs/adr/0014-criacao-do-pedido-no-asaas.md)). Só a API lê; nenhuma das cinco vai para o log.
+Pedido no Asaas ([ADR 0014](../docs/adr/0014-criacao-do-pedido-no-asaas.md)). Só a API lê (o worker lê `ASAAS_*` com o webhook ligado, tabela seguinte); nenhuma das cinco vai para o log.
 
 | Variável | Uso | Padrão |
 |---|---|---|
@@ -141,6 +145,14 @@ Pedido no Asaas ([ADR 0014](../docs/adr/0014-criacao-do-pedido-no-asaas.md)). S�
 | `ASAAS_BASE_URL` | URL base da API v3 do Asaas (sandbox ou produção). Em produção, só `https://` com o host `api.asaas.com` ou `api-sandbox.asaas.com` (sem porta nem credencial). Obrigatória com `ASAAS_API_KEY`, em qualquer ambiente: não há URL padrão. | sem padrão |
 | `ASAAS_API_KEY` | Chave da API do Asaas, enviada no cabeçalho `access_token`. Segredo: só no ambiente da API. Com a rota ligada em produção, obrigatória; fora de produção, sem ela (e sem adaptador injetado nos testes), a rota responde 503 `asaas_nao_configurado`. | sem padrão |
 | `ASAAS_TIMEOUT_MS` | Limite de cada chamada ao Asaas, em ms (inteiro de 1000 a 30000). O pedido inteiro tem ainda um prazo global de 45 s nas chamadas de criação. | `10000` |
+
+Webhook do Asaas ([ADR 0015](../docs/adr/0015-webhook-do-asaas.md); CIT-64). Nenhuma vai para o log.
+
+| Variável | API | Worker | Uso | Padrão |
+|---|---|---|---|---|
+| `WEBHOOK_ASAAS_HABILITADO` | lida | lida | `true` ou `false` (outro valor impede a subida). Desligada, a API não registra `POST /api/asaas/webhook` (404) e o worker não registra o handler `asaas_webhook` nem inicia o enfileirador. | `false` em produção; `true` fora dela |
+| `ASAAS_WEBHOOK_TOKEN` | obrigatória em produção com a flag | não lê | Token que o Asaas envia no cabeçalho `asaas-access-token`. Segredo: só no ambiente da API. Em produção, com a flag ligada, ao menos 32 caracteres, senão a API não sobe; fora de produção, sem ele, a rota responde 503 `webhook_indisponivel`. | sem padrão |
+| `ASAAS_API_KEY`, `ASAAS_BASE_URL`, `ASAAS_TIMEOUT_MS` | ver acima | lidas com a flag | Com a flag ligada, o worker as lê com a mesma validação da API (chave e URL obrigatórias em produção) para conferir o pagamento (`GET /payments/{id}`). Fora de produção, sem chave, o handler lança e o bruto fica para reenvio. | ver acima |
 
 ## Logs
 
@@ -278,6 +290,26 @@ Respostas: 201 `{ pedidoId, estado: 'aguardando_pagamento', faturas: [{ tipo: 'c
 - Logs só com ids e códigos: `pedido criado`, `pedido retomado`, `pedido falhou na criação` (`pedidoId`, `falhaMotivo`, `operacao`, `statusAsaas`), `fatura sem url`, `posse perdida`, `assinatura órfã`, `assinatura duplicada`, `confirmação falhou` e `compensação sem consulta` (`operacao`, `tipo` do erro e `erro` com o nome do erro) e `erro de banco no pedido` (`code` e `routine`).
 - Nos testes, `construirApp(config, { asaas, pedidos })` recebe o adaptador (stub local) e as opções do serviço (`agora`, `versaoTabela`, `versaoTermos`, `versaoPrivacidade`, `prazoPedidoMs`, `prazoCriandoMs`) e usa o IP de `request.ip` (`app.inject({ remoteAddress })`); `construirAppTeste` repassa as duas. `carregarConfig(env, { termosMinuta })` aceita a minuta injetada.
 
+## Webhook do Asaas
+
+`POST /api/asaas/webhook` ([ADR 0015](../docs/adr/0015-webhook-do-asaas.md); código em `src/asaas/webhook-*.js`, tabelas `asaas_webhook_evento` e `conta_titular` e coluna `pedido.dominio_pago_em` da migração `webhook-asaas`).
+
+- **Recepção (API):** cabeçalho `asaas-access-token` conferido no `onRequest`, antes do corpo e do banco (SHA-256 e `timingSafeEqual`): ausente, vazio ou errado → 401 `{ erro: 'nao_autorizado' }`. Corpo até 16 KiB (413 acima); `id` em `^evt_[A-Za-z0-9_&.-]{1,120}$`, `event` e `payment.id` obrigatórios no formato (400 `validacao`). Grava o bruto só com a lista branca (`INSERT ... ON CONFLICT DO NOTHING`) e responde 200 `{ recebido: true }`, também ao repetido. Log `webhook do asaas recebido` só com `resumoEventoAsaas`, `brutoId` e `repetido`.
+- **Enfileirador (worker):** a cada `OUTBOX_INTERVALO_MS`, até 50 brutos com `enfileirado_em` nulo viram jobs `asaas_webhook` (`jobId = asaas_webhook-<brutoId>`, `data = { brutoId, requestId }`) num `addBulk` com prazo de 2 s; depois `enfileirado_em` é marcado. Com o Redis fora, fica para o ciclo seguinte (log `enfileiramento do webhook falhou`).
+- **Handler:** confere o pagamento no Asaas e aplica a matriz do ADR 0015. Resultado no bruto: `situacao` (`processado`, `ignorado`, `divergente`) e `codigo`. Erro de rede, 5xx, timeout ou pedido ainda em `criando`: o job tenta de novo com backoff e, esgotado, gera o alerta `job_esgotado`; o bruto continua `pendente`.
+- **Alertas** (fila `alertas`, payload `{ tipo: 'webhook', codigo, brutoId, pedidoId }`): divergências da conferência, status sem efeito marcados na matriz, `pedido_falhou_na_criacao`, `pedido_cancelado`, `assinatura_desconhecida`, `contato_divergente` (fatura retida: pedido pago, conta não criada), `conta_email_em_uso` e `webhook_parado` (bruto `pendente` enfileirado há mais de 1 hora, ou recebido há mais de 1 hora e nunca enfileirado; uma vez por bruto). Pedido relido como `cancelado` ou `falhou_na_criacao` depois da trava: `ignorado` `pedido_<estado>` com alerta. O 2º evento do mesmo pagamento (`CONFIRMED` e depois `RECEIVED`) fica `ignorado` `pagamento_repetido`; outro pagamento depois do 1º, `pagamento_seguinte`.
+- **Reprocessamento:** job em "falhou": `npm run reprocessar -- asaas_webhook-<brutoId>`. Job que já saiu do Redis (30 dias, ou alerta `webhook_parado`): zerar `enfileirado_em` do bruto pendente para o enfileirador criar o job de novo:
+
+  ```sql
+  UPDATE asaas_webhook_evento SET enfileirado_em = NULL, alertado_pendente_em = NULL
+   WHERE id = '<brutoId>' AND situacao = 'pendente';
+  ```
+
+  Zerar `enfileirado_em` **não reenfileira** enquanto o job `asaas_webhook-<brutoId>` estiver retido no Redis (em "falhou" ou "concluído"): o `addBulk` com o mesmo `jobId` vira no-op. Nesse caso, usar `npm run reprocessar -- asaas_webhook-<brutoId>` (job em "falhou") ou remover o job antes, como no backfill do outbox.
+
+  Bruto `ignorado` ou `divergente` não é reprocessado pelo handler (resultado terminal); depois de corrigir a causa, volta à fila só por papel administrativo, com `situacao = 'pendente'`, `processado_em` e `codigo` nulos e `enfileirado_em` nulo.
+- **Retenção:** limpeza após 90 dias em história própria (índice por `recebido_em` pronto).
+
 ## Como rodar os testes
 
 Suíte `node:test` (nativa do Node.js) em `api/test/`, uma spec por critério de aceite. Nunca usa Playwright (isso é do site, na raiz).
@@ -315,7 +347,7 @@ Fora do escopo desta história (CIT-53), documentados aqui como referência:
 
 - Sessão do painel, com cookie ([ADR 0008](../docs/adr/0008-sessao-do-painel-e-senhas.md)).
 - Chamar a auditoria nas ações críticas reais (as histórias de cada ação); papel `<banco>_retencao` e rotina de pseudonimização do IP (ADR 0013, item 9).
-- Webhooks (ex.: Asaas).
+- Webhook do Asaas (ADR 0015): configurar o webhook no sandbox e conferir as premissas (formato do `id`, `value` do 1º pagamento, status da matriz) na #57; limpeza do bruto após 90 dias; `cobranca_paga` para os pagamentos seguintes (E4-H5).
 - Pedidos (ADR 0014): ligar `PEDIDOS_HABILITADO` em produção só depois do limite de taxa (E6-H4) e dos termos finais (fim da minuta); confirmar as premissas do Asaas no sandbox (#57); retomada de `criando` e reconciliação de assinatura órfã por job no worker.
 - Deploy da API na VPS, com `systemd`, Caddy e HTTPS (#57 e #93); a #57 também troca o login da app para membro de `<banco>_aplicacao`.
 
@@ -330,3 +362,4 @@ Fora do escopo desta história (CIT-53), documentados aqui como referência:
 - [0011 — Canal de alerta da equipe](../docs/adr/0011-alertas-da-equipe.md)
 - [0013 — Segurança transversal e observabilidade](../docs/adr/0013-seguranca-transversal-e-observabilidade.md)
 - [0014 — Criação do pedido no Asaas](../docs/adr/0014-criacao-do-pedido-no-asaas.md)
+- [0015 — Webhook do Asaas](../docs/adr/0015-webhook-do-asaas.md)

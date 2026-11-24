@@ -64,6 +64,7 @@ Data: 2026-09-25
 | 0012 | [0012-fonte-unica-de-precos.md](0012-fonte-unica-de-precos.md) | Fonte única de preços com o servidor como autoridade | aceito | 2026-09-25 |
 | 0013 | [0013-seguranca-transversal-e-observabilidade.md](0013-seguranca-transversal-e-observabilidade.md) | Segurança transversal e observabilidade | aceito | 2026-09-25 |
 | 0014 | [0014-criacao-do-pedido-no-asaas.md](0014-criacao-do-pedido-no-asaas.md) | Criação do pedido no Asaas | proposto | 2026-11-23 |
+| 0015 | [0015-webhook-do-asaas.md](0015-webhook-do-asaas.md) | Webhook do Asaas | proposto | 2026-11-23 |
 
 Hoje nenhum ADR está `aceito`: todos têm alguma parte proposta. Passam a `aceito` quando o responsável confirmar o que falta.
 
@@ -116,6 +117,8 @@ Pendências que não foram fechadas dentro do timebox do spike (3 dias úteis, a
 | Cliente do Asaas reaproveitado (achado pelo documento) com notificações do Asaas ligadas: a API não o altera (ADR 0014, decisão 8). | responsável | até a E7 |
 | Confirmar no sandbox do Asaas as premissas P1–P8 do ADR 0014 (sobretudo o filtro por `externalReference`, itens `deleted`, `phone`/`mobilePhone` e a cobrança disponível na criação). | responsável | na #57 |
 | Expiração de pedido `aguardando_pagamento` nunca pago (anexo de modelo de dados). | responsável | 2026-10-01 |
+| Limpeza do evento bruto do Asaas (`asaas_webhook_evento`) após 90 dias, com papel próprio (o da aplicação não tem `DELETE`); índice por `recebido_em` já criado ([ADR 0015](0015-webhook-do-asaas.md), CIT-64). História própria, no épico #41. | responsável | história a abrir |
+| Confirmar no sandbox do Asaas o formato do `id` do evento do webhook, o `value` do 1º pagamento e os status da matriz do [ADR 0015](0015-webhook-do-asaas.md) (CIT-64, CA16). | responsável | na #57 |
 | Retenções propostas: evento bruto do Asaas (90 dias, ADR 0005), auditoria (IP em claro por 6 meses, registro por 5 anos, ADR 0013) e sessão (até 8 h, ADR 0008). | responsável | 2026-10-01 |
 
 ## Ajustes de critérios em outras histórias
