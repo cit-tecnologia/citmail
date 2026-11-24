@@ -12,6 +12,7 @@ import { setTimeout as esperar } from 'node:timers/promises';
 import { Pool } from 'pg';
 import { urlRedisTeste, criarFilasTeste, criarBancoTemporario, removerBancoTemporario, aplicarMigracoes } from './auxiliares.js';
 import { criarStubAsaas } from './stub-asaas.js';
+import { criarStubSmtp } from './stub-smtp.js';
 import { estadoDoPedido, semearBruto, semearPagamentoNoStub, semearPedido } from './webhook-fixtures.js';
 
 const CAMINHO_API = fileURLToPath(new URL('..', import.meta.url));
@@ -276,4 +277,114 @@ test('CA13(c): em produção com a flag ligada e sem ASAAS_API_KEY, o worker sai
 
   assert.equal(await encerrado, 1);
   assert.match(obterSaida(), /ASAAS_API_KEY/);
+});
+
+// CIT-65: e-mail transacional no processo do worker.
+function envProducaoSemEmail(aux, databaseUrl, extra = {}) {
+  return {
+    PATH: process.env.PATH,
+    NODE_ENV: 'production',
+    REDIS_URL: urlRedisTeste(),
+    DATABASE_URL: databaseUrl,
+    FILA_PREFIXO: aux.prefixo,
+    TELEGRAM_BOT_TOKEN: 'TOKEN-FICTICIO',
+    TELEGRAM_CHAT_ID: 'CHAT-FICTICIO',
+    ...extra,
+  };
+}
+
+test('CA8(g): em produção com o e-mail desligado, o worker loga um warn "e-mail desligado em produção"', { timeout: 20000 }, async (t) => {
+  const aux = criarFilasTeste({ tentativas: 1, backoffMs: 300 });
+  t.after(aux.fechar);
+  const databaseUrl = await criarBancoParaWorker(t);
+  const { filho, obterSaida } = spawnWorker(envProducaoSemEmail(aux, databaseUrl));
+  const encerrado = new Promise((resolve) => { filho.on('exit', resolve); });
+  t.after(() => { if (filho.exitCode === null) filho.kill('SIGKILL'); });
+
+  await Promise.race([
+    aguardarSaida(obterSaida, filho, '"enfileirador de e-mail iniciado"'),
+    encerrado.then(() => { throw new Error(`worker saiu antes de iniciar; saída: ${obterSaida()}`); }),
+  ]);
+  filho.kill('SIGTERM');
+  await encerrado;
+
+  const avisos = obterSaida().split('\n').filter((linha) => linha.includes('e-mail desligado em produção'));
+  assert.equal(avisos.length, 1);
+  assert.equal(JSON.parse(avisos[0]).level, 40);
+});
+
+test('CA8(g): em produção com smtp (host externo), o worker não loga o aviso de e-mail desligado', { timeout: 20000 }, async (t) => {
+  const aux = criarFilasTeste({ tentativas: 1, backoffMs: 300 });
+  t.after(aux.fechar);
+  const databaseUrl = await criarBancoParaWorker(t);
+  const env = envProducaoSemEmail(aux, databaseUrl, {
+    EMAIL_TRANSPORTE: 'smtp', SMTP_HOST: 'smtp.exemplo.test', SMTP_USUARIO: 'usuario-ficticio', SMTP_SENHA: 'SenhaSmtpFicticia-123',
+  });
+  const { filho, obterSaida } = spawnWorker(env);
+  const encerrado = new Promise((resolve) => { filho.on('exit', resolve); });
+  t.after(() => { if (filho.exitCode === null) filho.kill('SIGKILL'); });
+
+  await Promise.race([
+    aguardarSaida(obterSaida, filho, '"enfileirador de e-mail iniciado"'),
+    encerrado.then(() => { throw new Error(`worker saiu antes de iniciar; saída: ${obterSaida()}`); }),
+  ]);
+  filho.kill('SIGTERM');
+  await encerrado;
+  assert.ok(!obterSaida().includes('e-mail desligado em produção'));
+  assert.ok(!obterSaida().includes('SenhaSmtpFicticia-123'));
+});
+
+test('CA8: o worker com SMTP_SENHA ausente e transporte smtp sai com código 1 citando a variável, sem os outros valores', { timeout: 10000 }, async (t) => {
+  const aux = criarFilasTeste({ tentativas: 1, backoffMs: 300 });
+  t.after(aux.fechar);
+  const databaseUrl = await criarBancoParaWorker(t);
+  const env = {
+    PATH: process.env.PATH, NODE_ENV: 'test', REDIS_URL: urlRedisTeste(), DATABASE_URL: databaseUrl, FILA_PREFIXO: aux.prefixo,
+    EMAIL_TRANSPORTE: 'smtp', SMTP_HOST: '127.0.0.1', SMTP_USUARIO: 'usuario-ficticio',
+  };
+  const { filho, obterSaida } = spawnWorker(env);
+  const codigo = await new Promise((resolve) => { filho.on('exit', resolve); });
+  assert.equal(codigo, 1);
+  assert.ok(obterSaida().includes('SMTP_SENHA não definida'));
+  assert.ok(!obterSaida().includes('usuario-ficticio'));
+});
+
+test('CA1: o worker enfileira e envia pelo SMTP de teste uma linha pendente do teste_exemplo, de ponta a ponta', { timeout: 30000 }, async (t) => {
+  const aux = criarFilasTeste({ tentativas: 1, backoffMs: 300 });
+  t.after(aux.fechar);
+  const databaseUrl = await criarBancoParaWorker(t);
+  const stub = await criarStubSmtp();
+  t.after(() => stub.fechar());
+  const admin = new Pool({ connectionString: databaseUrl, max: 2 });
+  const pedido = await semearPedido(admin, { email: 'fulano@exemplo.test' });
+  const { rows } = await admin.query(
+    "INSERT INTO email_envio (chave_idempotencia, modelo, versao_modelo, refs) VALUES ('worker-ponta-a-ponta', 'teste_exemplo', 1, $1) RETURNING id",
+    [{ pedidoId: pedido.pedidoId }],
+  );
+
+  const env = {
+    PATH: process.env.PATH, NODE_ENV: 'test', REDIS_URL: urlRedisTeste(), DATABASE_URL: databaseUrl, FILA_PREFIXO: aux.prefixo,
+    OUTBOX_INTERVALO_MS: '100', EMAIL_TRANSPORTE: 'smtp', SMTP_HOST: stub.host, SMTP_PORTA: String(stub.porta),
+    SMTP_USUARIO: 'usuario-ficticio', SMTP_SENHA: 'SenhaSmtpFicticia-123', EMAIL_REMETENTE: 'CITMail <naoresponda@exemplo.test>',
+  };
+  const { filho, obterSaida } = spawnWorker(env);
+  const encerrado = new Promise((resolve) => { filho.on('exit', resolve); });
+  t.after(() => { if (filho.exitCode === null) filho.kill('SIGKILL'); });
+
+  await Promise.race([
+    stub.aguardarMensagens(1),
+    encerrado.then(() => { throw new Error(`worker saiu antes de enviar; saída: ${obterSaida()}`); }),
+  ]);
+  await aguardarSaida(obterSaida, filho, '"e-mail enviado"');
+  filho.kill('SIGTERM');
+  assert.equal(await encerrado, 0);
+
+  assert.deepEqual(stub.mensagens[0].rcptTo, ['fulano@exemplo.test']);
+  assert.equal(stub.mensagens[0].mailFrom, 'naoresponda@exemplo.test');
+  const gravada = (await admin.query('SELECT estado, destinatario_mascarado FROM email_envio WHERE id = $1', [rows[0].id])).rows[0];
+  await admin.end();
+  assert.deepEqual(gravada, { estado: 'enviado', destinatario_mascarado: 'f***@exemplo.test' });
+  for (const proibido of ['fulano@exemplo.test', 'Fulano Ficticio', 'SenhaSmtpFicticia-123']) {
+    assert.ok(!obterSaida().includes(proibido), `saída do worker com ${proibido}`);
+  }
 });

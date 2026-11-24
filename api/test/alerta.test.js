@@ -369,3 +369,53 @@ test('CA2(d): alerta de job esgotado que falha segue logando o jobId', async (t)
   await aguardarCondicao(() => captura.linhas().some((l) => l.msg === 'alerta falhou'));
   assert.equal(captura.linhas().find((l) => l.msg === 'alerta falhou').jobId, 'job-ficticio-log');
 });
+
+// CIT-65, CA9: alerta `email_parado` (e-mail pendente há mais de `EMAIL_PARADO_HORAS`), só com o id do envio.
+test('CA9: montarTextoAlerta do e-mail parado leva só o id do envio validado', () => {
+  assert.equal(montarTextoAlerta({ tipo: 'email_parado', envioId: UUID_FICTICIO }), `E-mail parado: envio=${UUID_FICTICIO}`);
+  assert.equal(montarTextoAlerta({ tipo: 'email_parado', envioId: 'x' }), 'E-mail parado: envio=-');
+  assert.equal(montarTextoAlerta({ tipo: 'email_parado', envioId: 'fulano@exemplo.test' }), 'E-mail parado: envio=-');
+  assert.equal(montarTextoAlerta({ tipo: 'email_parado' }), 'E-mail parado: envio=-');
+});
+
+test('CA9: enviarAlerta com payload de e-mail parado faz um POST ao Telegram só com o texto do e-mail parado', async () => {
+  const fetchFalso = criarFetchFalso(async () => ({ ok: true, status: 200 }));
+  const enviarAlerta = criarEnvioTelegram({ token: TOKEN_FICTICIO, chatId: CHAT_FICTICIO, fetch: fetchFalso });
+  await enviarAlerta({ tipo: 'email_parado', envioId: UUID_FICTICIO });
+  assert.equal(fetchFalso.chamadas.length, 1);
+  assert.equal(JSON.parse(fetchFalso.chamadas[0].opcoes.body).text, `E-mail parado: envio=${UUID_FICTICIO}`);
+});
+
+test('CA9: sem token/chatId, o alerta de e-mail parado só loga o id validado e nunca chama fetch', async () => {
+  const captura = criarCapturaDeLog();
+  const log = criarLogger({ level: 'info', stream: captura.stream });
+  const fetchFalso = criarFetchFalso(async () => ({ ok: true, status: 200 }));
+  const enviarAlerta = criarEnvioTelegram({ token: undefined, chatId: undefined, fetch: fetchFalso, log });
+
+  await enviarAlerta({ tipo: 'email_parado', envioId: 'fulano@exemplo.test' });
+
+  assert.equal(fetchFalso.chamadas.length, 0);
+  const linha = captura.linhas().find((l) => l.msg === 'alerta sem telegram');
+  assert.equal(linha.tipo, 'email_parado');
+  assert.equal(linha.envio, '-');
+  assert.ok(!captura.texto().includes('fulano@exemplo.test'));
+});
+
+test('CA9: alerta de e-mail parado que esgota loga "alerta falhou" com o envioId (UUID) e sem jobId', async (t) => {
+  const { filas, captura, criarWorkers, fechar } = criarFilasTeste({ alertaTentativas: 1, alertaBackoffMs: 20 });
+  t.after(fechar);
+  let falhou;
+  const registrado = new Promise((resolver) => { falhou = resolver; });
+  const workers = criarWorkers({ enviarAlerta: async () => { throw new Error('telegram fora do ar'); } });
+  workers.alertas.on('failed', () => setImmediate(falhou));
+
+  await filas.alertas.add('email_parado', { tipo: 'email_parado', envioId: UUID_FICTICIO }, { jobId: 'alerta-email-falha' });
+  await registrado;
+  await workers.alertas.close();
+  await workers.jobs.close();
+
+  const linha = captura.linhas().find((l) => l.msg === 'alerta falhou');
+  assert.ok(linha, 'esperava a linha "alerta falhou"');
+  assert.equal(linha.envioId, UUID_FICTICIO);
+  assert.equal(linha.jobId, undefined);
+});
