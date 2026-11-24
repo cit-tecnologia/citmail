@@ -223,3 +223,22 @@ test('CA7: cookie fora do formato ou ausente → 401 sem tocar o Redis', { tag: 
   assert.equal(semCookie.statusCode, 401);
   assert.equal(comandos.mock.callCount(), 0);
 });
+
+test('CA2/CA7: falha depois do SET NX (conjunto da conta) apaga a chave recém-gravada e o login dá 401', { tag: '@CIT-70' }, async (t) => {
+  const chavesDeSessao = async () => (await ctx.redis.keys(`${ctx.prefixo}:sessao:*`)).sort();
+  const antes = await chavesDeSessao();
+  t.mock.method(ctx.redis, 'smembers', async () => {
+    throw Object.assign(new Error('falha injetada'), { code: 'FALHA_INJETADA' });
+  }, { times: 1 });
+
+  const resposta = await teste.app.inject({
+    method: 'POST',
+    url: '/api/painel/login',
+    headers: { origin: ORIGEM_PAINEL },
+    payload: { email: EMAIL, senha: SENHA },
+  });
+
+  assert.equal(resposta.statusCode, 401);
+  assert.equal(resposta.headers['set-cookie'], undefined);
+  assert.deepEqual(await chavesDeSessao(), antes, 'sem sessão órfã');
+});

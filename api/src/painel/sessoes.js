@@ -54,8 +54,14 @@ export function criarSessoes({ redis, prefixo, agora = Date.now, antesDeRenovar 
       }
       const gravado = await redis.set(chave(idHash), JSON.stringify(dados), 'PX', INATIVIDADE_MS, 'NX')
       if (gravado !== 'OK') throw new Error('sessão não gravada')
-      await redis.multi().sadd(conjunto(contaId), idHash).pexpire(conjunto(contaId), ABSOLUTO_MS).exec()
-      await limparConjunto(contaId)
+      try {
+        await redis.multi().sadd(conjunto(contaId), idHash).pexpire(conjunto(contaId), ABSOLUTO_MS).exec()
+        await limparConjunto(contaId)
+      } catch (erro) {
+        // Sem sessão órfã: a chave sai (melhor esforço) antes de o erro subir.
+        await redis.del(chave(idHash)).catch(() => {})
+        throw erro
+      }
       return id
     },
 
