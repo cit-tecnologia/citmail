@@ -478,3 +478,118 @@ test('CA7: com aceiteLiberado o app loga warn na partida, e sem ele não loga', 
   t.after(() => appSem.close());
   assert.equal(semAviso.linhas().some((l) => /aceite liberado/.test(l.msg ?? '')), false);
 });
+
+// CIT-64 (CA13): webhook do Asaas. A rota nasce desligada em produção e ligada fora dela;
+// ligada em produção, `ASAAS_WEBHOOK_TOKEN` é obrigatório e tem ao menos 32 caracteres. O
+// worker lê chave e URL do Asaas (obrigatórias em produção) e nunca o token do webhook.
+const TOKEN_WEBHOOK_FICTICIO = 'cfg-'.repeat(10) // fictício, 40 caracteres;
+const AMBIENTE_WEBHOOK = { ...AMBIENTE_PRODUCAO, WEBHOOK_ASAAS_HABILITADO: 'true', ASAAS_WEBHOOK_TOKEN: TOKEN_WEBHOOK_FICTICIO };
+const AMBIENTE_WORKER_PRODUCAO = {
+  ...AMBIENTE_WORKER,
+  NODE_ENV: 'production',
+  TELEGRAM_BOT_TOKEN: 'TOKEN-FICTICIO',
+  TELEGRAM_CHAT_ID: 'CHAT-FICTICIO',
+};
+
+test('CA13(a): WEBHOOK_ASAAS_HABILITADO ausente ou vazia é false em produção e true fora dela', () => {
+  assert.equal(carregarConfig(AMBIENTE_PRODUCAO).webhookAsaasHabilitado, false);
+  assert.equal(carregarConfig({ ...AMBIENTE_PRODUCAO, WEBHOOK_ASAAS_HABILITADO: '' }).webhookAsaasHabilitado, false);
+  assert.equal(carregarConfig(AMBIENTE_BASE).webhookAsaasHabilitado, true);
+});
+
+test('CA13(a): com a flag desligada em produção a API não exige o token do webhook', () => {
+  assert.doesNotThrow(() => carregarConfig(AMBIENTE_PRODUCAO));
+});
+
+test('CA13(a): carregarConfigWorker em produção sem a flag não liga o webhook nem exige a chave do Asaas', () => {
+  const config = carregarConfigWorker(AMBIENTE_WORKER_PRODUCAO);
+  assert.equal(config.webhookAsaasHabilitado, false);
+  assert.equal(config.asaasApiKey, undefined);
+});
+
+test('CA13(b): em produção, flag ligada e token válido de 32 ou mais caracteres é aceito', () => {
+  const config = carregarConfig(AMBIENTE_WEBHOOK);
+  assert.equal(config.webhookAsaasHabilitado, true);
+  assert.equal(config.asaasWebhookToken, TOKEN_WEBHOOK_FICTICIO);
+  assert.doesNotThrow(() => carregarConfig({ ...AMBIENTE_WEBHOOK, ASAAS_WEBHOOK_TOKEN: 'a'.repeat(32) }));
+});
+
+for (const [rotulo, token] of [['ausente', undefined], ['vazio', ''], ['só espaços', '   '], ['com 31 caracteres', 'a'.repeat(31)]]) {
+  test(`CA13(b): em produção, flag ligada e ASAAS_WEBHOOK_TOKEN ${rotulo} lança citando a variável, sem o valor`, () => {
+    const ambiente = { ...AMBIENTE_WEBHOOK, ASAAS_WEBHOOK_TOKEN: token };
+    assert.throws(
+      () => carregarConfig(ambiente),
+      (erro) => {
+        assert.match(erro.message, /ASAAS_WEBHOOK_TOKEN/);
+        if (token?.trim()) assert.ok(!erro.message.includes(token));
+        return true;
+      },
+    );
+  });
+}
+
+test('CA13(b): o mínimo de 32 caracteres vale só em produção; fora dela um token curto é aceito', () => {
+  const config = carregarConfig({ ...AMBIENTE_BASE, ASAAS_WEBHOOK_TOKEN: 'curto' });
+  assert.equal(config.asaasWebhookToken, 'curto');
+});
+
+test('CA13(b): fora de produção, sem token, a config carrega e o token fica indefinido (a rota responde 503)', () => {
+  assert.equal(carregarConfig(AMBIENTE_BASE).asaasWebhookToken, undefined);
+});
+
+test('CA13(c): carregarConfigWorker em produção com a flag ligada e sem ASAAS_API_KEY lança citando a variável', () => {
+  assert.throws(
+    () => carregarConfigWorker({
+      ...AMBIENTE_WORKER_PRODUCAO, WEBHOOK_ASAAS_HABILITADO: 'true', ASAAS_BASE_URL: 'https://api.asaas.com/v3'
+    }),
+    (erro) => { assert.match(erro.message, /ASAAS_API_KEY/); return true; },
+  );
+});
+
+test('CA13(c): carregarConfigWorker em produção com a flag ligada e sem ASAAS_BASE_URL lança citando a variável', () => {
+  assert.throws(
+    () => carregarConfigWorker({ ...AMBIENTE_WORKER_PRODUCAO, WEBHOOK_ASAAS_HABILITADO: 'true', ASAAS_API_KEY: 'CHAVE-FICTICIA' }),
+    (erro) => { assert.match(erro.message, /ASAAS_BASE_URL/); return true; },
+  );
+});
+
+test('CA13(c): carregarConfigWorker com a flag e as credenciais lê chave, URL e timeout e nunca o token do webhook', () => {
+  const config = carregarConfigWorker({
+    ...AMBIENTE_WORKER_PRODUCAO,
+    WEBHOOK_ASAAS_HABILITADO: 'true',
+    ASAAS_API_KEY: 'CHAVE-FICTICIA',
+    ASAAS_BASE_URL: 'https://api.asaas.com/v3',
+    ASAAS_TIMEOUT_MS: '5000',
+    ASAAS_WEBHOOK_TOKEN: TOKEN_WEBHOOK_FICTICIO,
+  });
+  assert.equal(config.webhookAsaasHabilitado, true);
+  assert.equal(config.asaasApiKey, 'CHAVE-FICTICIA');
+  assert.equal(config.asaasBaseUrl, 'https://api.asaas.com/v3');
+  assert.equal(config.asaasTimeoutMs, 5000);
+  assert.ok(!JSON.stringify(config).includes(TOKEN_WEBHOOK_FICTICIO));
+});
+
+test('CA13(c): carregarConfigWorker em produção valida o host do Asaas como a API (host fora da lista lança)', () => {
+  assert.throws(
+    () => carregarConfigWorker({
+      ...AMBIENTE_WORKER_PRODUCAO, WEBHOOK_ASAAS_HABILITADO: 'true', ASAAS_API_KEY: 'CHAVE-FICTICIA', ASAAS_BASE_URL: 'https://outro.exemplo.test/v3'
+    }),
+    (erro) => { assert.match(erro.message, /ASAAS_BASE_URL/); return true; },
+  );
+});
+
+test('CA13(c): fora de produção, a flag ligada no worker não exige a chave (o handler lança até configurar)', () => {
+  const config = carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development' });
+  assert.equal(config.webhookAsaasHabilitado, true);
+  assert.equal(config.asaasApiKey, undefined);
+  assert.equal(config.asaasTimeoutMs, 10000);
+});
+
+test('CA13(e): WEBHOOK_ASAAS_HABILITADO=talvez lança citando a variável, na API e no worker', () => {
+  for (const carregar of [
+    () => carregarConfig({ ...AMBIENTE_BASE, WEBHOOK_ASAAS_HABILITADO: 'talvez' }),
+    () => carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development', WEBHOOK_ASAAS_HABILITADO: 'talvez' }),
+  ]) {
+    assert.throws(carregar, (erro) => { assert.match(erro.message, /WEBHOOK_ASAAS_HABILITADO/); return true; });
+  }
+});

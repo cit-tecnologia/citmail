@@ -17,7 +17,7 @@ import assert from 'node:assert/strict';
 import { setTimeout as esperar } from 'node:timers/promises';
 import { criarCapturaDeLog, criarFilasTeste } from './auxiliares.js';
 import { criarLogger } from '../src/log.js';
-import { criarEnvioTelegram } from '../src/alertas/telegram.js';
+import { criarEnvioTelegram, montarTextoAlerta } from '../src/alertas/telegram.js';
 
 const UUID_FICTICIO = '00000000-0000-4000-8000-000000000001';
 const TOKEN_FICTICIO = 'TOKEN-FICTICIO';
@@ -259,4 +259,80 @@ test('CA5/CA2(h): sem token/chatId, criarEnvioTelegram só loga "alerta sem tele
   assert.equal(linha.jobId, 'job-ficticio-ca5');
   assert.equal(linha.job, 'sempreFalha');
   assert.equal(linha.pedido, UUID_FICTICIO);
+});
+
+// CIT-64: alerta do resultado do webhook do Asaas (`tipo: 'webhook'`), com ids validados.
+const UUID_PEDIDO_WEBHOOK = '00000000-0000-4000-8000-0000000000aa';
+
+test('CA10: montarTextoAlerta do webhook leva só o código e os ids validados', () => {
+  assert.equal(
+    montarTextoAlerta({ tipo: 'webhook', codigo: 'valor_divergente', brutoId: UUID_FICTICIO, pedidoId: UUID_PEDIDO_WEBHOOK }),
+    `Webhook do Asaas: codigo=valor_divergente bruto=${UUID_FICTICIO} pedido=${UUID_PEDIDO_WEBHOOK}`
+  );
+});
+
+for (const codigo of ['Com Espaco', 'valor divergente\nTOKEN', '9comeca_com_numero', 'a'.repeat(49), undefined, 42]) {
+  test(`CA10: codigo fora do padrão (${JSON.stringify(codigo)}) vira "-" no texto do webhook`, () => {
+    const texto = montarTextoAlerta({ tipo: 'webhook', codigo, brutoId: UUID_FICTICIO, pedidoId: null });
+    assert.match(texto, /codigo=- bruto=/);
+  });
+}
+
+for (const [campo, valor] of [['brutoId', 'nao-e-uuid'], ['brutoId', undefined], ['pedidoId', 'nao-e-uuid'], ['pedidoId', null]]) {
+  test(`CA10: ${campo} ${JSON.stringify(valor)} vira "-" no texto do webhook`, () => {
+    const dados = { tipo: 'webhook', codigo: 'estornado', brutoId: UUID_FICTICIO, pedidoId: UUID_PEDIDO_WEBHOOK, [campo]: valor };
+    const texto = montarTextoAlerta(dados);
+    const rotulo = campo === 'brutoId' ? 'bruto' : 'pedido';
+    assert.ok(texto.includes(`${rotulo}=-`), texto);
+  });
+}
+
+test('CA10: o formato de job esgotado segue igual ao anterior', () => {
+  assert.equal(
+    montarTextoAlerta({ jobId: 'job-1', job: 'asaas_webhook', pedidoId: UUID_FICTICIO }),
+    `Job falhou: job=job-1 tipo=asaas_webhook pedido=${UUID_FICTICIO}`
+  );
+});
+
+test('CA10: enviarAlerta com payload de webhook faz um POST ao Telegram só com o texto do webhook', async () => {
+  const captura = criarCapturaDeLog();
+  const log = criarLogger({ level: 'info', stream: captura.stream });
+  const fetchFalso = criarFetchFalso(async () => ({ ok: true, status: 200 }));
+  const enviarAlerta = criarEnvioTelegram({ token: TOKEN_FICTICIO, chatId: CHAT_FICTICIO, fetch: fetchFalso, log });
+
+  await enviarAlerta({ tipo: 'webhook', codigo: 'estornado', brutoId: UUID_FICTICIO, pedidoId: UUID_PEDIDO_WEBHOOK });
+
+  assert.equal(fetchFalso.chamadas.length, 1);
+  const corpo = JSON.parse(fetchFalso.chamadas[0].opcoes.body);
+  assert.equal(corpo.chat_id, CHAT_FICTICIO);
+  assert.equal(corpo.text, `Webhook do Asaas: codigo=estornado bruto=${UUID_FICTICIO} pedido=${UUID_PEDIDO_WEBHOOK}`);
+  assert.ok(!captura.texto().includes(TOKEN_FICTICIO));
+});
+
+test('CA10: sem token/chatId, o alerta de webhook só loga os ids validados e nunca chama fetch', async () => {
+  const captura = criarCapturaDeLog();
+  const log = criarLogger({ level: 'info', stream: captura.stream });
+  const fetchFalso = criarFetchFalso(async () => ({ ok: true, status: 200 }));
+  const enviarAlerta = criarEnvioTelegram({ token: undefined, chatId: undefined, fetch: fetchFalso, log });
+
+  await enviarAlerta({ tipo: 'webhook', codigo: 'Inválido!', brutoId: UUID_FICTICIO, pedidoId: 'nao-e-uuid' });
+
+  assert.equal(fetchFalso.chamadas.length, 0);
+  const linha = captura.linhas().find((l) => l.msg === 'alerta sem telegram');
+  assert.ok(linha, 'esperava a linha "alerta sem telegram"');
+  assert.equal(linha.tipo, 'webhook');
+  assert.equal(linha.codigo, '-');
+  assert.equal(linha.bruto, UUID_FICTICIO);
+  assert.equal(linha.pedido, '-');
+});
+
+test('CA10: o alerta de webhook enfileirado na fila alertas chega ao Telegram com o texto do webhook', async (t) => {
+  const { filas, log, criarWorkers, fechar } = criarFilasTeste({ alertaTentativas: 1 });
+  t.after(fechar);
+  const fetchFalso = criarFetchFalso(async () => ({ ok: true, status: 200 }));
+  criarWorkers({ enviarAlerta: criarEnvioTelegram({ token: TOKEN_FICTICIO, chatId: CHAT_FICTICIO, fetch: fetchFalso, log }) });
+
+  await filas.alertas.add('webhook', { tipo: 'webhook', codigo: 'estornado', brutoId: UUID_FICTICIO, pedidoId: null }, { jobId: 'alerta-wh-teste' });
+  await aguardarCondicao(() => fetchFalso.chamadas.length === 1);
+  assert.match(JSON.parse(fetchFalso.chamadas[0].opcoes.body).text, /^Webhook do Asaas: codigo=estornado /);
 });
