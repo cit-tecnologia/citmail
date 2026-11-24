@@ -328,3 +328,20 @@ h1,h2,h3 { font-family: var(--font-title); font-weight: 600; line-height: 1.2; l
 }
 .icon.icon--success { color: var(--cit-success); }
 .is-hidden { display: none; }
+
+/* ── CIT-70: modo local (sem API) ── */
+.login-indisponivel {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  text-align: center; padding: 24px 20px; margin-bottom: 8px;
+  background: var(--cit-bg-subtle); border: 1px dashed var(--cit-border-color-strong);
+  border-radius: var(--cit-radius-lg); color: var(--cit-text-secondary); font-size: 1rem;
+}
+.login-indisponivel.is-hidden { display: none; }
+.login-indisponivel .icon { font-size: 1.75rem; color: var(--cit-neutral-400); }
+.login-indisponivel strong { color: var(--cit-text-primary); font-weight: 600; }
+.login-indisponivel a { color: var(--cit-text-link); font-weight: 600; overflow-wrap: anywhere; }
+.login-indisponivel a:hover { color: var(--cit-text-link-hover); }
+/* Com #loginIndisponivel visível, o formulário e o aviso de erro saem (o JS esconde o <form> e o divisor) */
+.login-card.login-card--local .subtitle,
+.login-card.login-card--local form,
+.login-card.login-card--local .alert-error { display: none; }

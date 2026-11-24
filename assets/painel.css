@@ -144,7 +144,8 @@ input[type=radio], input[type=checkbox] { accent-color: var(--cit-primary); }
   color: rgba(255,255,255,.72);
   background: none; border: none; border-radius: 6px;
   cursor: pointer; font-size: .85rem;
-  width: 32px; height: 32px;
+  width: 44px; height: 44px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
   transition: color var(--transition), background var(--transition);
 }
 .sidebar-logout:hover { color: white; background: rgba(255,255,255,.08); }
@@ -644,6 +645,8 @@ tbody tr:last-child td { border-bottom: none; }
   border: 1px dashed var(--cit-border-color-strong); border-radius: var(--cit-radius-lg);
   color: var(--cit-text-secondary); font-size: .875rem;
 }
+.empty-state strong { display: block; color: var(--cit-text-primary); font-weight: 600; margin-bottom: 4px; }
+.empty-state p { max-width: 420px; margin: 0 auto; }
 .empty-state .icon { font-size: 1.75rem; color: var(--cit-neutral-400); display: block; margin: 0 auto 8px; }
 
 /* ── MODAL ── */
@@ -727,7 +730,6 @@ tbody tr:last-child td { border-bottom: none; }
   .sidebar-backdrop.open { display: block; }
   .main-wrap { margin-left: 0; }
   .sidebar-toggle { display: flex; }
-  .topbar .topbar-search { display: none; }
   .topbar-logo { display: block; }
   .stats-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
 }
@@ -735,8 +737,7 @@ tbody tr:last-child td { border-bottom: none; }
   .stats-grid { grid-template-columns: minmax(0,1fr); }
   .dns-search { max-width: none; flex: 1; }
   .topbar { gap: 8px; }
-  .topbar-help { display: none; }
-  .account-row { flex-wrap: wrap; }
+    .account-row { flex-wrap: wrap; }
 }
 
 /* ── UTILITÁRIOS ── */
@@ -820,3 +821,22 @@ tbody tr:last-child td { border-bottom: none; }
 .icon.icon--secondary { color: var(--cit-text-secondary); }
 .icon.mr-8 { margin-right: 8px; }
 .is-hidden { display: none; }
+
+/* ── CIT-70: sessão do painel ── */
+.app { display: flex; flex: 1; min-width: 0; }
+body.sessao-pendente .app { display: none; }
+.painel-email { overflow-wrap: anywhere; }
+.alert > span { min-width: 0; }
+.painel-erro {
+  min-height: 100vh; padding: 24px 16px;
+  display: flex; align-items: center; justify-content: center;
+}
+.painel-erro.is-hidden { display: none; }
+.painel-erro-card {
+  background: white; border: 1px solid var(--cit-border-color); border-radius: var(--cit-radius-lg);
+  padding: clamp(24px,5vw,40px); width: 100%; max-width: 380px;
+  display: flex; flex-direction: column; align-items: center; gap: 16px; text-align: center;
+  color: var(--cit-text-secondary);
+}
+.painel-erro-card > .icon { font-size: 1.75rem; color: var(--cit-error); }
+.painel-erro-card .btn { min-height: 44px; }

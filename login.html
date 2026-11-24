@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/apple-touch-icon.png" />
   <link rel="stylesheet" href="assets/fonts.css" />
   <link rel="stylesheet" href="assets/tokens.css" />
-  <link rel="stylesheet" href="assets/login.css?v=1" />
+  <link rel="stylesheet" href="assets/login.css?v=2" />
 </head>
 <body>
 
@@ -62,9 +62,15 @@
       <h1>Acesse seu painel</h1>
       <p class="subtitle">Entre com seu e-mail e senha de acesso ao painel</p>
 
-      <div class="alert-error" id="alertError">
+      <div class="alert-error" id="alertError" role="alert">
         <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-x"></use></svg>
-        <span id="alertErrorMsg">E-mail ou senha incorretos. Tente novamente.</span>
+        <span id="alertErrorMsg">E-mail ou senha incorretos.</span>
+      </div>
+
+      <div class="login-indisponivel is-hidden" id="loginIndisponivel">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#clock"></use></svg>
+        <strong>Painel disponível em breve</strong>
+        <p>Enquanto isso, fale com a nossa equipe pelo e-mail <a href="mailto:comercial@citmail.com.br">comercial@citmail.com.br</a>.</p>
       </div>
 
       <form novalidate>
@@ -147,7 +153,7 @@
     </div>
   </div>
 
-  <script src="assets/login.js?v=2"></script>
+  <script src="assets/login.js?v=3"></script>
 
 </body>
 </html>
