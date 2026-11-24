@@ -214,3 +214,34 @@ test('CA8: o laço sem aoCiclo (como no worker) também enfileira o bruto penden
   assert.equal(lista[0].opts.jobId, `${JOB_WEBHOOK}-${brutoId}`);
   assert.notEqual((await leituraDoBruto(banco.admin, brutoId)).enfileirado_em, null);
 });
+
+  test('CA8(f): bruto nunca enfileirado (Redis fora) e recebido há 2 h gera um alerta webhook_parado uma vez só', async () => {
+    const filas = criarFilasFalsas();
+    filas.estado.falharAddBulk = true;
+    const log = { warn() {}, error() {}, info() {} };
+    const brutoId = await semearBruto(banco.admin);
+    await banco.admin.query("UPDATE asaas_webhook_evento SET recebido_em = now() - interval '2 hours' WHERE id = $1", [brutoId]);
+
+    const primeiro = await enfileirarPendentes({ pool: banco.app, filas, log });
+    assert.equal(primeiro.enfileirados, 0);
+    assert.equal(primeiro.parados, 1);
+    assert.deepEqual(filas.estado.alertas.map((a) => [a.data.codigo, a.data.brutoId, a.opts.jobId]),
+      [['webhook_parado', brutoId, `alerta-whp-${brutoId}`]]);
+    const bruto = await leituraDoBruto(banco.admin, brutoId);
+    assert.equal(bruto.enfileirado_em, null);
+    assert.notEqual(bruto.alertado_pendente_em, null);
+
+    const segundo = await enfileirarPendentes({ pool: banco.app, filas, log });
+    assert.equal(segundo.parados, 0);
+    assert.equal(filas.estado.alertas.length, 1);
+  });
+
+  test('CA8(f): bruto nunca enfileirado mas recebido há 30 min ainda não gera alerta de parado', async () => {
+    const filas = criarFilasFalsas();
+    filas.estado.falharAddBulk = true;
+    const log = { warn() {}, error() {}, info() {} };
+    const brutoId = await semearBruto(banco.admin);
+    await banco.admin.query("UPDATE asaas_webhook_evento SET recebido_em = now() - interval '30 minutes' WHERE id = $1", [brutoId]);
+    assert.equal((await enfileirarPendentes({ pool: banco.app, filas, log })).parados, 0);
+    assert.deepEqual(filas.estado.alertas, []);
+  });

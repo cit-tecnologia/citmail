@@ -329,3 +329,9 @@ test('CA9: buscarPagamento recusa id fora do padrão sem chamar o Asaas', async 
   assert.equal(erro.tipo, 'resposta_invalida');
   assert.deepEqual(stub.rotulos(), []);
 });
+
+test('CA9: buscarPagamento com id diferente do consultado na resposta vira ErroAsaas resposta_invalida', async () => {
+  stub.definir('GET /payments/{id}', { status: 200, corpo: { ...PAGAMENTO, id: 'pay_outro' } });
+  const erro = await erroDe(adaptador().buscarPagamento('pay_1'));
+  assert.equal(erro.tipo, 'resposta_invalida');
+});

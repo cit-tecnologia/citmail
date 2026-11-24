@@ -133,7 +133,7 @@ test('CA3: dados pessoais e campos fora da lista branca não chegam à linha nem
     observations: 'observacao-ficticia-xyz',
     invoiceUrl: 'https://fatura.test/x',
     bankSlipUrl: 'https://boleto.test/y',
-    creditCard: { creditCardNumber: '1234' },
+    creditCard: { creditCardNumber: 'cartao-ficticio-xyz' },
     campoDesconhecido: 'desconhecido-ficticio-xyz'
   };
   const resposta = await enviar(corpoDoEvento({ campoRaiz: 'raiz-ficticia-xyz' }, pagamento));
@@ -142,7 +142,7 @@ test('CA3: dados pessoais e campos fora da lista branca não chegam à linha nem
   const { rows } = await banco.admin.query('SELECT row_to_json(a)::text AS texto FROM asaas_webhook_evento a');
   assert.equal(rows.length, 1);
   const log = captura.texto();
-  for (const proibido of ['Fulano', 'fulano@', '00000000191', 'fatura.test', 'boleto.test', '1234',
+  for (const proibido of ['Fulano', 'fulano@', '00000000191', 'fatura.test', 'boleto.test', 'cartao-ficticio-xyz',
     'descricao-ficticia-xyz', 'observacao-ficticia-xyz', 'desconhecido-ficticio-xyz', 'raiz-ficticia-xyz']) {
     assert.ok(!rows[0].texto.includes(proibido), `linha com ${proibido}`);
     assert.ok(!log.includes(proibido), `log com ${proibido}`);

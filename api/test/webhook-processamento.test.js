@@ -211,7 +211,26 @@ describe('CA6: idempotência', () => {
     assert.equal((await contasDoTitular(banco.admin)).length, 1);
     assert.deepEqual(nomes(await eventosPublicados(banco.admin)), ['conta_titular_criada', 'pedido_pago']);
     const bruto2 = await leituraDoBruto(banco.admin, segundo);
-    assert.deepEqual([bruto2.situacao, bruto2.codigo], ['ignorado', 'pagamento_seguinte']);
+    assert.deepEqual([bruto2.situacao, bruto2.codigo], ['ignorado', 'pagamento_repetido']);
+  });
+
+  test('CA6(b): outro pagamento (pay_2) depois do 1º processado fica pagamento_seguinte, não pagamento_repetido', async () => {
+    const pedido = await semearPedido(banco.admin);
+    await processar(await brutoDeContas(pedido));
+    const brutoId = await brutoDeContas(pedido, { bruto: { pagamentoId: 'pay_2' }, pagamento: { id: 'pay_2' } });
+    await processar(brutoId);
+    const bruto = await leituraDoBruto(banco.admin, brutoId);
+    assert.deepEqual([bruto.situacao, bruto.codigo], ['ignorado', 'pagamento_seguinte']);
+  });
+
+  test('CA6(b): CONFIRMED e RECEIVED do mesmo pagamento dos domínios: o 2º fica pagamento_repetido', async () => {
+    const pedido = await semearPedido(banco.admin, { dominios: DOMINIO_NOVO, assinaturas: ASSINATURAS_COM_DOMINIOS });
+    await processar(await brutoDeDominios(pedido, { bruto: { eventoId: 'evt_d1' } }));
+    const segundo = await brutoDeDominios(pedido, { bruto: { eventoId: 'evt_d2', evento: 'PAYMENT_RECEIVED' } });
+    await processar(segundo);
+    const bruto = await leituraDoBruto(banco.admin, segundo);
+    assert.deepEqual([bruto.situacao, bruto.codigo], ['ignorado', 'pagamento_repetido']);
+    assert.deepEqual(nomes(await eventosPublicados(banco.admin)), ['dominio_pago']);
   });
 
   test('CA6(b): se o 2º evento escapar da checagem de estado, a chave do fato impede o 2º pedido_pago e a 2ª conta', async () => {
@@ -573,5 +592,87 @@ describe('CA12 e CA8: eventos fora da lista, assinatura desconhecida e erros rec
     await assert.rejects(processar('nao-e-uuid'), UnrecoverableError);
     await assert.rejects(processar(randomUUID()), UnrecoverableError);
     await assert.rejects(handler({ log }, undefined), UnrecoverableError);
+  });
+});
+
+describe('CA8(d): estado do pedido relido depois da trava', () => {
+  // `connect` é chamado depois da leitura sem trava e da conferência no Asaas, e antes do
+  // BEGIN: o pedido muda nessa janela.
+  function handlerComMudancaNaJanela(pedidoId, sql) {
+    const pool = {
+      query: (...args) => banco.app.query(...args),
+      connect: async () => {
+        await banco.admin.query(sql, [pedidoId]);
+        return banco.app.connect();
+      }
+    };
+    return criarHandlerWebhook({
+      pool, asaas: criarClienteAsaas({ baseUrl: stub.baseUrl, apiKey: 'CHAVE-FICTICIA', timeoutMs: 1000 }), filas, log
+    });
+  }
+
+  test('CA8(d): pedido que vira criando entre a leitura e a trava faz o handler lançar Error, sem efeito e com o bruto pendente', async () => {
+    const pedido = await semearPedido(banco.admin);
+    const brutoId = await brutoDeContas(pedido);
+    const h = handlerComMudancaNaJanela(pedido.pedidoId, "UPDATE pedido SET estado = 'criando', criando_desde = now() WHERE id = $1");
+    const erro = await h({ log }, { brutoId }).then(() => null, (e) => e);
+    assert.ok(erro instanceof Error && !(erro instanceof UnrecoverableError));
+    assert.equal((await leituraDoBruto(banco.admin, brutoId)).situacao, 'pendente');
+    await verificarSemEfeito(pedido, 'criando');
+  });
+
+  for (const [estado, sql] of [
+    ['cancelado', "UPDATE pedido SET estado = 'cancelado' WHERE id = $1"],
+    ['falhou_na_criacao', "UPDATE pedido SET estado = 'falhou_na_criacao', falha_motivo = 'motivo_ficticio' WHERE id = $1"]
+  ]) {
+    test(`CA8(d): pedido que vira ${estado} entre a leitura e a trava fica ignorado pedido_${estado}, com alerta e sem efeito`, async () => {
+      const pedido = await semearPedido(banco.admin);
+      const brutoId = await brutoDeContas(pedido);
+      await handlerComMudancaNaJanela(pedido.pedidoId, sql)({ log }, { brutoId });
+
+      const bruto = await leituraDoBruto(banco.admin, brutoId);
+      assert.deepEqual([bruto.situacao, bruto.codigo], ['ignorado', `pedido_${estado}`]);
+      await verificarSemEfeito(pedido, estado);
+      assert.deepEqual(filas.estado.alertas, [alertaEsperado(`pedido_${estado}`, brutoId, pedido.pedidoId)]);
+    });
+  }
+
+  test('CA8(d): o vencimento também não tem efeito com o pedido cancelado entre a leitura e a trava', async () => {
+    const pedido = await semearPedido(banco.admin);
+    semearPagamentoNoStub(stub, { id: 'pay_3', status: 'OVERDUE' });
+    const brutoId = await semearBruto(banco.admin, { evento: 'PAYMENT_OVERDUE', pagamentoId: 'pay_3', status: 'OVERDUE' });
+    await handlerComMudancaNaJanela(pedido.pedidoId, "UPDATE pedido SET estado = 'cancelado' WHERE id = $1")({ log }, { brutoId });
+    assert.equal((await leituraDoBruto(banco.admin, brutoId)).codigo, 'pedido_cancelado');
+    assert.deepEqual(await eventosPublicados(banco.admin), []);
+  });
+});
+
+describe('CA9: resultado já gravado por outra execução', () => {
+  test('CA9: se outra execução gravar o resultado antes, o handler loga "já processado por outra execução", não sobrescreve nem alerta', async () => {
+    const pedido = await semearPedido(banco.admin);
+    const brutoId = await brutoDeContas(pedido, { pagamento: { subscription: 'sub_outra' } });
+    const captura = criarCapturaDeLog();
+    const logCapturado = criarLogger({ level: 'info', stream: captura.stream });
+    const pool = {
+      query: async (texto, params) => {
+        if (/UPDATE asaas_webhook_evento SET situacao/.test(texto)) {
+          await banco.admin.query(
+            "UPDATE asaas_webhook_evento SET situacao = 'processado', processado_em = now(), codigo = 'outra_execucao' WHERE id = $1",
+            [brutoId]
+          );
+        }
+        return banco.app.query(texto, params);
+      },
+      connect: () => banco.app.connect()
+    };
+    const h = criarHandlerWebhook({
+      pool, asaas: criarClienteAsaas({ baseUrl: stub.baseUrl, apiKey: 'CHAVE-FICTICIA', timeoutMs: 1000 }), filas, log: logCapturado
+    });
+    await h({ log: logCapturado }, { brutoId });
+
+    assert.ok(captura.linhas().some((l) => l.msg === 'webhook já processado por outra execução' && l.brutoId === brutoId));
+    assert.ok(!captura.linhas().some((l) => l.msg === 'webhook sem efeito'));
+    assert.equal((await leituraDoBruto(banco.admin, brutoId)).codigo, 'outra_execucao');
+    assert.deepEqual(filas.estado.alertas, []);
   });
 });

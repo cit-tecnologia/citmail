@@ -336,3 +336,36 @@ test('CA10: o alerta de webhook enfileirado na fila alertas chega ao Telegram co
   await aguardarCondicao(() => fetchFalso.chamadas.length === 1);
   assert.match(JSON.parse(fetchFalso.chamadas[0].opcoes.body).text, /^Webhook do Asaas: codigo=estornado /);
 });
+
+test('CA10: alerta de webhook que esgota loga "alerta falhou" com o brutoId (UUID) e sem jobId', async (t) => {
+  const { filas, captura, criarWorkers, fechar } = criarFilasTeste({ alertaTentativas: 1, alertaBackoffMs: 20 });
+  t.after(fechar);
+  criarWorkers({ enviarAlerta: async () => { throw new Error('telegram fora do ar'); } });
+
+  await filas.alertas.add('webhook', { tipo: 'webhook', codigo: 'estornado', brutoId: UUID_FICTICIO, pedidoId: null }, { jobId: 'alerta-wh-falha' });
+  await aguardarCondicao(() => captura.linhas().some((l) => l.msg === 'alerta falhou'));
+
+  const linha = captura.linhas().find((l) => l.msg === 'alerta falhou');
+  assert.equal(linha.brutoId, UUID_FICTICIO);
+  assert.equal(linha.jobId, undefined);
+});
+
+test('CA10: o brutoId que não é UUID vira "-" no log de "alerta falhou"', async (t) => {
+  const { filas, captura, criarWorkers, fechar } = criarFilasTeste({ alertaTentativas: 1, alertaBackoffMs: 20 });
+  t.after(fechar);
+  criarWorkers({ enviarAlerta: async () => { throw new Error('telegram fora do ar'); } });
+
+  await filas.alertas.add('webhook', { tipo: 'webhook', codigo: 'estornado', brutoId: 'texto-livre', pedidoId: null }, { jobId: 'alerta-wh-falha2' });
+  await aguardarCondicao(() => captura.linhas().some((l) => l.msg === 'alerta falhou'));
+  assert.equal(captura.linhas().find((l) => l.msg === 'alerta falhou').brutoId, '-');
+});
+
+test('CA2(d): alerta de job esgotado que falha segue logando o jobId', async (t) => {
+  const { filas, captura, criarWorkers, fechar } = criarFilasTeste({ alertaTentativas: 1, alertaBackoffMs: 20 });
+  t.after(fechar);
+  criarWorkers({ enviarAlerta: async () => { throw new Error('telegram fora do ar'); } });
+
+  await filas.alertas.add('job_esgotado', { jobId: 'job-ficticio-log', job: 'x', pedidoId: undefined });
+  await aguardarCondicao(() => captura.linhas().some((l) => l.msg === 'alerta falhou'));
+  assert.equal(captura.linhas().find((l) => l.msg === 'alerta falhou').jobId, 'job-ficticio-log');
+});
