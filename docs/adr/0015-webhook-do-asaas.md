@@ -34,7 +34,7 @@ Opção 3. Proposto (CIT-64), a validar no sandbox (#57):
 3. **Recepção.** Só `INSERT ... ON CONFLICT (asaas_evento_id) DO NOTHING` em `asaas_webhook_evento` e 200 `{ recebido: true }`, também para o evento repetido. Nenhuma chamada ao Asaas na requisição. Log só com `resumoEventoAsaas` e o id do bruto.
 4. **Lista branca do bruto:** `asaas_evento_id`, `evento`, `request_id`, `pagamento_id`, `assinatura_id`, `referencia_externa` (até 100 caracteres), `status`, `billing_type`, `valor_centavos`, `vencimento` e `pago_em`. Valor fora do formato vira nulo. Nunca o corpo inteiro, `customer`, `description`, `observations`, URLs de fatura nem `creditCard*`.
 5. **Enfileirador** (`iniciarEnfileiradorWebhook`, no worker): a cada ciclo, lê até 50 brutos com `enfileirado_em` nulo, cria um job `asaas_webhook` (`jobId = asaas_webhook-<brutoId>`) num `addBulk` com prazo de 2 s e marca `enfileirado_em`. Usa as filas do publicador (conexão de produtor). Bruto com erro fica `pendente`, guardado para reenvio.
-6. **Alerta `webhook_parado`:** bruto `pendente` enfileirado há mais de 1 hora gera um alerta (`alerta-whp-<brutoId>`) uma vez só (`alertado_pendente_em`). Cobre o job que saiu do Redis (retenção de 30 dias do `failed`).
+6. **Alerta `webhook_parado`:** bruto `pendente` enfileirado há mais de 1 hora, ou recebido há mais de 1 hora e nunca enfileirado, gera um alerta (`alerta-whp-<brutoId>`) uma vez só (`alertado_pendente_em`). Cobre o job que saiu do Redis (retenção de 30 dias do `failed`).
 7. **Handler** (`criarHandlerWebhook`): acha o pedido pela assinatura local ou, sem ela, pelo `externalReference` `pedido:<id>:<tipo>` (pedido em `criando` lança e a fila tenta de novo); confere o pagamento no Asaas (`buscarPagamento`) fora da transação; decide pelo **status atual** no Asaas, não pelo do bruto:
 
    | Evento | Status atual | Resultado |
@@ -49,7 +49,7 @@ Opção 3. Proposto (CIT-64), a validar no sandbox (#57):
    | qualquer um dos três | outro | `ignorado` `status_desconhecido` + alerta |
 
    Divergência na conferência (`pagamento_inexistente`, `assinatura_divergente`, `referencia_divergente`, `valor_divergente`): bruto `divergente`, alerta e nenhum efeito. O efeito vai numa transação com `FOR UPDATE` do bruto (relendo a `situacao`) e do pedido; os alertas são enfileirados depois do `COMMIT`.
-8. **Idempotência por fato:** o 2º evento do mesmo pagamento encontra o pedido fora de `aguardando_pagamento` (ou `dominio_pago_em` preenchido) e vira `ignorado` `pagamento_seguinte`; a chave do evento de domínio é a do fato (anexo de eventos).
+8. **Idempotência por fato:** o 2º evento do mesmo pagamento encontra o pedido fora de `aguardando_pagamento` (ou `dominio_pago_em` preenchido) e vira `ignorado` `pagamento_repetido`; um pagamento seguinte ao 1º, `pagamento_seguinte`. Pedido relido como `cancelado` ou `falhou_na_criacao` depois da trava não recebe efeito (`pedido_<estado>`, com alerta); a chave do evento de domínio é a do fato (anexo de eventos).
 9. **Conta do titular** criada com `pedido_pago`, na mesma transação: e-mail do pedido em minúsculas, `sem_senha`. Com `fatura_retida`, não é criada (alerta `contato_divergente`). E-mail já em conta de outro cliente: alerta `conta_email_em_uso`, sem retry.
 10. **Alertas** na fila `alertas`, com o payload `{ tipo: 'webhook', codigo, brutoId, pedidoId }` (só ids e código, `jobId` `alerta-wh-<brutoId>`).
 
@@ -67,7 +67,10 @@ Opção 3. Proposto (CIT-64), a validar no sandbox (#57):
 - Um bruto parado há mais de 1 hora gera o alerta `webhook_parado`; o reenvio manual é zerar `enfileirado_em` do bruto (api/README.md).
 - **Pendência: limpeza do bruto após 90 dias.** O índice por `recebido_em` está pronto; a limpeza é história própria, com papel próprio (o papel da aplicação não tem `DELETE`).
 - Uma chamada ao Asaas por webhook (limite de requisições do Asaas, ADR 0005).
-- Alerta enfileirado depois do `COMMIT` se perde com o Redis fora nesse instante; o bruto fica com situação e código consultáveis (mesmo risco aceito no ADR 0005).
+- **Risco aceito:** o alerta do resultado é enfileirado depois do `COMMIT` e se perde se o Redis falhar nesse instante; o bruto fica com situação e código consultáveis (mesmo risco aceito no ADR 0005).
+- **A conta `sem_senha` não é prova de posse** do e-mail nem do documento: a E5 deve exigir verificação (link de primeiro acesso ao e-mail) antes de dar acesso aos dados do `cliente_id`. E-mail já ocupado por conta de terceiro precisa de liberação pela equipe (alerta `conta_email_em_uso`).
+- O papel `<banco>_aplicacao` é compartilhado entre a API e o worker: a API tem, por exemplo, `INSERT` em `conta_titular`, que só o worker usa. Separar os papéis por processo fica para uma história de infraestrutura.
+- O schema da rota exige `id` com prefixo `evt_` e `payment.id` quando há `payment`: premissas até a confirmação no sandbox (#57); fora delas, 400 e o Asaas acumula falhas.
 - E-mail como login único: o mesmo e-mail em dois documentos bloqueia a 2ª conta, com alerta e resolução manual.
 
 ## Riscos abertos

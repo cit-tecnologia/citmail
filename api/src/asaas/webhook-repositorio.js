@@ -63,16 +63,31 @@ export async function marcarEnfileirados(executor, ids) {
   await executor.query('UPDATE asaas_webhook_evento SET enfileirado_em = now() WHERE id = ANY($1)', [ids])
 }
 
-// Brutos `pendente` enfileirados há mais de 1 hora e ainda sem alerta (`webhook_parado`).
+// Brutos `pendente` ainda sem alerta (`webhook_parado`): enfileirados há mais de 1 hora
+// ou recebidos há mais de 1 hora e nunca enfileirados (Redis fora por muito tempo).
 export async function buscarParados(executor, lote) {
   const resultado = await executor.query(
     `SELECT id FROM asaas_webhook_evento
-      WHERE situacao = 'pendente' AND enfileirado_em < now() - interval '1 hour' AND alertado_pendente_em IS NULL
-      ORDER BY enfileirado_em, id
+      WHERE situacao = 'pendente' AND alertado_pendente_em IS NULL
+        AND (enfileirado_em < now() - interval '1 hour'
+             OR (enfileirado_em IS NULL AND recebido_em < now() - interval '1 hour'))
+      ORDER BY recebido_em, id
       LIMIT $1`,
     [lote]
   )
   return resultado.rows
+}
+
+// true se outro bruto de evento pago do mesmo pagamento já foi processado com efeito.
+export async function pagamentoJaAplicado(executor, pagamentoId, brutoId) {
+  const resultado = await executor.query(
+    `SELECT 1 FROM asaas_webhook_evento
+      WHERE pagamento_id = $1 AND id <> $2 AND situacao = 'processado'
+        AND evento IN ('PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED')
+      LIMIT 1`,
+    [pagamentoId, brutoId]
+  )
+  return resultado.rows.length > 0
 }
 
 export async function marcarAlertadoPendente(executor, ids) {

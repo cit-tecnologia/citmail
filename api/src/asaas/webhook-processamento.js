@@ -11,7 +11,7 @@ import { buscarContaPorClienteOuEmail, inserirContaSeNova } from '../contas/repo
 import { ErroAsaas } from './cliente.js'
 import {
   buscarAssinaturaPorAsaasId, buscarBruto, buscarEstadoDoPedido, buscarNaoEnfileirados, buscarParados,
-  marcarAlertadoPendente, marcarDominioPago, marcarEnfileirados, marcarResultado, mudarEstadoDoPedido,
+  marcarAlertadoPendente, marcarDominioPago, pagamentoJaAplicado, marcarEnfileirados, marcarResultado, mudarEstadoDoPedido,
   travarBruto, travarPedido
 } from './webhook-repositorio.js'
 
@@ -30,6 +30,9 @@ const STATUS_ESTORNO = new Set([
   'REFUNDED', 'REFUND_REQUESTED', 'REFUND_IN_PROGRESS', 'CHARGEBACK_REQUESTED', 'CHARGEBACK_DISPUTE',
   'AWAITING_CHARGEBACK_REVERSAL'
 ])
+
+// Pedido nesses estados nunca recebe efeito de pagamento nem de vencimento.
+const ESTADOS_SEM_EFEITO = new Set(['falhou_na_criacao', 'cancelado'])
 
 // Prazo do `add`/`addBulk`: com o Redis fora, o BullMQ espera a conexão indefinidamente.
 async function comPrazo(promessa) {
@@ -97,8 +100,12 @@ export function criarHandlerWebhook({ pool, asaas, filas, log: logRaiz }) {
     // Resultado sem efeito: só sai de `pendente` uma vez (UPDATE condicional), e só então alerta.
     async function terminar(situacao, codigo, { alerta = false, pedidoId = null } = {}) {
       const gravado = await marcarResultado(pool, brutoId, situacao, codigo)
+      if (!gravado) {
+        log.info({ brutoId }, 'webhook já processado por outra execução')
+        return
+      }
       log.info({ brutoId, situacao, codigo }, 'webhook sem efeito')
-      if (gravado && alerta) await enfileirarAlerta({ filas, log }, { codigo, brutoId, pedidoId })
+      if (alerta) await enfileirarAlerta({ filas, log }, { codigo, brutoId, pedidoId })
     }
 
     if (!(EVENTOS_PAGO.has(bruto.evento) || bruto.evento === EVENTO_VENCIDO) || !bruto.pagamento_id) {
@@ -121,7 +128,7 @@ export function criarHandlerWebhook({ pool, asaas, filas, log: logRaiz }) {
     }
     const pedidoId = assinatura.pedido_id
     if (assinatura.pedido_estado === 'criando') throw new Error('pedido em criação')
-    if (assinatura.pedido_estado === 'falhou_na_criacao' || assinatura.pedido_estado === 'cancelado') {
+    if (ESTADOS_SEM_EFEITO.has(assinatura.pedido_estado)) {
       return terminar('ignorado', `pedido_${assinatura.pedido_estado}`, { alerta: true, pedidoId })
     }
 
@@ -170,11 +177,16 @@ export function criarHandlerWebhook({ pool, asaas, filas, log: logRaiz }) {
         return
       }
       const pedido = await travarPedido(cliente, pedidoId)
-      const resultado = decisao.efeito === 'vencido'
-        ? await aplicarVencido(cliente, contexto, pedido)
-        : assinatura.tipo === 'contas'
-          ? await aplicarContasPagas(cliente, contexto, pedido)
-          : await aplicarDominiosPagos(cliente, contexto, pedido)
+      // Estado relido depois da trava: o pedido pode ter mudado desde a leitura sem trava.
+      // `criando` lança (o ROLLBACK abaixo); cancelado ou falho não tem efeito.
+      if (pedido.estado === 'criando') throw new Error('pedido em criação')
+      const resultado = ESTADOS_SEM_EFEITO.has(pedido.estado)
+        ? { situacao: 'ignorado', codigo: `pedido_${pedido.estado}`, alerta: `pedido_${pedido.estado}` }
+        : decisao.efeito === 'vencido'
+          ? await aplicarVencido(cliente, contexto, pedido)
+          : assinatura.tipo === 'contas'
+            ? await aplicarContasPagas(cliente, contexto, pedido)
+            : await aplicarDominiosPagos(cliente, contexto, pedido)
       await marcarResultado(cliente, brutoId, resultado.situacao, resultado.codigo)
       const fim = await cliente.query('COMMIT')
       if (fim.command === 'ROLLBACK') throw new Error('transação do webhook abortada')
@@ -195,9 +207,16 @@ export function criarHandlerWebhook({ pool, asaas, filas, log: logRaiz }) {
   }
 }
 
+// Efeito de pago já aplicado: o mesmo pagamento (outro evento do Asaas, ex.: CONFIRMED e
+// depois RECEIVED) é `pagamento_repetido`; outro pagamento é `pagamento_seguinte`.
+async function pagamentoJaVisto(cliente, bruto) {
+  const repetido = await pagamentoJaAplicado(cliente, bruto.pagamento_id, bruto.id)
+  return { situacao: 'ignorado', codigo: repetido ? 'pagamento_repetido' : 'pagamento_seguinte' }
+}
+
 // Pago, assinatura de contas: só o 1º pagamento (pedido em `aguardando_pagamento`).
-async function aplicarContasPagas(cliente, { assinatura, pedidoId, requestId }, pedido) {
-  if (pedido.estado !== 'aguardando_pagamento') return { situacao: 'ignorado', codigo: 'pagamento_seguinte' }
+async function aplicarContasPagas(cliente, { bruto, assinatura, pedidoId, requestId }, pedido) {
+  if (pedido.estado !== 'aguardando_pagamento') return pagamentoJaVisto(cliente, bruto)
   const temDominioNovo = pedido.tem_dominio_novo
   const novoEstado = !temDominioNovo
     ? 'pago'
@@ -238,8 +257,8 @@ async function aplicarContasPagas(cliente, { assinatura, pedidoId, requestId }, 
 }
 
 // Pago, assinatura de domínios: só o 1º pagamento (`dominio_pago_em` nulo).
-async function aplicarDominiosPagos(cliente, { assinatura, pedidoId, requestId }, pedido) {
-  if (pedido.dominio_pago_em !== null) return { situacao: 'ignorado', codigo: 'pagamento_seguinte' }
+async function aplicarDominiosPagos(cliente, { bruto, assinatura, pedidoId, requestId }, pedido) {
+  if (pedido.dominio_pago_em !== null) return pagamentoJaVisto(cliente, bruto)
   await marcarDominioPago(cliente, pedidoId)
   await registrarEvento(cliente, {
     nome: 'dominio_pago',
@@ -273,8 +292,9 @@ async function aplicarVencido(cliente, { bruto, assinatura, pagamento, requestId
  * `asaas_webhook` por bruto (`jobId = asaas_webhook-<brutoId>`, `data = { brutoId,
  * requestId }`) num só `addBulk` com prazo de 2 s; depois marca `enfileirado_em`. Falha:
  * `enfileirado_em` fica nulo e o lote volta no próximo ciclo. No mesmo ciclo, bruto
- * `pendente` enfileirado há mais de 1 hora gera um alerta `webhook_parado` (uma vez:
- * `alertado_pendente_em`). Nunca lança.
+ * `pendente` enfileirado há mais de 1 hora, ou recebido há mais de 1 hora e nunca
+ * enfileirado, gera um alerta `webhook_parado` (uma vez: `alertado_pendente_em`).
+ * Nunca lança.
  *
  * @returns {Promise<{ enfileirados: number, parados: number }>}
  */

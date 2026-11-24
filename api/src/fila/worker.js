@@ -91,7 +91,11 @@ export function criarWorkers({
     try {
       if (typeof job?.getState !== 'function') return
       if (await job.getState() === 'failed') {
-        log.error({ jobId: job.data?.jobId }, 'alerta falhou')
+        // Alerta do webhook (CIT-64): sem `jobId` no payload, o id do bruto (UUID ou `-`).
+        const ids = job.data?.tipo === 'webhook'
+          ? { brutoId: pedidoSeguro(job.data?.brutoId) }
+          : { jobId: job.data?.jobId }
+        log.error(ids, 'alerta falhou')
       }
     } catch (err) {
       log.error({ erro: err?.name }, 'alerta falhou')

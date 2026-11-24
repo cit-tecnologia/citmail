@@ -174,7 +174,8 @@ export function criarClienteAsaas({ baseUrl, apiKey, timeoutMs, fetch = globalTh
 
     // GET /payments/{id} (conferência do webhook, ADR 0015; CIT-64) → `{ id, subscription,
     // status, value, dueDate, externalReference }` validados (`value` em reais; campo
-    // opcional ausente → null). 404 → `ErroAsaas('nao_encontrado', 404)`.
+    // opcional ausente → null). 404 → `ErroAsaas('nao_encontrado', 404)`; `id` diferente do
+    // pedido → `resposta_invalida`.
     async buscarPagamento(pagamentoId, { signal } = {}) {
       let corpo
       try {
@@ -189,8 +190,10 @@ export function criarClienteAsaas({ baseUrl, apiKey, timeoutMs, fetch = globalTh
       if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new ErroAsaas('resposta_invalida')
       if (dueDate != null && (typeof dueDate !== 'string' || !DATA.test(dueDate))) throw new ErroAsaas('resposta_invalida')
       if (externalReference != null && typeof externalReference !== 'string') throw new ErroAsaas('resposta_invalida')
+      // Pagamento diferente do pedido: resposta inválida (a fila tenta de novo).
+      if (corpo.id !== pagamentoId) throw new ErroAsaas('resposta_invalida')
       return {
-        id: idValido(corpo.id),
+        id: pagamentoId,
         subscription: subscription == null ? null : idValido(subscription),
         status,
         value,
