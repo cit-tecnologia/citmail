@@ -77,8 +77,11 @@ export function criarWorkers({
       log.error({ jobId: job.id }, 'job desconhecido')
       throw new UnrecoverableError('job desconhecido')
     }
+    // `tentativa` (CIT-65): a atual (`feita`, contadas as anteriores) e o máximo, sem o
+    // `job` inteiro; o handler do e-mail grava `falhou` antes de relançar na última.
+    const tentativa = { feita: job.attemptsMade, maxima: job.opts?.attempts ?? 1 }
     return executarJob({ nome: job.name, correlacaoId: job.data?.requestId, log },
-      (contexto) => handler(contexto, job.data))
+      (contexto) => handler({ ...contexto, tentativa }, job.data))
   }, { ...opcoesComuns, connection: conexao, prefix: prefixo })
 
   // Sem listener de esgotado aqui: alerta que falha não gera outro alerta.
@@ -91,10 +94,13 @@ export function criarWorkers({
     try {
       if (typeof job?.getState !== 'function') return
       if (await job.getState() === 'failed') {
-        // Alerta do webhook (CIT-64): sem `jobId` no payload, o id do bruto (UUID ou `-`).
+        // Alertas do webhook (CIT-64) e do e-mail parado (CIT-65): sem `jobId` no payload,
+        // só o id do bruto ou do envio (UUID ou `-`).
         const ids = job.data?.tipo === 'webhook'
           ? { brutoId: pedidoSeguro(job.data?.brutoId) }
-          : { jobId: job.data?.jobId }
+          : job.data?.tipo === 'email_parado'
+            ? { envioId: pedidoSeguro(job.data?.envioId) }
+            : { jobId: job.data?.jobId }
         log.error(ids, 'alerta falhou')
       }
     } catch (err) {

@@ -1,5 +1,5 @@
-// Alertas pelo Telegram (ADR 0011): job esgotado (CIT-56) e resultado do webhook do
-// Asaas (`tipo: 'webhook'`, CIT-64). O texto leva só ids e códigos, nunca dado pessoal.
+// Alertas pelo Telegram (ADR 0011): job esgotado (CIT-56), resultado do webhook do
+// Asaas (`tipo: 'webhook'`, CIT-64) e e-mail parado (`tipo: 'email_parado'`, CIT-65). O texto leva só ids e códigos, nunca dado pessoal.
 // O token vai na URL: nunca entra em log nem no erro lançado (erro novo, sem `cause`,
 // porque a `cause` do `fetch` pode repetir a URL).
 
@@ -24,9 +24,14 @@ export function codigoSeguro(codigo) {
   return typeof codigo === 'string' && CODIGO.test(codigo) ? codigo : '-'
 }
 
-// Dois formatos: `{ jobId, job, pedidoId }` (job esgotado) e
-// `{ tipo: 'webhook', codigo, brutoId, pedidoId }` (webhook do Asaas, ids validados).
+// Três formatos: `{ jobId, job, pedidoId }` (job esgotado),
+// `{ tipo: 'webhook', codigo, brutoId, pedidoId }` (webhook do Asaas) e
+// `{ tipo: 'email_parado', envioId }` (e-mail pendente há mais de `EMAIL_PARADO_HORAS`),
+// com os ids validados.
 export function montarTextoAlerta(dados = {}) {
+  if (dados.tipo === 'email_parado') {
+    return `E-mail parado: envio=${pedidoSeguro(dados.envioId)}`
+  }
   if (dados.tipo === 'webhook') {
     return `Webhook do Asaas: codigo=${codigoSeguro(dados.codigo)} bruto=${pedidoSeguro(dados.brutoId)} ` +
       `pedido=${pedidoSeguro(dados.pedidoId)}`
@@ -37,6 +42,9 @@ export function montarTextoAlerta(dados = {}) {
 
 // Campos do log sem Telegram, com os mesmos ids validados do texto.
 function camposDoLog(dados) {
+  if (dados.tipo === 'email_parado') {
+    return { tipo: 'email_parado', envio: pedidoSeguro(dados.envioId) }
+  }
   if (dados.tipo === 'webhook') {
     return {
       tipo: 'webhook',
@@ -49,7 +57,7 @@ function camposDoLog(dados) {
 }
 
 /**
- * Devolve `enviarAlerta(dados)`, com `dados` num dos dois formatos de `montarTextoAlerta`.
+ * Devolve `enviarAlerta(dados)`, com `dados` num dos três formatos de `montarTextoAlerta`.
  * Sem token ou chat id (só fora de produção; o worker exige os dois em produção), o
  * alerta sai só no log.
  * Erro de rede ou status não 2xx: `warn` só com o nome do erro ou o status e lança
