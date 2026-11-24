@@ -278,6 +278,70 @@ describe('CIT-77 CA3: registro de domínio antes do pedido_pago', () => {
   });
 });
 
+describe('CIT-77 CA3: CLI e webhook disputando o mesmo pedido', () => {
+  // Espera, sem dormir, até `n` conexões do banco aguardarem um lock.
+  async function esperarBloqueados(n) {
+    for (let i = 0; i < 50000; i++) {
+      const { rows } = await banco.admin.query(
+        "SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'"
+      );
+      if (rows[0].n >= n) return;
+    }
+    throw new Error('conexões não chegaram a aguardar o lock');
+  }
+
+  async function cenario() {
+    const pedido = await semearPedido(banco.admin, { dominios: DOMINIO_NOVO, assinaturas: ASSINATURAS_COM_DOMINIOS });
+    await processar(await brutoDeDominios(pedido));
+    const { rows: [dominio] } = await banco.admin.query('SELECT id FROM pedido_dominio WHERE pedido_id = $1', [pedido.pedidoId]);
+    const { rows: [tarefa] } = await banco.admin.query(
+      "INSERT INTO tarefa_dominio (pedido_dominio_id, tipo) VALUES ($1, 'registro') RETURNING id", [dominio.id]
+    );
+    const brutoId = await brutoDeContas(pedido);
+    const saida = { write() {} };
+    const cli = () => executarDominio({
+      pool: banco.app, saida, erro: saida, agora: () => new Date('2026-12-01T13:00:00Z'), usuarioSistema: 'operador_teste',
+      args: ['registrado', tarefa.id, '--expira-em', '2027-12-01', '--operador', 'equipe_teste']
+    });
+    return { pedido, brutoId, cli };
+  }
+
+  async function disputar(primeiro) {
+    const { pedido, brutoId, cli } = await cenario();
+    const trava = await banco.admin.connect();
+    let resultadoCli;
+    let webhook;
+    try {
+      await trava.query('BEGIN');
+      await trava.query('SELECT id FROM pedido WHERE id = $1 FOR UPDATE', [pedido.pedidoId]);
+      const iniciarCli = () => { resultadoCli = cli(); };
+      const iniciarWebhook = () => { webhook = processar(brutoId); };
+      const [a, b] = primeiro === 'webhook' ? [iniciarWebhook, iniciarCli] : [iniciarCli, iniciarWebhook];
+      a();
+      await esperarBloqueados(1);
+      b();
+      await esperarBloqueados(2);
+      await trava.query('COMMIT');
+    } finally {
+      trava.release();
+    }
+    await webhook;
+    assert.equal(await resultadoCli, 0);
+    assert.equal((await estadoDoPedido(banco.admin, pedido.pedidoId)).estado, 'pago');
+    const eventos = nomes(await eventosPublicados(banco.admin));
+    assert.equal(eventos.filter((nome) => nome === 'dominio_registrado').length, 1);
+    assert.equal(eventos.filter((nome) => nome === 'pedido_pago').length, 1);
+  }
+
+  test('CIT-77 CA3: webhook na frente e CLI atrás deixam o pedido pago e 1 dominio_registrado', async () => {
+    await disputar('webhook');
+  });
+
+  test('CIT-77 CA3: CLI na frente e webhook atrás deixam o pedido pago e 1 dominio_registrado', async () => {
+    await disputar('cli');
+  });
+});
+
 describe('CA6: idempotência', () => {
   test('CA6(b): PAYMENT_CONFIRMED e PAYMENT_RECEIVED do mesmo pagamento geram uma mudança, uma conta e um de cada evento', async () => {
     const pedido = await semearPedido(banco.admin);

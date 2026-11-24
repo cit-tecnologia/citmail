@@ -4,6 +4,7 @@
 import { test, before, after, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { executarCicloDominio, iniciarTarefasDominio } from '../src/dominios/laco.js'
+import { buscarCandidatosLembrete } from '../src/dominios/repositorio.js'
 import { montarTextoAlerta } from '../src/alertas/telegram.js'
 import { somarDias } from '../src/dominios/dias-uteis.js'
 import {
@@ -218,6 +219,34 @@ for (const [nome, abertura, instante, esperados] of CASOS_LEMBRETE) {
     assert.equal(lembretes(filas).length, esperados)
   })
 }
+
+const UM_DOMINIO = [{ nome: DOMINIO_UM, tipo: 'novo', papel: 'principal' }]
+const QUINTA = '2026-12-03T13:00:00Z'
+
+test('CA6: tarefas recentes em número maior que o lote não impedem o lembrete da antiga', async () => {
+  const { tarefaIds: [antiga] } = await semearAvisada(SEGUNDA, { dominios: UM_DOMINIO })
+  for (let i = 0; i < 5; i++) await semearAvisada('2026-12-03T12:00:00Z', { dominios: UM_DOMINIO })
+  const filas = criarFilas()
+  const resultado = await executarCicloDominio({ pool: banco.app, filas, log, agora: () => new Date(QUINTA), lote: 2 })
+  assert.equal(resultado.lembretes, 1)
+  assert.equal(filas.estado.alertas[0].data.tarefaId, antiga)
+})
+
+test('CA6: buscarCandidatosLembrete corta no SQL as tarefas abertas há menos de 46 horas', async () => {
+  const { tarefaIds: [antiga] } = await semearAvisada('2026-12-01T13:00:00Z', { dominios: UM_DOMINIO })
+  await semearAvisada('2026-12-02T13:00:00Z', { dominios: UM_DOMINIO })
+  const candidatos = await buscarCandidatosLembrete(banco.app, '2026-12-03', new Date(QUINTA), 10)
+  assert.deepEqual(candidatos.map((c) => c.id), [antiga])
+})
+
+test('CA6: buscarCandidatosLembrete ordena pela abertura antes do último lembrete', async () => {
+  const { tarefaIds: [maisAntiga] } = await semearAvisada('2026-11-26T13:00:00Z', { dominios: UM_DOMINIO })
+  const { tarefaIds: [maisNova] } = await semearAvisada('2026-11-30T13:00:00Z', { dominios: UM_DOMINIO })
+  await banco.admin.query("UPDATE tarefa_dominio SET ultimo_lembrete_em = '2026-12-02T13:00:00Z' WHERE id = $1", [maisAntiga])
+  const candidatos = await buscarCandidatosLembrete(banco.app, '2026-12-03', new Date(QUINTA), 1)
+  assert.deepEqual(candidatos.map((c) => c.id), [maisAntiga])
+  assert.notEqual(maisAntiga, maisNova)
+})
 
 test('CA6: o lembrete leva o código, a tarefa e o pedido, com jobId do dia', async () => {
   const { pedidoId, tarefaIds } = await semearAvisada(SEGUNDA, { dominios: [{ nome: DOMINIO_UM, tipo: 'novo', papel: 'principal' }] })

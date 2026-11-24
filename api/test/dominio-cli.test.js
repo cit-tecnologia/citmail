@@ -331,9 +331,19 @@ test('CA5: nenhuma linha de auditoria contém o nome do domínio nem dado do tit
   }
 })
 
-test('CA5: usuarioDoSistema prefere SUDO_USER e, sem ele, usa o usuário do processo', () => {
+test('CA5: usuarioDoSistema usa SUDO_USER só quando o processo roda como root', (t) => {
+  t.mock.method(process, 'getuid', () => 0)
   assert.equal(usuarioDoSistema({ SUDO_USER: 'ops_teste' }), 'ops_teste')
-  assert.equal(typeof usuarioDoSistema({}), 'string')
+})
+
+test('CA5: usuarioDoSistema ignora SUDO_USER forjado quando o processo não é root', (t) => {
+  t.mock.method(process, 'getuid', () => 1000)
+  const usuario = usuarioDoSistema({ SUDO_USER: 'ops_forjado' })
+  assert.notEqual(usuario, 'ops_forjado')
+  assert.ok(usuario.length > 0)
+})
+
+test('CA5: usuarioDoSistema sem SUDO_USER usa o usuário do processo', () => {
   assert.ok(usuarioDoSistema({}).length > 0)
 })
 
@@ -404,6 +414,47 @@ test('CA8: mostrar com auditoria que lança devolve 1 e a saída não tem dado d
   assert.equal(saida, '')
   assert.match(erro, /XX000/)
   for (const dado of DADOS_TITULAR) assert.ok(!erro.includes(dado), dado)
+})
+
+test('CA8: mostrar com auditoria que lança diz "auditoria não gravada" com o code, saída 1', async () => {
+  const { tarefaIds } = await semearUma()
+  const falha = async () => { throw Object.assign(new Error('x'), { code: 'XX000' }) }
+  const { codigo, erro } = await rodar(['mostrar', tarefaIds[0], '--operador', OPERADOR], { auditoria: falha })
+  assert.equal(codigo, 1)
+  assert.equal(erro, 'auditoria não gravada: nada exibido (XX000)\n')
+})
+
+test('CA8: mostrar com a consulta falhando diz "consulta falhou" com o code, saída 1', async () => {
+  const pool = { async query() { throw Object.assign(new Error('Fulano Ficticio'), { code: '57P01' }) } }
+  const { codigo, erro, saida } = await rodar(['mostrar', '00000000-0000-4000-8000-000000000001', '--operador', OPERADOR], { pool })
+  assert.equal(codigo, 1)
+  assert.equal(erro, 'consulta falhou: nada exibido (57P01)\n')
+  assert.equal(saida, '')
+})
+
+const HOSTIL = 'Fulano\x1b]52;c;ZXZpbA==\x07 \u202eoculto\u2066x\u200f\x7f\u0085fim'
+
+function semControle(texto) {
+  // eslint-disable-next-line no-control-regex -- conferir a ausência de controles é o objetivo
+  return !/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(texto)
+}
+
+test('CA8: mostrar troca controles e caracteres de direção do titular por U+FFFD', async () => {
+  const { clienteId, tarefaIds } = await semearUma()
+  await banco.admin.query('UPDATE cliente SET nome = $2 WHERE id = $1', [clienteId, HOSTIL])
+  const { codigo, saida } = await rodar(['mostrar', tarefaIds[0], '--operador', OPERADOR])
+  assert.equal(codigo, 0)
+  assert.ok(semControle(saida), JSON.stringify(saida))
+  assert.ok(saida.includes('Fulano\uFFFD]52;c;ZXZpbA==\uFFFD \uFFFDoculto\uFFFDx\uFFFD\uFFFD\uFFFDfim'))
+})
+
+test('CA8: listar troca controles e caracteres de direção do domínio por U+FFFD', async () => {
+  const { dominioIds } = await semearUma()
+  await banco.admin.query('UPDATE pedido_dominio SET nome = $2 WHERE id = $1', [dominioIds[0], HOSTIL])
+  const { codigo, saida } = await rodar(['listar'])
+  assert.equal(codigo, 0)
+  assert.ok(semControle(saida.replaceAll('\n', '').replaceAll('\t', '')), JSON.stringify(saida))
+  assert.ok(saida.includes('\uFFFD'))
 })
 
 test('CA8: mostrar de tarefa inexistente devolve 1 sem auditoria nem saída', async () => {
