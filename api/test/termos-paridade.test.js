@@ -15,7 +15,8 @@ function textoDoParagrafo(id) {
 
 for (const id of ['termosVersao', 'termosVersaoFim']) {
   test(`CA8: #${id} de termos.html exibe a versão vigente do servidor`, () => {
-    assert.ok(textoDoParagrafo(id).startsWith(`Versão ${VERSAO_TERMOS}`), textoDoParagrafo(id));
+    const escapada = VERSAO_TERMOS.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    assert.match(textoDoParagrafo(id), new RegExp(`^Versão ${escapada}(\\s|$)`));
   });
 }
 
