@@ -1,11 +1,12 @@
 // @ts-check
 import { test, expect } from './fixtures.js';
+import { BASE_API, CONTRA_SITE_PUBLICADO, mockarPainel, descartarPainel } from './painel-mock.js';
 
 const paginas = [
   { arquivo: 'index.html', titulo: 'CITMail — E-mail corporativo com domínio próprio' },
   { arquivo: 'login.html', titulo: 'Entrar — CITMail' },
   { arquivo: 'checkout.html', titulo: 'Contratar Plano — CITMail' },
-  { arquivo: 'painel.html', titulo: 'Painel do Cliente — CITMail' },
+  // CIT-70: painel.html sem sessão redireciona para login.html (caso próprio abaixo, fora desta lista).
   { arquivo: 'termos.html', titulo: 'Termos de Uso — CITMail' },
   { arquivo: 'pedido.html', titulo: 'Acompanhe seu pedido — CITMail' },
 ];
@@ -106,6 +107,18 @@ for (const { arquivo, titulo } of paginas) {
   });
 }
 
+// CIT-70: sem a API (modo local: Pages, homologação, 127.0.0.1) o painel não tem sessão e vai para o login.
+// Roda também contra CITMAIL_BASE_URL (smoke da homologação); por isso não fixa o subcaminho /citmail/.
+test('painel.html sem sessão redireciona para login.html, com os assets do painel servidos', { tag: ['@CIT-70', '@CIT-158', '@CIT-152'] }, async ({ page, baseURL, erros }) => {
+  await page.goto('painel.html', { waitUntil: 'networkidle' });
+  await expect(page).toHaveURL(new URL('login.html', baseURL).href);
+  await expect(page).toHaveTitle('Entrar — CITMail');
+
+  // os assets de painel.html continuam publicados (a página nunca os usa no modo local, mas o modo API depende deles)
+  const status = await page.evaluate(async lista => (await Promise.all(lista.map(c => fetch(new URL(c, location.href))))).map(r => r.status), ['assets/painel.js', 'assets/painel.css']);
+  expect(status, 'assets/painel.js e assets/painel.css respondem 200').toEqual([200, 200]);
+});
+
 // CIT-152, CA5: a 320 px, nenhuma das quatro páginas (nem os modais) rola na horizontal.
 test.describe('CIT-152 CA5 — 320 px', { tag: '@CIT-152' }, () => {
   test.beforeEach(async ({ page }, testInfo) => {
@@ -121,27 +134,33 @@ test.describe('CIT-152 CA5 — 320 px', { tag: '@CIT-152' }, () => {
     });
   }
 
-  test('CA5 login a 320 px com o modal "Recuperar senha" aberto e com o toast sem rolagem horizontal', async ({ page, erros }) => {
-    await page.goto('login.html', { waitUntil: 'networkidle' });
-    await page.locator('[data-login-acao="esqueci"]').click();
-    await expect(page.locator('#forgotOverlay')).toBeVisible();
-    expect(await semRolagemHorizontal(page), 'modal aberto').toBe(true);
-    await page.locator('#fForgotEmail').fill('teste@fixture.com.br');
-    await page.locator('[data-login-acao="enviar"]').click();
-    await expect(page.locator('body > div', { hasText: 'Link enviado' })).toBeVisible();
-    expect(await semRolagemHorizontal(page), 'toast visível').toBe(true);
-  });
+  // CIT-70: no modo local o formulário e o modal ficam ocultos; o modal "Recuperar senha" só existe no modo API
+  // (localhost:4200, com /api/painel/* mockado). Pulado quando CITMAIL_BASE_URL aponta para um site publicado.
+  test.describe('modo API', { tag: '@CIT-70' }, () => {
+    test.use({ baseURL: BASE_API });
+    test.skip(CONTRA_SITE_PUBLICADO, 'modo API só existe em http://localhost:4200 (Vite local)');
 
-  test('CA5 painel a 320 px com o modal DNS ("Adicionar" e "Editar") aberto sem rolagem horizontal', async ({ page, erros }) => {
-    await page.goto('painel.html', { waitUntil: 'networkidle' });
-    await page.locator('#sidebarToggle').click();
-    await page.locator('.nav-item[data-section="dns"]').click();
-    await page.locator('#btnDnsAdd').click();
-    await expect(page.locator('#modalDnsRecord')).toHaveClass(/open/);
-    expect(await semRolagemHorizontal(page), 'modal DNS "Adicionar"').toBe(true);
-    await page.locator('[data-fechar-modal="modalDnsRecord"]').first().click();
-    await page.locator('[data-dns-acao="editar"][data-dns-id="1"]').click();
-    await expect(page.locator('#modalDnsRecord')).toHaveClass(/open/);
-    expect(await semRolagemHorizontal(page), 'modal DNS "Editar"').toBe(true);
+    test('CA5 login a 320 px com o modal "Recuperar senha" aberto e com o toast sem rolagem horizontal', async ({ page, erros }) => {
+      await mockarPainel(page);
+      await page.goto('login.html', { waitUntil: 'networkidle' });
+      await page.locator('[data-login-acao="esqueci"]').click();
+      await expect(page.locator('#forgotOverlay')).toBeVisible();
+      expect(await semRolagemHorizontal(page), 'modal aberto').toBe(true);
+      await page.locator('#fForgotEmail').fill('teste@fixture.com.br');
+      await page.locator('[data-login-acao="enviar"]').click();
+      await expect(page.locator('body > div', { hasText: 'Link enviado' })).toBeVisible();
+      expect(await semRolagemHorizontal(page), 'toast visível').toBe(true);
+      descartarPainel(erros);
+    });
+
+    test('CA5 painel a 320 px com a sessão mockada e o menu aberto sem rolagem horizontal', async ({ page, erros }) => {
+      await mockarPainel(page, { sessao: 200 });
+      await page.goto('painel.html', { waitUntil: 'networkidle' });
+      await expect(page.locator('#painelEmail')).toHaveText('titular@exemplo.com.br');
+      await page.locator('#sidebarToggle').click();
+      await expect(page.locator('#sidebar')).toHaveClass(/open/);
+      expect(await semRolagemHorizontal(page), 'menu aberto').toBe(true);
+      descartarPainel(erros);
+    });
   });
 });
