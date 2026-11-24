@@ -66,13 +66,18 @@ function motivoSemEnvio(pedido) {
 }
 
 const periodo = (ciclo) => (ciclo === 'anual' ? 'por ano' : 'por mês')
+const itensDe = (v) => [...v.contas, ...v.addons]
+const rotuloDominios = (v) => (v.dominioAguardandoPagamento ? 'Domínios (a pagar)' : 'Domínios')
 
 export const compraConfirmada = {
   versao: 1,
   // `contexto.log` (opcional) recebe o motivo, em código, de não enviar; sem dado do pedido.
   async carregar(cliente, refs, contexto = {}) {
     const pedidoId = refs?.pedidoId
-    if (typeof pedidoId !== 'string' || !UUID.test(pedidoId)) return null
+    if (typeof pedidoId !== 'string' || !UUID.test(pedidoId)) {
+      contexto.log?.info({ motivo: 'inexistente' }, 'compra confirmada sem envio')
+      return null
+    }
     // `tem_dominio_novo`: mesma expressão de `travarPedido` (webhook, CIT-64).
     const resultado = await cliente.query(
       `SELECT estado, fatura_retida, ciclo, itens, contato_nome, contato_email,
@@ -89,6 +94,9 @@ export const compraConfirmada = {
       return null
     }
     const { contas, addons } = listarItens(pedido.itens)
+    if (contas.length + addons.length === 0) {
+      contexto.log?.info({ pedidoId, aviso: 'itens_sem_rotulo' }, 'compra confirmada sem itens listados')
+    }
     return {
       destinatario: pedido.contato_email,
       variaveis: {
@@ -109,12 +117,12 @@ export const compraConfirmada = {
 <body>
 <p>Olá, ${v.nome}.</p>
 <p>Confirmamos o pagamento da sua compra no CITMail.</p>
-<p>Itens contratados (ciclo ${v.ciclo}):</p>
+${itensDe(v).length > 0 ? html`<p>Itens contratados (ciclo ${v.ciclo}):</p>
 <ul>
-${[...v.contas, ...v.addons].map((item) => html`<li>${item.quantidade} × ${item.rotulo}</li>
+${itensDe(v).map((item) => html`<li>${item.quantidade} × ${item.rotulo}</li>
 `)}</ul>
-${v.valorContas ? html`<p>Contas e add-ons: ${v.valorContas} ${periodo(v.ciclo)}.</p>
-` : ''}${v.valorDominios ? html`<p>Domínios: ${v.valorDominios} por ano.</p>
+` : ''}${v.valorContas ? html`<p>Contas e add-ons: ${v.valorContas} ${periodo(v.ciclo)}.</p>
+` : ''}${v.valorDominios ? html`<p>${rotuloDominios(v)}: ${v.valorDominios} por ano.</p>
 ` : ''}${v.dominioNovo
     ? html`<p>O registro do domínio novo é feito manualmente pela nossa equipe, por isso a ativação não fica pronta em 5 minutos. Avisaremos por um novo e-mail quando terminar.</p>
 ${v.dominioAguardandoPagamento ? html`<p>O registro começa após a confirmação do pagamento do domínio.</p>
@@ -130,13 +138,17 @@ ${v.dominioAguardandoPagamento ? html`<p>O registro começa após a confirmaçã
       texto`Olá, ${v.nome}.`,
       '',
       'Confirmamos o pagamento da sua compra no CITMail.',
-      '',
-      texto`Itens contratados (ciclo ${v.ciclo}):`,
-      ...[...v.contas, ...v.addons].map((item) => texto`- ${item.quantidade} × ${item.rotulo}`),
       ''
     ]
+    if (itensDe(v).length > 0) {
+      linhas.push(
+        texto`Itens contratados (ciclo ${v.ciclo}):`,
+        ...itensDe(v).map((item) => texto`- ${item.quantidade} × ${item.rotulo}`),
+        ''
+      )
+    }
     if (v.valorContas) linhas.push(texto`Contas e add-ons: ${v.valorContas} ${periodo(v.ciclo)}.`)
-    if (v.valorDominios) linhas.push(texto`Domínios: ${v.valorDominios} por ano.`)
+    if (v.valorDominios) linhas.push(texto`${rotuloDominios(v)}: ${v.valorDominios} por ano.`)
     linhas.push('')
     if (v.dominioNovo) {
       linhas.push('O registro do domínio novo é feito manualmente pela nossa equipe, por isso a ativação não fica pronta em 5 minutos. Avisaremos por um novo e-mail quando terminar.')
