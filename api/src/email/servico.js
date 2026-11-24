@@ -7,7 +7,7 @@
 import pg from 'pg'
 import { UnrecoverableError } from 'bullmq'
 import { camposSensiveis } from '../log.js'
-import { limparLinha } from './html.js'
+import { ehHtmlSeguro, limparLinha } from './html.js'
 import { mascararEmail } from './mascara.js'
 import { modelosDoAmbiente, validarModelos } from './modelos/index.js'
 import { buscarEnvio, inserirEnvioSeNovo, marcarEnviado, marcarFalha, marcarNaoEnviado } from './repositorio.js'
@@ -21,6 +21,9 @@ const VALOR_REF = /^[A-Za-z0-9_-]{1,64}$/
 const REFS_MAX_BYTES = 1024
 const CODIGO_ERRO = /^[A-Z0-9_]{1,32}$/
 const MESSAGE_ID_MAX = 255
+// Um único addr-spec: sem lista (`,` `;`), nome de exibição (`<` `>` `"`), comentário,
+// espaço nem segundo `@`. O envelope SMTP leva só ele.
+const ENDERECO = /^[^\s,;<>"()[\]\\@]{1,64}@[^\s,;<>"()[\]\\@]{1,253}$/
 const CAMPOS_SENSIVEIS = new Set(camposSensiveis.map((campo) => campo.toLowerCase()))
 
 // Classificação do erro do `nodemailer` (decisão 8 do plano; revisar no smoke da #57).
@@ -60,6 +63,12 @@ export function classificarErroEmail(err) {
   const definitivo = CODIGOS_DEFINITIVOS_5XX.has(code) && responseCode >= 500
   const erroCodigo = responseCode !== undefined ? String(responseCode) : code ?? 'ERRO_DESCONHECIDO'
   return { code, responseCode, erroCodigo, definitivo }
+}
+
+// Endereço do remetente para o envelope (`MAIL FROM`): o de `Nome <addr>` ou o próprio valor.
+function enderecoDoRemetente(remetente) {
+  const entre = /<([^<>]+)>\s*$/.exec(remetente ?? '')
+  return (entre ? entre[1] : String(remetente ?? '')).trim()
 }
 
 function invalido(motivo) {
@@ -133,6 +142,7 @@ export async function solicitarEmail(cliente, dados, modelos = modelosDoAmbiente
  */
 export function criarHandlerEmail({ pool, modelos, transporte, remetente, responderPara, log: logRaiz }) {
   validarModelos(modelos)
+  const envelopeFrom = enderecoDoRemetente(remetente)
   return async function enviarEmail({ log = logRaiz, tentativa } = {}, { envioId, geracao } = {}) {
     if (typeof envioId !== 'string' || !UUID.test(envioId)) throw new UnrecoverableError('envioId inválido')
     if (!Number.isInteger(geracao) || geracao < 1) throw new UnrecoverableError('geracao inválida')
@@ -158,17 +168,21 @@ export function criarHandlerEmail({ pool, modelos, transporte, remetente, respon
 
     const dados = await modelo.carregar(pool, envio.refs)
     const destinatario = limparLinha(dados?.destinatario)
-    if (!destinatario) {
+    if (!ENDERECO.test(destinatario)) {
       await marcarNaoEnviado(pool, envioId, geracao, 'SEM_DESTINATARIO')
       log.info({ ...campos, estado: 'nao_enviado', erro_codigo: 'SEM_DESTINATARIO' }, 'e-mail sem destinatário')
       return
     }
     const variaveis = dados.variaveis ?? {}
+    // HTML montado fora do tagged template `html` não tem escape garantido: erro do modelo.
+    const corpoHtml = modelo.html(variaveis)
+    if (!ehHtmlSeguro(corpoHtml)) throw new UnrecoverableError('modelo sem escape')
     const mensagem = {
       from: remetente,
       to: destinatario,
+      envelope: { from: envelopeFrom, to: [destinatario] },
       subject: limparLinha(modelo.assunto(variaveis)),
-      html: String(modelo.html(variaveis)),
+      html: corpoHtml.toString(),
       text: String(modelo.texto(variaveis))
     }
     if (responderPara) mensagem.replyTo = responderPara

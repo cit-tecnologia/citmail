@@ -19,7 +19,8 @@ CREATE TABLE email_envio (
   -- Reenvio (decisão 10): cada reset soma 1 e o enfileirador cria o job `email_enviar-<id>-<geracao>`.
   geracao integer NOT NULL DEFAULT 1 CHECK (geracao >= 1),
   tentativas integer NOT NULL DEFAULT 0 CHECK (tentativas >= 0),
-  -- Só código SMTP ou do `nodemailer`, ou `SEM_DESTINATARIO`: nunca a mensagem do servidor.
+  -- Só código SMTP ou do `nodemailer`, `SEM_DESTINATARIO` ou `ERRO_DESCONHECIDO` (erro sem
+  -- código): nunca a mensagem do servidor.
   erro_codigo text CHECK (erro_codigo ~ '^[A-Z0-9_]{1,32}$'),
   message_id text CHECK (char_length(message_id) <= 255),
   criado_em timestamptz NOT NULL DEFAULT now(),
@@ -33,9 +34,10 @@ CREATE INDEX email_envio_pendente_idx ON email_envio (enfileirado_em) WHERE esta
 -- Retenção de 90 dias (limpeza em história própria).
 CREATE INDEX email_envio_criado_idx ON email_envio (criado_em);
 
--- O REVOKE explícito ao papel anula um ALTER DEFAULT PRIVILEGES futuro. A aplicação não
--- escolhe `id`, `criado_em` nem `geracao` no INSERT, não altera `modelo`, `refs`,
--- `chave_idempotencia` nem `evento_id`, e não apaga.
+-- O REVOKE explícito ao papel anula um ALTER DEFAULT PRIVILEGES futuro. A aplicação só
+-- insere as colunas de `solicitarEmail` (estado, tentativas e datas nascem no padrão e
+-- mudam por UPDATE), não altera `modelo`, `refs`, `chave_idempotencia` nem `evento_id`,
+-- e não apaga.
 DO $$
 DECLARE
   papel text := current_database() || '_aplicacao';
@@ -43,8 +45,7 @@ BEGIN
   EXECUTE format('REVOKE ALL ON email_envio FROM PUBLIC, %I', papel);
   EXECUTE format('GRANT SELECT ON email_envio TO %I', papel);
   EXECUTE format(
-    'GRANT INSERT (evento_id, chave_idempotencia, modelo, versao_modelo, refs, destinatario_mascarado, estado, '
-    'tentativas, erro_codigo, message_id, enfileirado_em, enviado_em, alertado_parado_em) ON email_envio TO %I',
+    'GRANT INSERT (evento_id, chave_idempotencia, modelo, versao_modelo, refs) ON email_envio TO %I',
     papel
   );
   EXECUTE format(

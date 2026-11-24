@@ -19,6 +19,11 @@ class HtmlSeguro {
   }
 }
 
+// true só para o resultado do tagged template `html` (o handler recusa outro tipo).
+export function ehHtmlSeguro(valor) {
+  return valor instanceof HtmlSeguro
+}
+
 export function escaparHtml(valor) {
   return String(valor).replace(/[&<>"']/g, (caractere) => ESCAPES[caractere])
 }

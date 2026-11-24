@@ -149,10 +149,23 @@ const REMETENTE_PADRAO = 'CITMail <naoresponda@citmail.com.br>'
 // eslint-disable-next-line no-control-regex -- recusar caractere de controle é o objetivo
 const CONTROLE = /[\u0000-\u001f\u007f]/
 
+// Loopback ou endereço não especificado, nas formas que o resolvedor aceita: `localhost`
+// (e `*.localhost`), IPv4 127/8 abreviado (`127.1`) ou não, `0`/`0.0.0.0`, IPv6 `::1` e
+// `::` por extenso ou não e o IPv4 mapeado (`::ffff:127.0.0.1`). O `URL` normaliza as formas.
 function hostLoopback(host) {
-  const semColchetes = host.replace(/^\[(.*)\]$/, '$1').toLowerCase()
-  return semColchetes === 'localhost' || semColchetes.endsWith('.localhost') || semColchetes === '::1' ||
-    semColchetes === '0.0.0.0' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(semColchetes)
+  let normalizado
+  try {
+    normalizado = new URL(`http://${host.includes(':') && !host.startsWith('[') ? `[${host}]` : host}`).hostname.toLowerCase()
+  } catch {
+    return false
+  }
+  if (normalizado === 'localhost' || normalizado.endsWith('.localhost')) return true
+  if (/^127\.\d+\.\d+\.\d+$/.test(normalizado) || normalizado === '0.0.0.0') return true
+  if (normalizado === '[::1]' || normalizado === '[::]') return true
+  // IPv4 mapeado em IPv6: o `URL` o escreve em hexadecimal (`[::ffff:7f00:1]`).
+  const mapeado = /^\[::ffff:([0-9a-f]{1,4}):[0-9a-f]{1,4}\]$/.exec(normalizado)
+  if (mapeado) return mapeado[1].padStart(4, '0').startsWith('7f') || /^0{1,4}$/.test(mapeado[1])
+  return false
 }
 
 function lerEnderecoEmail(env, nome, padrao) {
@@ -165,7 +178,7 @@ function lerEnderecoEmail(env, nome, padrao) {
 
 function lerEmail(env, nodeEnv) {
   const producao = nodeEnv === 'production'
-  const emailTransporte = env.EMAIL_TRANSPORTE || 'desligado'
+  const emailTransporte = (env.EMAIL_TRANSPORTE ?? '').trim() || 'desligado'
   if (!TRANSPORTES_EMAIL.includes(emailTransporte)) {
     throw new Error(`EMAIL_TRANSPORTE inválida: use ${TRANSPORTES_EMAIL.join(' ou ')}`)
   }
@@ -193,7 +206,8 @@ function lerEmail(env, nodeEnv) {
     smtpUsuario,
     smtpSenha,
     smtpTimeoutMs: lerInteiro(env, 'SMTP_TIMEOUT_MS', 10000, 1000, 60000),
-    smtpRequireTls: producao
+    // TLS exigido em todo host fora do loopback (a senha nunca sai em claro pela rede).
+    smtpRequireTls: !hostLoopback(smtpHost)
   }
 }
 

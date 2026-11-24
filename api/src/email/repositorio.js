@@ -101,8 +101,15 @@ export async function buscarParados(executor, horas, lote) {
   return resultado.rows
 }
 
-export async function marcarAlertadoParado(executor, ids) {
-  await executor.query('UPDATE email_envio SET alertado_parado_em = now() WHERE id = ANY($1)', [ids])
+// Só a geração alertada e só se ainda `pendente`: um reset entre a leitura e esta marca
+// não fica marcado (a geração nova pode alertar).
+export async function marcarAlertadoParado(executor, envios) {
+  await executor.query(
+    `UPDATE email_envio e SET alertado_parado_em = now()
+       FROM unnest($1::uuid[], $2::int[]) AS p(id, geracao)
+      WHERE e.id = p.id AND e.geracao = p.geracao AND e.estado = 'pendente'`,
+    [envios.map((envio) => envio.id), envios.map((envio) => envio.geracao)]
+  )
 }
 
 // Reenvio por geração (decisão 10): só `falhou` ou `nao_enviado`. false se a linha não

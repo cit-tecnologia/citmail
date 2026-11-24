@@ -77,7 +77,7 @@ export async function enfileirarEmails({ pool, filas, log, paradoHoras = PARADO_
         data: { tipo: 'email_parado', envioId: envio.id },
         opts: { jobId: `alerta-email_parado-${envio.id}-${envio.geracao}` }
       }))))
-      await marcarAlertadoParado(pool, parados.map((envio) => envio.id))
+      await marcarAlertadoParado(pool, parados)
       resultado.parados = parados.length
     }
   } catch (err) {
