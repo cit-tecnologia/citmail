@@ -4,6 +4,8 @@
 // Asaas. Premissas P1–P8 do ADR 0014, a confirmar no sandbox (#57).
 
 const ID = /^[A-Za-z0-9_]{1,64}$/
+const STATUS_PAGAMENTO = /^[A-Z_]{1,64}$/
+const DATA = /^\d{4}-\d{2}-\d{2}$/
 const URL_FATURA_MAX = 2048
 const USER_AGENT = 'citmail-api'
 
@@ -168,6 +170,33 @@ export function criarClienteAsaas({ baseUrl, apiKey, timeoutMs, fetch = globalTh
       const corpo = await chamar('GET', `/subscriptions/${idValido(assinaturaId)}/payments`, { signal })
       const item = primeiroAtivo(corpo)
       return item ? urlHttps(item.invoiceUrl) : null
+    },
+
+    // GET /payments/{id} (conferência do webhook, ADR 0015; CIT-64) → `{ id, subscription,
+    // status, value, dueDate, externalReference }` validados (`value` em reais; campo
+    // opcional ausente → null). 404 → `ErroAsaas('nao_encontrado', 404)`.
+    async buscarPagamento(pagamentoId, { signal } = {}) {
+      let corpo
+      try {
+        corpo = await chamar('GET', `/payments/${idValido(pagamentoId)}`, { signal })
+      } catch (err) {
+        if (err instanceof ErroAsaas && err.status === 404) throw new ErroAsaas('nao_encontrado', 404)
+        throw err
+      }
+      if (typeof corpo !== 'object' || corpo === null) throw new ErroAsaas('resposta_invalida')
+      const { subscription, status, value, dueDate, externalReference } = corpo
+      if (typeof status !== 'string' || !STATUS_PAGAMENTO.test(status)) throw new ErroAsaas('resposta_invalida')
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new ErroAsaas('resposta_invalida')
+      if (dueDate != null && (typeof dueDate !== 'string' || !DATA.test(dueDate))) throw new ErroAsaas('resposta_invalida')
+      if (externalReference != null && typeof externalReference !== 'string') throw new ErroAsaas('resposta_invalida')
+      return {
+        id: idValido(corpo.id),
+        subscription: subscription == null ? null : idValido(subscription),
+        status,
+        value,
+        dueDate: dueDate ?? null,
+        externalReference: externalReference ?? null
+      }
     },
 
     // DELETE /subscriptions/{id}: remove a assinatura e as cobranças pendentes (P5).
