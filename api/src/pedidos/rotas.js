@@ -168,6 +168,8 @@ export default async function rotasPedidos(app, opcoes) {
     const { status, corpo } = await servico.criarPedido(request.body, {
       log: request.log, requestId: request.id, ip: request.ip
     })
+    // O 201 leva o token de acompanhamento (ADR 0016): nada de cache intermediário.
+    if (status === 201) reply.header('cache-control', 'no-store')
     return reply.code(status).send(corpo)
   })
 }

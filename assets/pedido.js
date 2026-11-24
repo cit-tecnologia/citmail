@@ -28,7 +28,7 @@ const ETAPAS = Object.freeze({
     texto: 'Seu e-mail está ativo. Enviamos as instruções de acesso para o e-mail do cadastro.',
     passos: ['feito', 'feito', 'feito'], final: true,
   },
-  erro_criacao: { texto: `Não foi possível concluir o pedido. Fale com ${CONTATO_COMERCIAL}.`, passos: null, final: true, contato: true },
+  erro_criacao: { texto: `Não foi possível concluir o pedido. Fale com ${CONTATO_COMERCIAL}.`, passos: null, final: true },
   cancelado: { texto: 'Pedido cancelado.', passos: null, final: true, contato: true },
   em_analise: { texto: 'Estamos verificando seu pedido.', passos: null, final: true, contato: true },
 });
@@ -137,7 +137,10 @@ function mostrarNaoEncontrado() {
 
 function mostrarFalhaAtualizacao() {
   el('statusAviso').hidden = false;
-  if (ultimaEtapa === null) el('statusPassos').hidden = true;   // nenhuma etapa ainda: só o aviso
+  if (ultimaEtapa === null) {   // nenhuma etapa ainda: texto neutro e o aviso
+    el('statusPassos').hidden = true;
+    definirTexto(el('statusEtapa'), 'Consultando o pedido…');
+  }
   el('statusPedido').hidden = false;
 }
 
@@ -235,6 +238,8 @@ function atualizarAgora() {
 }
 
 function iniciar() {
+  // Outro token no endereço (fragmento editado ou colado): recomeça do zero, sem misturar estado de dois pedidos.
+  window.addEventListener('hashchange', () => location.reload());
   const m = PADRAO_TOKEN.exec(location.hash);
   if (!m) { el('statusInvalido').hidden = false; return; }   // sem requisição
   origem = origemApi();
