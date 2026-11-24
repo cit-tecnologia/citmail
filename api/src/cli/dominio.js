@@ -18,7 +18,7 @@ import { marcarRegistrado, marcarRenovado, mostrarTarefa } from '../dominios/ser
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 // Apelido do operador: nunca e-mail (`@` recusado).
 const OPERADOR = /^[a-z][a-z0-9_.-]{1,31}$/
-// Conta Unix do servidor (`SUDO_USER` ou o usuário do processo); fora do formato → `-`.
+// Conta Unix do servidor (`SUDO_USER` como root, ou o usuário do processo); fora do formato → `-`.
 const USUARIO_SISTEMA = /^[a-z_][a-z0-9_-]{0,31}$/
 const DATA = /^(\d{4})-(\d{2})-(\d{2})$/
 const EXPIRA_MIN_DIAS = 300
@@ -45,9 +45,12 @@ const MOTIVOS = {
   tarefa_concluida: [2, 'tarefa já concluída: nada gravado']
 }
 
-/** Conta Unix de quem roda a CLI: `SUDO_USER` ou, sem ele, o usuário do processo. */
+/**
+ * Conta Unix de quem roda a CLI: `SUDO_USER` só quando o processo roda como root (sob
+ * `sudo`; fora disso a variável é livre); senão, o usuário do processo.
+ */
 export function usuarioDoSistema(env = process.env) {
-  if (env.SUDO_USER) return env.SUDO_USER
+  if (env.SUDO_USER && process.getuid?.() === 0) return env.SUDO_USER
   try {
     return os.userInfo().username
   } catch {
@@ -134,10 +137,22 @@ async function listar({ pool, opcoes, saida, agora }) {
   for (const tarefa of tarefas) {
     // Pedido cancelado (só com --todas): marcado; `registrado`/`renovado` nela devolvem 2.
     const estado = tarefa.pedido_estado === 'cancelado' ? 'cancelado (não registrar)' : tarefa.pedido_estado
-    saida.write(`${tarefa.id}\t${tarefa.tipo}\t${tarefa.pedido_id}\t${estado}\t${tarefa.dominio}\t` +
-      `${dataLocal(tarefa.aberta_em)}\t${diasUteisEntre(tarefa.aberta_em, instante)}\n`)
+    const colunas = [
+      tarefa.id, tarefa.tipo, tarefa.pedido_id, estado, tarefa.dominio, dataLocal(tarefa.aberta_em),
+      diasUteisEntre(tarefa.aberta_em, instante)
+    ]
+    saida.write(`${colunas.map(exibivel).join('\t')}\n`)
   }
   return 0
+}
+
+// Caracteres de controle (C0, DEL, C1) e de direção (U+200E/F, U+202A–E, U+2066–9) de um
+// valor do banco viram `\uFFFD`: não mexem no terminal nem disfarçam o texto exibido.
+// eslint-disable-next-line no-control-regex -- neutralizar caractere de controle é o objetivo
+const INSEGURO_NO_TERMINAL = /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g
+
+function exibivel(valor) {
+  return String(valor).replace(INSEGURO_NO_TERMINAL, '\uFFFD')
 }
 
 function escreverDetalhe(saida, detalhe) {
@@ -160,7 +175,7 @@ function escreverDetalhe(saida, detalhe) {
     ['e-mail', detalhe.titular_email],
     ['telefone', detalhe.titular_telefone]
   )
-  saida.write(linhas.map(([rotulo, valor]) => `${rotulo}: ${valor}\n`).join(''))
+  saida.write(linhas.map(([rotulo, valor]) => `${rotulo}: ${exibivel(valor)}\n`).join(''))
 }
 
 /**
@@ -203,7 +218,9 @@ export async function executarDominio({
     try {
       resultado = await mostrarTarefa({ pool, tarefaId, operador, usuarioSistema: usuario, auditoria })
     } catch (err) {
-      erro.write(`auditoria não gravada: nada exibido (${err?.code ?? err?.name})\n`)
+      erro.write(err?.name === 'ErroAuditoria'
+        ? `auditoria não gravada: nada exibido (${err.code})\n`
+        : `consulta falhou: nada exibido (${err?.code ?? err?.name})\n`)
       return 1
     }
     if (resultado.saida !== 0) {

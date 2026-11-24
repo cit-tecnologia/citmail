@@ -16,6 +16,8 @@ export const tarefaRegistroDominio = {
     if (evento.agregado_tipo !== 'pedido') throw new UnrecoverableError('agregado do evento não é pedido')
     if (typeof pedidoId !== 'string' || !UUID.test(pedidoId)) throw new UnrecoverableError('pedidoId inválido')
     if (evento.payload?.pedidoId !== pedidoId) throw new UnrecoverableError('pedidoId diverge do agregado')
+    // Leitura sem trava, aceita: um cancelamento concorrente deixa no máximo tarefas abertas
+    // de pedido cancelado, que o `listar` oculta, o laço não lembra e a CLI recusa (saída 2).
     const estado = await buscarEstadoDoPedido(cliente, pedidoId)
     if (estado === null) throw new UnrecoverableError('pedido inexistente')
     if (estado === 'cancelado') {

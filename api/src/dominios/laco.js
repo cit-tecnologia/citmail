@@ -3,6 +3,9 @@
 // há mais de 2 dias úteis, abertura da renovação em D-30 e aviso da renovação. Cada aviso
 // segue SELECT → `addBulk` com `jobId` determinístico (com prazo) → marcar: fila fora não
 // marca (o próximo ciclo tenta de novo) e marcação perdida repete o `jobId` sem duplicar.
+// Premissa: o `jobId` repetido só deduplica enquanto o job ainda está no Redis (concluídos
+// ficam 1 dia ou até 1000 por fila); marcação perdida por mais tempo que isso gera um
+// alerta repetido, aceito (é só aviso à equipe).
 // Os alertas levam só códigos e ids, nunca o nome do domínio nem dado do titular.
 import { LIMITE_PUBLICACAO_MS } from '../eventos/publicador.js'
 import { dataLocal, diasUteisEntre, ehDiaUtil } from './dias-uteis.js'
@@ -63,7 +66,7 @@ async function avisarRegistros({ pool, filas, lote }, instante) {
 // Lembrete: só em dia útil, 1 por tarefa por dia, com mais de 2 dias úteis desde a abertura.
 async function lembrarRegistros({ pool, filas, lote }, instante, hoje) {
   if (!ehDiaUtil(hoje)) return 0
-  const candidatos = (await buscarCandidatosLembrete(pool, hoje, lote))
+  const candidatos = (await buscarCandidatosLembrete(pool, hoje, instante, lote))
     .filter((tarefa) => diasUteisEntre(tarefa.aberta_em, instante) > DIAS_UTEIS_LEMBRETE)
   if (candidatos.length === 0) return 0
   const dia = hoje.replaceAll('-', '')

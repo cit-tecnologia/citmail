@@ -119,18 +119,24 @@ export function marcarRenovado(dados) {
 /**
  * Detalhe da tarefa com o titular, só depois de gravada a auditoria
  * `dados_titular_consultados` (LGPD). Devolve `{ saida: 0, detalhe }` ou
- * `{ saida: 1, motivo: 'tarefa_inexistente' }`; falha da auditoria lança, e nada é devolvido.
+ * `{ saida: 1, motivo: 'tarefa_inexistente' }`; falha da auditoria lança `ErroAuditoria` (com
+ * o `code` original), e nada é devolvido; outra falha (consulta) lança o erro do `pg`.
  */
 export async function mostrarTarefa({ pool, tarefaId, operador, usuarioSistema, auditoria = registrarAuditoria }) {
   const detalhe = await buscarDetalheTarefa(pool, tarefaId)
   if (!detalhe) return { saida: 1, motivo: 'tarefa_inexistente' }
-  await auditoria(pool, {
+  try {
+    await auditoria(pool, {
     autor: autorEquipe(operador),
     acao: 'dados_titular_consultados',
     alvo: { tipo: 'cliente', id: detalhe.cliente_id },
     resultado: 'sucesso',
     ip: IP_CLI,
-    detalhes: { tarefaId, usuarioSistema }
-  })
+      detalhes: { tarefaId, usuarioSistema }
+    })
+  } catch (err) {
+    // Erro novo, sem `cause` nem a mensagem original (pode repetir valores): só o código.
+    throw Object.assign(new Error('auditoria não gravada'), { name: 'ErroAuditoria', code: err?.code ?? err?.name })
+  }
   return { saida: 0, detalhe }
 }

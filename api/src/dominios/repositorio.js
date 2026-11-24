@@ -50,8 +50,11 @@ export async function marcarAlertadas(executor, ids, agora) {
 }
 
 // Lembrete: tarefas `registro` abertas de pedido em `aguardando_registro_de_dominio`, sem
-// lembrete na data local `hoje`. A regra dos dias úteis é aplicada pelo laço.
-export async function buscarCandidatosLembrete(executor, hoje, lote) {
+// lembrete na data local `hoje`. A regra exata dos dias úteis é aplicada pelo laço; aqui
+// vai um corte aproximado antes do LIMIT (mais de 2 dias úteis exige ao menos 3 datas
+// locais, ou seja, mais de 46 horas, já com 1 hora de folga para mudança de fuso), para o
+// lote não se encher de tarefas recentes que o laço descartaria.
+export async function buscarCandidatosLembrete(executor, hoje, agora, lote) {
   const resultado = await executor.query(
     `SELECT t.id, pd.pedido_id, t.aberta_em
        FROM tarefa_dominio t
@@ -59,11 +62,12 @@ export async function buscarCandidatosLembrete(executor, hoje, lote) {
        JOIN pedido p ON p.id = pd.pedido_id
       WHERE t.tipo = 'registro' AND t.concluida_em IS NULL
         AND p.estado = 'aguardando_registro_de_dominio'
+        AND t.aberta_em < $3::timestamptz - interval '46 hours'
         AND (t.ultimo_lembrete_em IS NULL
              OR (t.ultimo_lembrete_em AT TIME ZONE 'America/Sao_Paulo')::date < $1::date)
-      ORDER BY t.ultimo_lembrete_em NULLS FIRST, t.aberta_em, t.id
+      ORDER BY t.aberta_em, t.ultimo_lembrete_em NULLS FIRST, t.id
       LIMIT $2`,
-    [hoje, lote]
+    [hoje, lote, agora]
   )
   return resultado.rows
 }
