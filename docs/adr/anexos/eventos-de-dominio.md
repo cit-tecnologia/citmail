@@ -58,6 +58,8 @@ A chave de idempotência é o valor gravado em `evento.chave_idempotencia` (rest
 
 O webhook do Asaas ([ADR 0015](../0015-webhook-do-asaas.md)) emite `pedido_pago`, `dominio_pago`, `conta_titular_criada` e `cobranca_vencida`, com os payloads e as chaves da tabela acima, depois de conferir o pagamento no Asaas. `assinaturaId` é o id local da assinatura (`assinatura.id`); `cobrancaAsaasId` é o id do pagamento no Asaas. `cobranca_paga` **continua pendente** (E4-H5): os pagamentos seguintes ao 1º ficam no bruto como `ignorado` `pagamento_seguinte`, reprocessáveis quando o evento existir. A ordem entre `pedido_pago` e `conta_titular_criada` não é garantida para os consumidores.
 
+O consumidor `email_compra_confirmada` (E7-H2; CIT-66) consome `pedido_pago`: pede o e-mail de compra confirmada ao contato do pedido (chave `compra_confirmada-<pedidoId>`, uma por pedido). Com a fatura retida (ADR 0014), o pedido cancelado ou ainda não pago, o e-mail não sai (`nao_enviado`), e a equipe pode reenviar depois de resolvido o contato.
+
 ## Divergências encontradas na conferência
 
 1. **Evento de desativação sem nome (E3-H7).** A história publica "o evento de desativação", consumido por E4 e E7, mas nenhuma história do E4 ou do E7 o consome hoje (E7-H8 remete o e-mail de cancelamento efetivado à E3-H7). Nome proposto: `assinatura_cancelada`. Falta decidir se o cancelamento feito pela equipe no mvp também o publica.
