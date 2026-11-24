@@ -29,17 +29,20 @@ export async function inserirOuBuscarCliente(executor, cliente) {
   return resultado.rows[0].id
 }
 
-// null se a chave já foi usada; senão `{ id, posse }`.
+// null se a chave já foi usada; senão `{ id, posse }`. O aceite (CIT-62) é gravado aqui
+// e só aqui: `aceite_em = now()` é o mesmo instante de `criado_em` e da 1ª posse.
 export async function inserirPedido(executor, pedido) {
   const resultado = await executor.query(
     `INSERT INTO pedido (cliente_id, chave_idempotencia, corpo_hash, estado, criando_desde, ciclo, itens,
-                         total_centavos, versao_tabela_precos, contato_nome, contato_email, contato_telefone, request_id)
-     VALUES ($1, $2, $3, 'criando', now(), $4, $5::jsonb, $6, $7, $8, $9, $10, $11)
+                         total_centavos, versao_tabela_precos, contato_nome, contato_email, contato_telefone, request_id,
+                         aceite_em, versao_termos, versao_privacidade, ip_aceite)
+     VALUES ($1, $2, $3, 'criando', now(), $4, $5::jsonb, $6, $7, $8, $9, $10, $11, now(), $12, $13, $14::inet)
      ON CONFLICT (chave_idempotencia) DO NOTHING
      RETURNING id, criando_desde::text AS posse`,
     [
       pedido.clienteId, pedido.chave, pedido.corpoHash, pedido.ciclo, pedido.itens, pedido.totalCentavos,
-      pedido.versaoTabela, pedido.contatoNome, pedido.contatoEmail, pedido.contatoTelefone, pedido.requestId
+      pedido.versaoTabela, pedido.contatoNome, pedido.contatoEmail, pedido.contatoTelefone, pedido.requestId,
+      pedido.versaoTermos, pedido.versaoPrivacidade, pedido.ipAceite
     ]
   )
   return resultado.rows[0] ?? null
