@@ -336,7 +336,9 @@ export function iniciarEnfileiradorWebhook({
 
   async function rodar() {
     try {
-      aoCiclo?.(await enfileirarPendentes({ pool, filas, log, lote }))
+      // Fora do encadeamento opcional: sem aoCiclo, o argumento não seria avaliado.
+      const resultado = await enfileirarPendentes({ pool, filas, log, lote })
+      aoCiclo?.(resultado)
     } catch (err) {
       log.error({ erro: err?.name }, 'ciclo do enfileirador falhou')
     }
