@@ -52,3 +52,37 @@ test('CA3: aplica, reverte e reaplica todas as migrações num banco vazio sem e
   );
   assert.equal(await funcaoDefinirAtualizadoEmExiste(url), 1, 'função definir_atualizado_em deveria existir após reaplicar');
 });
+
+async function consultar(url, sql, parametros = []) {
+  const cliente = new Client({ connectionString: url });
+  await cliente.connect();
+  try {
+    return (await cliente.query(sql, parametros)).rows;
+  } finally {
+    await cliente.end();
+  }
+}
+
+const COLUNA_TOKEN = "SELECT data_type, is_nullable, character_maximum_length FROM information_schema.columns WHERE table_name = 'pedido' AND column_name = 'token_hash'";
+
+test('CIT-69 CA2: a migração do token cria token_hash nulável, único, com CHECK, e o down a remove', async (t) => {
+  const { nomeBanco, url } = await criarBancoTemporario();
+  t.after(() => removerBancoTemporario(nomeBanco));
+  await aplicarMigracoes(url, 'up', Infinity);
+
+  const [coluna] = await consultar(url, COLUNA_TOKEN);
+  assert.equal(coluna.is_nullable, 'YES', 'pedidos antigos ficam sem token');
+  assert.equal(coluna.character_maximum_length, 64);
+  const [{ tem }] = await consultar(
+    url,
+    'SELECT has_column_privilege($1, $2, $3, $4) AS tem',
+    [`${nomeBanco}_aplicacao`, 'pedido', 'token_hash', 'UPDATE'],
+  );
+  assert.equal(tem, true, 'o papel da aplicação grava o hash');
+
+  await aplicarMigracoes(url, 'down', 1);
+  assert.equal((await consultar(url, COLUNA_TOKEN)).length, 0, 'o down remove token_hash');
+
+  await aplicarMigracoes(url, 'up', Infinity);
+  assert.equal((await consultar(url, COLUNA_TOKEN)).length, 1, 'o up reaplica token_hash');
+});

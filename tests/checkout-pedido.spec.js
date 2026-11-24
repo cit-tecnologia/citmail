@@ -770,6 +770,130 @@ test.describe('checkout-pedido — CA14: estados do modo API em 320, 375 e 1280 
   }
 });
 
+/* ---------------- CIT-69 CA11: acompanhamento do pedido no checkout ---------------- */
+
+const TOKEN = 'A'.repeat(42) + 'g';
+const ORIGEM_PAGINA = 'http://localhost:4200';
+
+/** @param {import('@playwright/test').Page} page */
+const semNavegar = async page => {
+  await page.waitForTimeout(500);
+  expect(page.url(), 'o checkout não redireciona').toContain('checkout.html');
+};
+
+/** Retira da fixture `erros` o que o mock de /api/pedidos/status provoca (4xx/5xx e aborts). @param {string[]} erros */
+function descartarStatus(erros) {
+  for (let i = erros.length - 1; i >= 0; i--) {
+    if (/\/api\/pedidos\/status$/.test(erros[i].split(' ').slice(1).join(' '))) erros.splice(i, 1);
+  }
+}
+
+/** @type {{ nome: string, faturas: { tipo: string, url: string | null }[], extra?: object, linkContas: boolean }[]} */
+const RAMOS_COM_TOKEN = [
+  { nome: 'só contas', faturas: [{ tipo: 'contas', url: FATURA_CONTAS }], linkContas: true },
+  {
+    nome: 'contas e domínios', linkContas: true,
+    faturas: [{ tipo: 'contas', url: FATURA_CONTAS }, { tipo: 'dominios', url: FATURA_DOMINIOS }],
+  },
+  { nome: 'fatura retida (aviso fatura_pendente, url nula)', faturas: [{ tipo: 'contas', url: null }], extra: { aviso: 'fatura_pendente' }, linkContas: false },
+];
+
+test.describe('checkout-pedido — CA11: 201 com token mostra o acompanhamento e não redireciona', { tag: '@CIT-69' }, () => {
+  test.use(ORIGEM_API);
+
+  for (const ramo of RAMOS_COM_TOKEN) {
+    test(`CA11 ${ramo.nome}: sem navegação, com o bloco de acompanhamento fora de [role="status"]`, async ({ page, erros }) => {
+      await abrir(page, { pedido: route => criado(route, ramo.faturas, { token: TOKEN, ...ramo.extra }) });
+      await chegarRevisao(page);
+      await pagar(page);
+
+      const bloco = page.locator('#acompanharPedido');
+      await expect(bloco).toBeVisible();
+      await expect(bloco).toContainText('Guarde este link');
+      await semNavegar(page);
+      await expect(page.locator('[role="status"] #acompanharPedido'), 'o bloco fica fora das regiões role="status"').toHaveCount(0);
+      await expect(page.locator('#linkAcompanharPedido')).toHaveAttribute('href', new RegExp(`pedido\\.html#t=${TOKEN}$`));
+      descartarApi(erros);
+    });
+
+    test(`CA11 ${ramo.nome}: ${ramo.linkContas ? 'link da fatura das contas em nova aba' : 'sem link de fatura e com o aviso de pedido recebido'}`, async ({ page, erros }) => {
+      await abrir(page, { pedido: route => criado(route, ramo.faturas, { token: TOKEN, ...ramo.extra }) });
+      await chegarRevisao(page);
+      await pagar(page);
+
+      await expect(page.locator('#acompanharPedido')).toBeVisible();
+      if (ramo.linkContas) {
+        const link = page.locator('#linkFaturaContas');
+        await expect(link).toBeVisible();
+        await expect(link).toHaveAttribute('href', FATURA_CONTAS);
+        await expect(link).toHaveAttribute('target', '_blank');
+        await expect(link).toHaveAttribute('rel', /noopener/);
+      } else {
+        await expect(page.locator('#pedidoAviso')).toContainText('Pedido recebido');
+        await expect(page.locator('#linkFaturaContas')).toBeHidden();
+      }
+      descartarApi(erros);
+    });
+  }
+
+  test('CA11 "Copiar link" coloca a URL absoluta de pedido.html#t=<token> na área de transferência', async ({ page, erros }) => {
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: ORIGEM_PAGINA });
+    await abrir(page, { pedido: route => criado(route, [{ tipo: 'contas', url: FATURA_CONTAS }], { token: TOKEN }) });
+    await chegarRevisao(page);
+    await pagar(page);
+    await page.locator('#btnCopiarAcompanhamento').click();
+
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(`${ORIGEM_PAGINA}/citmail/pedido.html#t=${TOKEN}`);
+    descartarApi(erros);
+  });
+
+  test('CA11 201 sem token mantém o redirecionamento da CIT-63 e não mostra o acompanhamento', async ({ page, erros }) => {
+    await abrir(page);
+    await chegarRevisao(page, { dominio: 'existente', extras: [] });
+    await pagar(page);
+
+    await page.waitForURL(FATURA_CONTAS);
+    descartarApi(erros);
+  });
+
+  test('CA11 token fora do padrão: sem navegação, painel da CIT-63 e bloco de acompanhamento oculto', async ({ page, erros }) => {
+    await abrir(page, { pedido: route => criado(route, [{ tipo: 'contas', url: FATURA_CONTAS }], { token: 'curto' }) });
+    await chegarRevisao(page, { dominio: 'existente', extras: [] });
+    await pagar(page);
+
+    await expect(page.locator('#pedidoFaturas')).toBeVisible();
+    await expect(page.locator('#acompanharPedido')).toBeHidden();
+    await semNavegar(page);
+    descartarApi(erros);
+  });
+});
+
+/* ---------------- CIT-69 CA11b: ponta a ponta checkout → status ---------------- */
+
+test.describe('checkout-pedido — CA11b: do checkout à página de status', { tag: '@CIT-69' }, () => {
+  test.use(ORIGEM_API);
+
+  test('CA11b o clique em "Acompanhar pedido" abre pedido.html#t=<token> e a 1ª consulta leva o mesmo token', async ({ page, erros }) => {
+    /** @type {import('@playwright/test').Request[]} */
+    const consultas = [];
+    await abrir(page, { pedido: route => criado(route, [{ tipo: 'contas', url: FATURA_CONTAS }], { token: TOKEN }) });
+    await page.route('**/api/pedidos/status', route => {
+      consultas.push(route.request());
+      return json(route, 200, { etapa: 'ativando', dominioNovo: false });
+    });
+    await chegarRevisao(page, { dominio: 'existente', extras: [] });
+    await pagar(page);
+    await page.locator('#linkAcompanharPedido').click();
+
+    await expect(page).toHaveURL(new RegExp(`pedido\\.html#t=${TOKEN}$`));
+    await expect.poll(() => consultas.length).toBeGreaterThanOrEqual(1);
+    expect(consultas[0].postDataJSON()).toEqual({ token: TOKEN });
+    await expect(page.locator('#statusEtapa')).toContainText('ativando');
+    descartarApi(erros);
+    descartarStatus(erros);
+  });
+});
+
 /* ---------------- CA15: paridade e versões (sem navegador) ---------------- */
 
 test.describe('checkout-pedido — CA15: paridade das versões e dos recursos', { tag: '@CIT-63' }, () => {
@@ -791,10 +915,10 @@ test.describe('checkout-pedido — CA15: paridade das versões e dos recursos', 
     expect(ler('../termos.html')).toMatch(new RegExp(`id="termosVersao"[^>]*>Versão ${versao}\\b`));
   });
 
-  test('CA15 checkout.html referencia checkout.js?v=9, checkout.css?v=5 e precos.js?v=26', async () => {
+  test('CA15 checkout.html referencia checkout.js?v=10, checkout.css?v=6 e precos.js?v=26', async () => {
     const html = ler('../checkout.html');
-    expect(html).toContain('assets/checkout.js?v=9');
-    expect(html).toContain('assets/checkout.css?v=5');
+    expect(html).toContain('assets/checkout.js?v=10');
+    expect(html).toContain('assets/checkout.css?v=6');
     expect(html).toContain('assets/precos.js?v=26');
   });
 

@@ -7,14 +7,15 @@ const paginas = [
   { arquivo: 'checkout.html', titulo: 'Contratar Plano — CITMail' },
   { arquivo: 'painel.html', titulo: 'Painel do Cliente — CITMail' },
   { arquivo: 'termos.html', titulo: 'Termos de Uso — CITMail' },
+  { arquivo: 'pedido.html', titulo: 'Acompanhe seu pedido — CITMail' },
 ];
 
 // CIT-49/CIT-158: páginas com CSP por meta e script externo (smoke também roda contra CITMAIL_BASE_URL).
-const comCsp = ['index.html', 'checkout.html', 'login.html', 'painel.html', 'termos.html'];
-const scriptDaPagina = { 'index.html': 'landing.js', 'checkout.html': 'checkout.js', 'login.html': 'login.js', 'painel.html': 'painel.js' };
+const comCsp = ['index.html', 'checkout.html', 'login.html', 'painel.html', 'termos.html', 'pedido.html'];
+const scriptDaPagina = { 'index.html': 'landing.js', 'checkout.html': 'checkout.js', 'login.html': 'login.js', 'painel.html': 'painel.js', 'pedido.html': 'pedido.js' };
 // CIT-51: termos.html não tem JS (fica fora de scriptDaPagina).
 // CIT-152: CSS de cada página em assets/<página>.css (conferido pelo caminho, sem a query ?v=).
-const folhaDaPagina = { 'index.html': 'landing.css', 'checkout.html': 'checkout.css', 'login.html': 'login.css', 'painel.html': 'painel.css', 'termos.html': 'termos.css' };
+const folhaDaPagina = { 'index.html': 'landing.css', 'checkout.html': 'checkout.css', 'login.html': 'login.css', 'painel.html': 'painel.css', 'termos.html': 'termos.css', 'pedido.html': 'pedido.css' };
 // login.html/painel.html entraram na CIT-158, não na CIT-49/CIT-52 (ver CA7 do plano).
 const tagsCspPorPagina = {
   'index.html': ['@CIT-49', '@CIT-52'],
@@ -22,6 +23,7 @@ const tagsCspPorPagina = {
   'login.html': ['@CIT-158'],
   'painel.html': ['@CIT-158'],
   'termos.html': ['@CIT-51'],
+  'pedido.html': ['@CIT-69'],
 };
 // CIT-52: fontes locais — lista fixa (smoke não lê assets/fonts.css do disco; roda também na homologação).
 const arquivosDeFonte = [

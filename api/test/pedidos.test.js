@@ -148,6 +148,18 @@ function corpoComDominios(sobre = {}) {
   });
 }
 
+// CIT-69: todo 201 traz um `token` novo (rotação na repetição, ADR 0016); o resto da resposta se repete.
+const TOKEN_PADRAO = /^[A-Za-z0-9_-]{43}$/;
+
+function assertRepeticao(repeticao, original) {
+  assert.match(original.corpo.token, TOKEN_PADRAO);
+  assert.match(repeticao.corpo.token, TOKEN_PADRAO);
+  assert.notEqual(repeticao.corpo.token, original.corpo.token, 'a repetição rotaciona o token');
+  const { token: _a, ...restoRepeticao } = repeticao.corpo;
+  const { token: _b, ...restoOriginal } = original.corpo;
+  assert.deepEqual({ ...repeticao, corpo: restoRepeticao }, { ...original, corpo: restoOriginal });
+}
+
 async function enviar(corpo, app = ambiente.app, rede = {}) {
   const resposta = await app.inject({ method: 'POST', url: '/api/pedidos', payload: corpo, ...rede });
   return { status: resposta.statusCode, corpo: resposta.json() };
@@ -210,7 +222,9 @@ test('CA1: pedido mensal válido responde 201 com a fatura de contas e chama o A
     pedidoId: resposta.corpo.pedidoId,
     estado: 'aguardando_pagamento',
     faturas: [{ tipo: 'contas', url: 'https://stub.test/f/1' }],
+    token: resposta.corpo.token,
   });
+  assert.match(resposta.corpo.token, TOKEN_PADRAO);
   assert.deepEqual(stub.rotulos(), ROTULOS_CONTAS);
 });
 
@@ -563,7 +577,7 @@ test('CA8: mesma chave e mesmo corpo em sequência devolve o mesmo 201, sem novo
   const segunda = await enviar(corpo);
 
   assert.equal(primeira.status, 201);
-  assert.deepEqual(segunda, primeira);
+  assertRepeticao(segunda, primeira);
   assert.equal(await contarPedidos(corpo.chave_idempotencia), 1);
   assert.equal(await contarAssinaturas(primeira.corpo.pedidoId), 2);
   assert.equal(stub.chamadas.length, chamadasAntes);
@@ -627,7 +641,7 @@ test('CA8: documento com máscara, e-mail em maiúsculas, nome com espaços extr
   };
   const segunda = await enviar(mascarado);
 
-  assert.deepEqual(segunda, primeira);
+  assertRepeticao(segunda, primeira);
   assert.equal(stub.chamadas.length, chamadasAntes);
 });
 
@@ -636,7 +650,7 @@ test('CA8: o domínio principal com www, maiúsculas e ponto final vale como o m
   const primeira = await enviar(corpo);
   const segunda = await enviar({ ...corpo, dominio: { tipo: 'novo', nome: 'WWW.Exemplo-Ficticio.com.br.' } });
 
-  assert.deepEqual(segunda, primeira);
+  assertRepeticao(segunda, primeira);
 });
 
 test('CA8: reenvio depois que a tabela de preços mudou devolve o pedido gravado, não o 409', async () => {
@@ -648,7 +662,7 @@ test('CA8: reenvio depois que a tabela de preços mudou devolve o pedido gravado
   const novoPedido = await enviar(montarCorpo(), appNova);
 
   assert.equal(primeira.status, 201);
-  assert.deepEqual(reenvio, primeira);
+  assertRepeticao(reenvio, primeira);
   assert.deepEqual(novoPedido.corpo, {
     erro: 'total_divergente',
     total_centavos: 7250,
@@ -1410,7 +1424,7 @@ test('A1: repetição pela mesma chave devolve o mesmo aviso e as mesmas faturas
 
   const segunda = await enviar(corpo);
 
-  assert.deepEqual(segunda, primeira);
+  assertRepeticao(segunda, primeira);
   assert.equal(stub.chamadas.length, chamadasAntes);
 });
 
@@ -1727,7 +1741,7 @@ test('CA5: reenvio da mesma chave de outro IP devolve a resposta gravada e mant�
 
   const reenvio = await enviar(corpo, ambiente.app, { remoteAddress: '198.51.100.20' });
 
-  assert.deepEqual(reenvio, primeira);
+  assertRepeticao(reenvio, primeira);
   assert.deepEqual(await aceiteDe(corpo.chave_idempotencia), gravado);
 });
 
@@ -1762,5 +1776,5 @@ test('CA5: reenvio de pedido gravado depois que a versão vigente mudou devolve 
 
   const reenvio = await enviar(corpo, appNova);
 
-  assert.deepEqual(reenvio, primeira);
+  assertRepeticao(reenvio, primeira);
 });

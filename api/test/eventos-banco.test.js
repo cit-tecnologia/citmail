@@ -223,7 +223,7 @@ test('CA1k: o down com um evento gravado é recusado com P0001 e as tabelas cont
   t.after(banco.fechar);
 
   await inserirEventoCru(banco.pool);
-  await assert.rejects(aplicarMigracoes(banco.url, 'down', 4), /evento com registros: down recusado/);
+  await assert.rejects(aplicarMigracoes(banco.url, 'down', 5), /evento com registros: down recusado/);
 
   const { rows } = await banco.pool.query("SELECT to_regclass('evento') AS tabela");
   assert.notEqual(rows[0].tabela, null);
@@ -233,7 +233,7 @@ test('CA1l: o down com as tabelas vazias remove evento e evento_processado, e o 
   const banco = await criarBancoMigrado();
   t.after(banco.fechar);
 
-  await aplicarMigracoes(banco.url, 'down', 4);
+  await aplicarMigracoes(banco.url, 'down', 5);
   const { rows } = await banco.pool.query(
     "SELECT to_regclass('evento') AS evento, to_regclass('evento_processado') AS processado",
   );
