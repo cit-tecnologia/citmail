@@ -26,6 +26,7 @@ A chave de idempotência é o valor gravado em `evento.chave_idempotencia` (rest
 |---|---|---|---|---|
 | `pedido_pago` | E3-H4 | E4-H2, E7-H2 | `pedidoId`, `clienteId`, `assinaturaId` (contas), `ciclo`, `temDominioNovo` | `pedido_pago-<pedidoId>` (só o 1º pagamento das contas) |
 | `dominio_pago` | E3-H4 | E4-H4 | `pedidoId`, `assinaturaId` (domínios), `temDominioNovo` | `dominio_pago-<pedidoId>` (só o 1º pagamento da assinatura de domínios, que cobre todos os domínios do pedido numa fatura) |
+| `dominio_registrado` | E4-H4 | E4-H2 (#68, ainda sem consumidor) | `pedidoId`, `clienteId` | `dominio_registrado-<pedidoId>` (uma vez: todos os domínios novos do pedido registrados e o pedido indo a `pago`) |
 | `conta_titular_criada` | E3-H4 | E5-H2 | `contaId`, `clienteId`, `pedidoId` | `conta_titular_criada-<contaId>` (a conta nasce uma vez) |
 | `cobranca_vencida` | E3-H4 | E4-H5 | `clienteId`, `assinaturaId`, `cobrancaAsaasId`, `vencimento` | `cobranca_vencida-<cobrancaAsaasId>` |
 | `cobranca_paga` (nome proposto, a confirmar) | E3-H4 | E4-H5 | `clienteId`, `assinaturaId`, `cobrancaAsaasId` | `cobranca_paga-<cobrancaAsaasId>` (pagamentos seguintes ao 1º, de contas ou de domínios) |
@@ -37,7 +38,7 @@ A chave de idempotência é o valor gravado em `evento.chave_idempotencia` (rest
 | `cancelamento_solicitado` | E5-H10 | E7-H8; E3-H7 (pos-mvp) | `contaId`, `assinaturaIds`, `protocolo`, `encerraEm` | `cancelamento_solicitado-<protocolo>` |
 | `assinatura_cancelada` (nome proposto, a confirmar) | E3-H7 (pos-mvp) | E4 e E7 (histórias a criar) | `assinaturaId`, `pedidoId`, `contaId`, `canceladaEm`, `houveReembolso` | `assinatura_cancelada-<assinaturaId>` |
 
-`agregado_tipo` de cada evento (anexo de modelo de dados): `pedido` para `pedido_pago`, `dominio_pago`, `conta_ativada` e `dominio_verificado`; `conta_titular` para `conta_titular_criada`, `definicao_senha_solicitada`, `conta_suspensa`, `conta_reativada` e `cancelamento_solicitado`; `assinatura` para `cobranca_vencida`, `cobranca_paga` e `assinatura_cancelada`.
+`agregado_tipo` de cada evento (anexo de modelo de dados): `pedido` para `pedido_pago`, `dominio_pago`, `dominio_registrado`, `conta_ativada` e `dominio_verificado`; `conta_titular` para `conta_titular_criada`, `definicao_senha_solicitada`, `conta_suspensa`, `conta_reativada` e `cancelamento_solicitado`; `assinatura` para `cobranca_vencida`, `cobranca_paga` e `assinatura_cancelada`.
 
 ## Regras
 
@@ -58,6 +59,8 @@ A chave de idempotência é o valor gravado em `evento.chave_idempotencia` (rest
 
 O webhook do Asaas ([ADR 0015](../0015-webhook-do-asaas.md)) emite `pedido_pago`, `dominio_pago`, `conta_titular_criada` e `cobranca_vencida`, com os payloads e as chaves da tabela acima, depois de conferir o pagamento no Asaas. `assinaturaId` é o id local da assinatura (`assinatura.id`); `cobrancaAsaasId` é o id do pagamento no Asaas. `cobranca_paga` **continua pendente** (E4-H5): os pagamentos seguintes ao 1º ficam no bruto como `ignorado` `pagamento_seguinte`, reprocessáveis quando o evento existir. A ordem entre `pedido_pago` e `conta_titular_criada` não é garantida para os consumidores.
 
+O consumidor `tarefa_registro_dominio` (E4-H4; CIT-77) consome `dominio_pago`: abre na transação do outbox uma tarefa `registro` por domínio novo do pedido (`tarefa_dominio`, anexo de modelo de dados); pedido cancelado não abre, fatura retida abre. O aviso à equipe sai do laço do worker, não do consumidor. `dominio_registrado` é emitido pela CLI `npm run dominio -- registrado` (último domínio novo registrado com o pedido em `aguardando_registro_de_dominio`) ou pelo webhook (`pedido_pago` com todos os domínios novos já registrados), sempre junto da ida a `pago`.
+
 O consumidor `email_compra_confirmada` (E7-H2; CIT-66) consome `pedido_pago`: pede o e-mail de compra confirmada ao contato do pedido (chave `compra_confirmada-<pedidoId>`, uma por pedido). Com a fatura retida (ADR 0014), o pedido cancelado ou ainda não pago, o e-mail não sai (`nao_enviado`), e a equipe pode reenviar depois de resolvido o contato.
 
 ## Divergências encontradas na conferência
@@ -69,7 +72,7 @@ O consumidor `email_compra_confirmada` (E7-H2; CIT-66) consome `pedido_pago`: pe
 5. **`dominio_pago` e domínio extra (corrigida na CIT-64).** A versão inicial supunha domínio extra existente na assinatura de domínios, com `dominio_pago` e `temDominioNovo` falso. No código (CIT-61), todo domínio extra é gravado como `novo` (`pedido_dominio`: `CHECK (papel = 'principal' OR tipo = 'novo')`), e a assinatura de domínios só existe com algum domínio novo. Por isso `dominio_pago` sai sempre com `temDominioNovo: true`; o domínio principal existente entra na ativação de E4-H7, via `conta_ativada`.
 6. **Ordem entre `pedido_pago` e `dominio_pago`.** São faturas separadas e podem chegar em qualquer ordem. O consumidor de E4-H4 aceita `dominio_pago` com o pedido ainda `aguardando_pagamento`: abre a tarefa de registro, mas só enfileira o provisionamento quando as contas estiverem pagas. Transições no anexo de modelo de dados.
 7. **Nome `conta_ativada`.** Fechado: mantém o nome da base, com esta definição: o evento marca o fim do provisionamento do pedido (E4-H2, pedido `ativo`), não a passagem da conta do titular para `ativa` (que acontece quando a senha é definida).
-8. **Domínio novo registrado pela equipe.** E4-H4 enfileira o provisionamento de E4-H2 por comando administrativo, sem evento. Fica como job direto; o registro manual vai para a auditoria (ADR 0013). Se outro consumidor precisar saber do registro, criar `dominio_registrado`.
+8. **Domínio novo registrado pela equipe (corrigida na CIT-77).** A versão inicial previa job direto, sem evento. Na CIT-77, a equipe marca cada domínio pela CLI no servidor (`npm run dominio -- registrado`, sem endpoint: não há autenticação de equipe), com auditoria `dominio_registrado_manualmente` (ADR 0013); quando o último domínio novo do pedido é registrado e o pedido vai a `pago`, sai `dominio_registrado`, que o provisionamento (E4-H2, #68) vai consumir. Até lá o evento não tem consumidor.
 9. **Fatura nova (E7-H4).** A história consome "o evento" de fatura nova, que não existe na base. Proposta: `fatura_criada`, emitido pela E3-H4. Fica fora da tabela até a E7-H4 sair da pendência (notificações nativas do Asaas ou nossas).
 10. **Chave pelo id do evento do Asaas.** A versão inicial deste anexo usava o id do evento do Asaas como chave de `pedido_pago`, `dominio_pago`, `cobranca_vencida` e `cobranca_paga`. Trocada pela chave do fato de negócio (tabela acima).
 11. **Consumidores fora das histórias.** O alerta à equipe da solicitação de cancelamento (E5-H10) e de tentativas esgotadas usa o canal do ADR 0011 e não conta como consumidor de negócio.

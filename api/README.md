@@ -105,6 +105,7 @@ Resposta esperada: status `200`, cabeçalho `x-request-id` e corpo `{"status":"o
 | `npm run servicos:teste` | Sobe o PostgreSQL e o Redis de teste (`banco-teste` e `redis-teste`, perfil `teste`, dados em `tmpfs`, só loopback). |
 | `npm run worker` | Sobe o worker da fila (processo separado da API; comando da futura unidade `systemd`, #57). Lê `api/.env` se existir. No SIGTERM/SIGINT espera o job ativo e os alertas em curso e ignora um segundo sinal; a unidade da #57 precisa de `TimeoutStopSec` maior que esse encerramento (ADR 0006). Em produção, o job `exemplo` não é registrado (vai a "falhou" como job desconhecido). |
 | `npm run reprocessar -- <jobId>` | Devolve um job em "falhou" para a fila, com o mesmo id e as tentativas zeradas. Sai 0 se reenfileirou, 1 se o `jobId` é inválido (fora de `^[\w-]{1,64}$`; nada é alterado), se o job não existe ou se o Redis não respondeu em 10 s, e 2 se o job não está em "falhou". Não imprime os dados do job. Depois de um `TimeoutError` o reenfileiramento pode ter sido aplicado mesmo assim: confira o estado do job antes de repetir. |
+| `npm run dominio -- <subcomando>` | Tarefas manuais de registro e renovação de domínio novo (CIT-77): `listar`, `mostrar`, `registrado`, `renovado` (ver "Tarefas de domínio"). Lê `api/.env` se existir; só `DATABASE_URL`, `NODE_ENV` e `LOG_LEVEL`. Sai 0 ok, 1 uso, entrada inválida, tarefa inexistente ou falha (nada gravado) e 2 estado que não permite (tarefa concluída, pedido cancelado, tipo de tarefa diferente). |
 | `npm run lint` | Roda o ESLint (regras recomendadas, `eslint.config.js`) sem tolerar aviso (`--max-warnings=0`). |
 | `npm test` | Roda a suíte `node:test` sem acesso à rede externa (ver "Como rodar os testes"). |
 
@@ -132,6 +133,7 @@ Fila e alertas (ADRs 0005 e 0011). Cada processo exige só o que usa: a API (`np
 | `FILA_BACKOFF_MS` | lida | lida | lida | Espera antes da 2ª tentativa, em ms (inteiro de 1 a 3600000); dobra a cada tentativa (exponencial: com os padrões, cerca de 2 h até esgotar). | `60000` |
 | `DATABASE_URL` | obrigatória | obrigatória | não lê | String de conexão do PostgreSQL (tabela acima). No worker, conferida depois de `REDIS_URL`. | sem padrão |
 | `OUTBOX_INTERVALO_MS` | não lê | lida | não lê | Intervalo entre ciclos do publicador do outbox, em ms (inteiro de 100 a 60000), contado do fim de um ciclo ao início do próximo. | `2000` |
+| `DOMINIO_TAREFAS_INTERVALO_MS` | não lê | lida | não lê | Intervalo entre ciclos do laço das tarefas de domínio (aviso, lembrete e renovação D-30; CIT-77), em ms (inteiro de 60000 a 3600000). | `300000` |
 | `TELEGRAM_BOT_TOKEN` | não lê | obrigatória em produção | não lê | Token do bot do alerta. Segredo: só no ambiente do worker. | sem padrão |
 | `TELEGRAM_CHAT_ID` | não lê | obrigatória em produção | não lê | Id do grupo que recebe os alertas. Segredo: só no ambiente do worker. | sem padrão |
 
@@ -366,6 +368,23 @@ Envio por fila em duas etapas ([ADR 0010](../docs/adr/0010-email-transacional.md
 
   Bruto `ignorado` ou `divergente` não é reprocessado pelo handler (resultado terminal); depois de corrigir a causa, volta à fila só por papel administrativo, com `situacao = 'pendente'`, `processado_em` e `codigo` nulos e `enfileirado_em` nulo.
 - **Retenção:** limpeza após 90 dias em história própria (índice por `recebido_em` pronto).
+
+## Tarefas de domínio
+
+Registro e renovação manuais de domínio novo no Registro.br (E4-H4; CIT-77; código em `src/dominios/` e `src/cli/dominio.js`, tabela `tarefa_dominio` da migração `tarefa-dominio`). Sem endpoint: não há autenticação de equipe, e a equipe usa a CLI no servidor.
+
+- **Abertura:** o consumidor `tarefa_registro_dominio` do `dominio_pago` abre uma tarefa `registro` por domínio novo do pedido (pedido cancelado não abre; fatura retida abre). O pedido só vai a `pago` quando todos os domínios novos estão registrados.
+- **Laço no worker** (a cada `DOMINIO_TAREFAS_INTERVALO_MS`; alertas `{ tipo: 'dominio', codigo, tarefaId, pedidoId }`, só ids e códigos, nunca o nome do domínio nem dado do titular): aviso de abertura, 1 por pedido (`tarefa_registro`, ou `tarefa_registro_contas_pendentes` com o pedido ainda em `aguardando_pagamento`); lembrete `lembrete_registro`, 1 por tarefa por dia útil, quando passam mais de 2 dias úteis desde a abertura (pedido em `aguardando_registro_de_dominio`); abertura da tarefa `renovacao` em D-30 do `registro_expira_em` e aviso `renovacao_paga` ou `renovacao_pendente`. Cada aviso: SELECT → `addBulk` com `jobId` determinístico → marcar (`alertada_em`, `ultimo_lembrete_em`); fila fora não marca e o próximo ciclo tenta de novo.
+- **Dias úteis:** segunda a sexta, pelas datas locais de America/Sao_Paulo, **sem feriados** (lembrete num feriado é aceito); conta as datas depois da abertura até hoje, inclusive.
+- **Comandos** (`npm run dominio -- ...`):
+  - `listar [--todas]`: tarefas abertas com tarefa, tipo, pedido, estado do pedido, domínio, data de abertura e dias úteis, sem dado do titular. Oculta as de pedido `cancelado`; `--todas` as mostra marcadas (`registrado`/`renovado` nelas saem 2).
+  - `mostrar <tarefaId> --operador <apelido>`: grava antes a auditoria `dados_titular_consultados` (alvo `cliente`) e só então escreve no stdout domínio, vencimento, situação da fatura (renovação, recalculada na hora) e titular (nome, tipo de pessoa, documento, e-mail, telefone). Auditoria não gravada → saída 1, nada exibido. Não copiar essa saída para Taiga, PR ou chat.
+  - `registrado <tarefaId> --expira-em AAAA-MM-DD --operador <apelido>`: grava `registrado_em` e o vencimento, conclui a tarefa e audita, numa transação; com o último domínio novo do pedido registrado, grava `pedido.dominio_registrado_em` e, com o pedido em `aguardando_registro_de_dominio`, vai a `pago` e emite `dominio_registrado` (sem consumidor até a #68). Com o pedido ainda em `aguardando_pagamento` (domínios pagos antes das contas), só grava a data; o `pedido_pago` do webhook leva o pedido a `pago` e emite os dois eventos.
+  - `renovado <tarefaId> --expira-em AAAA-MM-DD --operador <apelido>`: grava o novo vencimento, conclui a tarefa de renovação e audita; a próxima renovação abre a 30 dias do novo vencimento.
+  - `--expira-em`: data real entre hoje + 300 dias e hoje + 10 anos (data local). `--operador`: `^[a-z][a-z0-9_.-]{1,31}$` (apelido, nunca e-mail).
+- **Auditoria:** `dominio_registrado_manualmente`, autor `equipe` com o `--operador`, alvo `dominio` (`pedido_dominio.id`), IP fixo `127.0.0.1` (origem CLI; a auditoria exige IP para autor `equipe`), `detalhes: { pedidoId, expiraEm, operacao: 'registro'|'renovacao', usuarioSistema }`. `usuarioSistema` é a conta Unix do servidor (`SUDO_USER` ou o usuário do processo; fora de `^[a-z_][a-z0-9_-]{0,31}$` vira `-`), registrada para que o `--operador` livre não seja a única identificação. Sem nome do domínio nem dado do titular em `detalhes`.
+- **Conexão e papel:** mesmo `DATABASE_URL` da aplicação (depois da #57, usuário membro de `<banco>_aplicacao`); os grants da migração cobrem a CLI. O stderr recebe só mensagens fixas e o `code` do erro (nunca a mensagem do `pg`).
+- **Situação da fatura anual** (renovação): `paga` se o bruto do webhook tem pagamento recebido da assinatura `dominios` do pedido vencendo entre a referência − 60 e + 30 dias; senão `pendente`. Limites: em D-30 a fatura anual quase sempre ainda não venceu, então `pendente` é o caso comum e não significa inadimplência; estorno posterior não é descontado; a retenção de 90 dias do bruto pode apagar a linha. Conferir no Asaas; a fonte certa será `cobranca_paga` (E4-H5).
 
 ## Como rodar os testes
 
