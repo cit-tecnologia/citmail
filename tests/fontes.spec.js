@@ -505,15 +505,15 @@ test.describe('CA5 — mobile (login, painel e pedido)', { tag: ['@CIT-156', '@C
       for (const largura of [320, 375]) {
         test(`CIT-156 CA5 ${arquivo} a ${largura}px: sem rolagem horizontal`, async ({ page, erros }) => {
           await page.setViewportSize({ width: largura, height: 800 });
-          await page.goto(arquivo, { waitUntil: 'load' });
+          await abrirPagina(page, arquivo, { waitUntil: 'load' });
           await page.evaluate(() => document.fonts.ready);
 
           const semRolagem = await page.evaluate(() =>
             document.documentElement.scrollWidth <= document.documentElement.clientWidth);
           expect(semRolagem, `${arquivo} a ${largura}px: scrollWidth > clientWidth`).toBe(true);
+          descartarPainel(erros);
         });
       }
-  
     });
   }
 });
