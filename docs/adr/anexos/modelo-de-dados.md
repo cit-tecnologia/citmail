@@ -109,7 +109,7 @@ Login do painel. Nasce sem senha no pagamento (E3-H4).
 - **Atributos:** `cliente_id`, `email` (do pedido), `senha_hash` (Argon2id; nulo em `sem_senha`), `senha_definida_em`, `estado` (ver "Estados da conta do titular"), `suspensa_em`, `motivo_suspensao` (`inadimplencia`).
 - **Solicitações de senha:** tabela auxiliar própria, abaixo.
 - **Relações:** pertence a 1 cliente; administra N caixas; tem N solicitações de senha; aparece na auditoria como autor ou alvo.
-- **Implementado (CIT-64, [ADR 0015](../0015-webhook-do-asaas.md)):** tabela `conta_titular`, criada pelo webhook com o 1º pagamento das contas (`pedido_pago`), na mesma transação: `email = lower(trim(pedido.contato_email))` (CHECK `email = lower(email)`, 3 a 254 caracteres), `estado` `sem_senha` (CHECK `sem_senha|ativa|suspensa|cancelada`), `senha_hash` nulo, `motivo_suspensao` só `inadimplencia`, `criado_em`/`atualizado_em` com trigger. Pedido com `fatura_retida` não cria a conta (alerta `contato_divergente`); e-mail já em conta de outro cliente também não (alerta `conta_email_em_uso`). O papel `<banco>_aplicacao` tem `SELECT` e `INSERT` em `cliente_id`, `email` e `estado`, sem `UPDATE` nesta história.
+- **Implementado (CIT-64, [ADR 0015](../0015-webhook-do-asaas.md)):** tabela `conta_titular`, criada pelo webhook com o 1º pagamento das contas (`pedido_pago`), na mesma transação: `email = lower(trim(pedido.contato_email))` (CHECK `email = lower(email)`, 3 a 254 caracteres), `estado` `sem_senha` (CHECK `sem_senha|ativa|suspensa|cancelada`), `senha_hash` nulo, `motivo_suspensao` só `inadimplencia`, `criado_em`/`atualizado_em` com trigger. Pedido com `fatura_retida` não cria a conta (alerta `contato_divergente`); e-mail já em conta de outro cliente também não (alerta `conta_email_em_uso`). O papel `<banco>_aplicacao` tem `SELECT` e `INSERT` em `cliente_id`, `email` e `estado`, sem `UPDATE` nesta história. A CIT-71 deu ao papel `UPDATE` só em `senha_hash`, `senha_definida_em` e `estado` (habilita também o `SELECT ... FOR UPDATE`); o e-mail continua sem `UPDATE`.
 
 ### Tabela auxiliar: solicitação de definição de senha
 
@@ -118,6 +118,7 @@ Decidido: tabela própria, não colunas na conta. Guarda cada pedido de link de 
 - **Chave:** `id` UUID (é o `solicitacaoId`).
 - **Atributos:** `conta_titular_id`, `tipo` (`primeiro_acesso` ou `redefinicao`), `token_hash` (nulo até o envio), `expira_em`, `enviada_em`, `usada_em`.
 - **Regras:** E5-H2 cria a linha e publica o evento só com o `solicitacaoId`. O job de e-mail (E7-H3) gera o token no envio e grava só o hash; um reenvio gera token novo e troca o hash. Usar o link grava `usada_em` e invalida as demais solicitações abertas da conta. Token nunca em texto, nem no evento, nem na fila.
+- **Implementado (CIT-71, [ADR 0008](../0008-sessao-do-painel-e-senhas.md)):** tabela `solicitacao_senha` com `id` UUID, `conta_titular_id` (FK, não nulo), `tipo` (CHECK `primeiro_acesso|redefinicao`), `token_hash` (único, nulo até o envio, CHECK `^[0-9a-f]{64}$`), `criada_em` (`now()`), `expira_em` (CHECK `expira_em > criada_em`), `enviada_em` e `usada_em`; índice `(conta_titular_id, criada_em DESC)`. Prazos: 72 h (`primeiro_acesso`) e 1 h (`redefinicao`). Limites por conta: uma a cada 5 min e no máximo 5 abertas. O papel `<banco>_aplicacao` tem `SELECT`, `INSERT` só em `conta_titular_id`, `tipo` e `expira_em` e `UPDATE` só em `token_hash`, `enviada_em` e `usada_em`, sem `DELETE` (limpeza das antigas em história própria). O token é gerado por `emitirToken`, chamado pelo envio (#72), que também grava `enviada_em`. O down da migração é recusado se houver linha.
 
 ## Entidade: caixa
 
@@ -252,4 +253,5 @@ Transições:
 | 2026-11-23 | Tabela auxiliar `evento_processado` e relação evento → evento processado. | CIT-166 |
 | 2026-11-23 | `conta_titular` e `pedido.dominio_pago_em` implementados; tabela auxiliar do evento bruto do webhook do Asaas. | CIT-64 |
 | 2026-11-24 | Tabela auxiliar `tarefa_dominio`; `pedido.dominio_registrado_em`, `pedido_dominio.registrado_em` e `registro_expira_em` implementados; ação de auditoria `dados_titular_consultados`; transição `aguardando_pagamento` com registro → `pago` no `pedido_pago`. | CIT-77 |
+| 2026-11-24 | Tabela auxiliar `solicitacao_senha` implementada; `UPDATE` de `senha_hash`, `senha_definida_em` e `estado` em `conta_titular` para o papel da aplicação. | CIT-71 |
 | a definir | Revisão prevista pela #48 (PoC Skymail): campos da caixa marcados "provisório (#48)", lista de add-ons do pedido. | #48 |

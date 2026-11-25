@@ -820,3 +820,21 @@ test('CA9 (CIT-70): PAINEL_ORIGENS fora de CORS_ORIGENS, com curinga ou não exa
     );
   }
 });
+
+test('CIT-71: carregarConfigWorker lê PAINEL_HABILITADO com a trava da API: ligada fora de produção, recusada em produção', { tag: '@CIT-71' }, () => {
+  assert.equal(carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development' }).painelHabilitado, true);
+  assert.equal(carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development', PAINEL_HABILITADO: 'false' }).painelHabilitado, false);
+  assert.equal(carregarConfigWorker(AMBIENTE_WORKER_PRODUCAO).painelHabilitado, false);
+  assert.equal(carregarConfigWorker({ ...AMBIENTE_WORKER_PRODUCAO, PAINEL_HABILITADO: 'false' }).painelHabilitado, false);
+  assert.throws(
+    () => carregarConfigWorker({ ...AMBIENTE_WORKER_PRODUCAO, PAINEL_HABILITADO: 'true' }),
+    (erro) => {
+      assert.equal(
+        erro.message,
+        'PAINEL_HABILITADO recusada em produção: sem limitador de tentativas no login (CIT-78, ADR 0013)',
+      );
+      return true;
+    },
+  );
+  assert.throws(() => carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development', PAINEL_HABILITADO: 'sim' }), /PAINEL_HABILITADO inválida/);
+});
