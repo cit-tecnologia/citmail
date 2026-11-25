@@ -13,8 +13,6 @@ import { modelosDoAmbiente, validarModelos } from './modelos/index.js'
 import { buscarEnvio, inserirEnvioSeNovo, marcarEnviado, marcarFalha, marcarNaoEnviado } from './repositorio.js'
 
 export const JOB_EMAIL = 'email_enviar'
-// Mesma regra do handler para os modelos que conferem o endereço antes de um efeito (CIT-72).
-export { destinatarioValido }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const CHAVE_IDEMPOTENCIA = /^[A-Za-z0-9_-]{1,200}$/

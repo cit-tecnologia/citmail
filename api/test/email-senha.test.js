@@ -177,6 +177,14 @@ test('CIT-72 CA1: primeiro acesso envia o link de definição de 72 h, com o tok
   assert.deepStrictEqual(stub.mensagens[0].rcptTo, [EMAIL]);
   const mensagem = lerMensagem(stub.mensagens[0]);
   assert.equal(mensagem.assunto, ASSUNTO_PRIMEIRO_ACESSO);
+  // O link (~94 caracteres, `=` vira `=3D`) passa de 76 colunas: o QP o quebra com `=\r\n`.
+  const bruto = stub.mensagens[0].data;
+  assert.match(bruto, /^Content-Transfer-Encoding: quoted-printable$/mi);
+  const linkQp = `${BASE}definir-senha.html#t=${mensagem.token}`.replace(/=/g, '=3D');
+  const ocorrencias = (texto) => texto.split(linkQp).length - 1;
+  const semQuebraMole = bruto.replace(/=\r\n/g, '');
+  assert.ok(ocorrencias(semQuebraMole) >= 2, 'link codificado no texto e no HTML');
+  assert.ok(ocorrencias(bruto) < ocorrencias(semQuebraMole), 'quebra mole dentro do link');
   for (const corpo of [mensagem.texto, mensagem.html]) {
     assert.ok(corpo.includes(`${BASE}definir-senha.html#t=${mensagem.token}`), 'link completo');
   }

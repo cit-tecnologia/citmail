@@ -18,22 +18,24 @@ export const JOB_SENHA_ESQUECI = 'senha_esqueci'
 export const OPCOES_JOB_ESQUECI = Object.freeze({ removeOnComplete: true, removeOnFail: true })
 
 const ID_JOB = /^[A-Za-z0-9_-]{1,64}$/
+const MODELOS_SENHA = Object.values(MODELO_POR_TIPO)
 
 /**
  * Reemissão no limite (CIT-72; contrato (e) do ADR 0008), no `BEGIN` do pedido, com a conta
  * já travada por `criarSolicitacao` (dois "esqueci" da mesma conta se serializam): pede de
  * novo o e-mail da aberta mais recente, salvo se o anti-spam pelo `email_envio` dela
  * descarta. Descartes: `sem_aberta`, `envio_pendente` (pendente vivo, ou nenhum envio com a
- * solicitação ainda na janela do outbox) e `reenvio_recente` (enviado há menos de 5 min).
+ * solicitação ainda na janela do outbox) e `reenvio_recente` (envio criado há menos de 5 min,
+ * em qualquer estado, ou enviado nesse prazo).
  */
 async function reemitir(cliente, contaId, idPedido) {
   const aberta = await buscarAbertaMaisRecente(cliente, contaId)
   if (!aberta) return { motivo: 'sem_aberta' }
-  const envio = await situacaoDoEnvio(cliente, aberta.id)
+  const envio = await situacaoDoEnvio(cliente, aberta.id, MODELOS_SENHA)
   if (envio.pendentes_vivos > 0 || (envio.total === 0 && aberta.recente)) {
     return { motivo: 'envio_pendente', solicitacaoId: aberta.id }
   }
-  if (envio.enviados_recentes > 0) return { motivo: 'reenvio_recente', solicitacaoId: aberta.id }
+  if (envio.recentes > 0) return { motivo: 'reenvio_recente', solicitacaoId: aberta.id }
   const { id: envioId, criado } = await solicitarEmail(cliente, {
     chaveIdempotencia: `senha_reenvio-${aberta.id}-${idPedido}`,
     modelo: MODELO_POR_TIPO[aberta.tipo],
@@ -45,7 +47,7 @@ async function reemitir(cliente, contaId, idPedido) {
 // Busca a conta pelo e-mail normalizado e cria a solicitação numa transação; no limite,
 // tenta a reemissão na mesma transação. E-mail inexistente termina sem efeito. Nada do
 // e-mail vai ao log.
-async function processar(pool, { email, requestId }, log, jobId) {
+async function processar(pool, { email, requestId }, log, jobId, antesDeReemitir) {
   const contaId = await buscarContaIdPorEmail(pool, email)
   if (!contaId) {
     log.info('esqueci a senha sem conta')
@@ -62,6 +64,7 @@ async function processar(pool, { email, requestId }, log, jobId) {
       const idPedido = typeof requestId === 'string' && UUID.test(requestId)
         ? requestId
         : typeof jobId === 'string' && ID_JOB.test(jobId) ? jobId : randomUUID()
+      if (antesDeReemitir) await antesDeReemitir()
       reemissao = await reemitir(cliente, contaId, idPedido)
     }
     await cliente.query('COMMIT')
@@ -88,13 +91,14 @@ async function processar(pool, { email, requestId }, log, jobId) {
 /**
  * Handler do job (`criarWorkers({ handlers })`). `filas` com falha rápida (as do
  * publicador no worker): o alerta da última tentativa tem prazo de 2 s; se falhar, vai
- * ao log e o erro original sobe do mesmo jeito.
+ * ao log e o erro original sobe do mesmo jeito. `antesDeReemitir` (só testes) roda com a
+ * conta travada, antes da reemissão.
  */
-export function criarHandlerEsqueci({ pool, filas }) {
+export function criarHandlerEsqueci({ pool, filas, antesDeReemitir }) {
   return async function senhaEsqueci({ log, tentativa, jobId } = {}, dados = {}) {
     try {
       if (typeof dados.email !== 'string') throw new UnrecoverableError('email ausente')
-      await processar(pool, dados, log, jobId)
+      await processar(pool, dados, log, jobId, antesDeReemitir)
     } catch (erro) {
       const ultima = erro instanceof UnrecoverableError ||
         (tentativa !== undefined && tentativa.feita + 1 >= tentativa.maxima)

@@ -237,17 +237,17 @@ async function enviarComStub(envioId) {
   }
 }
 
-const descarte = (motivo) => captura.linhas().find((l) => l.msg === 'reemissão do link descartada' && l.motivo === motivo)
+const descarte = (motivo) => captura.linhas().filter((l) => l.msg === 'reemissão do link descartada' && l.motivo === motivo).at(-1)
 
 async function contaComSenha() {
   return (await semearContaPainel(banco.admin, { email: EMAIL, senha: SENHA })).contaId
 }
 
-test('CIT-72 CA2(a): envio anterior falhou e enviada_em nulo → reemite com chave por pedido; o token anterior deixa de valer', { tag: '@CIT-72' }, async () => {
+test('CIT-72 CA2(a): envio anterior falhou há mais de 5 min e enviada_em nulo → reemite com chave por pedido; o token anterior deixa de valer', { tag: '@CIT-72' }, async () => {
   const contaId = await contaComSenha()
   const anterior = 'T'.repeat(43)
   const solicitacaoId = await semearSolicitacao(banco.admin, { contaId, recuoMs: MIN_MS, token: anterior })
-  await semearEnvio(banco.admin, { solicitacaoId, estado: 'falhou', recuoMs: MIN_MS })
+  await semearEnvio(banco.admin, { solicitacaoId, estado: 'falhou', recuoMs: CINCO_MIN_MS + 1000 })
   assert.deepStrictEqual(await validarToken(banco.app, anterior), { tipo: 'redefinicao' })
   const requestId = randomUUID()
   await pedir(EMAIL, { requestId })
@@ -290,6 +290,18 @@ test('CIT-72 CA2(c): envio enviado há 4 min → nenhum envio novo, descarte ree
   const registro = descarte('reenvio_recente')
   assert.equal(registro.solicitacaoId, solicitacaoId)
   assert.equal(registro.contaId, contaId)
+})
+
+test('CIT-72 CA2: envio falhou ou nao_enviado há menos de 5 min → nenhum envio novo, descarte reenvio_recente', { tag: '@CIT-72' }, async () => {
+  const contaId = await contaComSenha()
+  for (const estado of ['falhou', 'nao_enviado']) {
+    await banco.admin.query('TRUNCATE email_envio, solicitacao_senha')
+    const solicitacaoId = await semearSolicitacao(banco.admin, { contaId, recuoMs: MIN_MS })
+    await semearEnvio(banco.admin, { solicitacaoId, estado, recuoMs: 4 * MIN_MS })
+    await pedir(EMAIL, { requestId: randomUUID() })
+    assert.equal((await envios()).length, 1, estado)
+    assert.equal(descarte('reenvio_recente')?.solicitacaoId, solicitacaoId, estado)
+  }
 })
 
 test('CIT-72 CA2(d): sem envio e criada há 1 min → envio_pendente; sem envio e de 5 min + 1 s (5 abertas) → reemite', { tag: '@CIT-72' }, async () => {
@@ -336,7 +348,7 @@ test('CIT-72 CA2: todas usadas ou vencidas → sem_aberta; conta cancelada → n
 
   await banco.admin.query('TRUNCATE solicitacao_senha')
   const solicitacaoId = await semearSolicitacao(banco.admin, { contaId, recuoMs: MIN_MS })
-  await semearEnvio(banco.admin, { solicitacaoId, estado: 'falhou' })
+  await semearEnvio(banco.admin, { solicitacaoId, estado: 'falhou', recuoMs: CINCO_MIN_MS + 1000 })
   await banco.admin.query("UPDATE conta_titular SET estado = 'cancelada' WHERE id = $1", [contaId])
   await pedir(EMAIL, { requestId: randomUUID() })
   assert.equal((await envios()).length, 1, 'só o semeado')
@@ -345,7 +357,7 @@ test('CIT-72 CA2: todas usadas ou vencidas → sem_aberta; conta cancelada → n
 test('CIT-72 CA2: primeiro acesso no limite reemite com o modelo do tipo do banco', { tag: '@CIT-72' }, async () => {
   const { contaId } = await semearContaPainel(banco.admin, { email: EMAIL, estado: 'sem_senha' })
   const solicitacaoId = await semearSolicitacao(banco.admin, { contaId, tipo: 'primeiro_acesso', recuoMs: MIN_MS, prazoMs: 72 * 3600000 })
-  await semearEnvio(banco.admin, { solicitacaoId, modelo: 'senha_primeiro_acesso', estado: 'nao_enviado' })
+  await semearEnvio(banco.admin, { solicitacaoId, modelo: 'senha_primeiro_acesso', estado: 'nao_enviado', recuoMs: CINCO_MIN_MS + 1000 })
   await pedir(EMAIL, { requestId: randomUUID() })
   const novos = (await envios()).filter((e) => e.chave_idempotencia.startsWith('senha_reenvio-'))
   assert.equal(novos.length, 1)
@@ -355,7 +367,7 @@ test('CIT-72 CA2: primeiro acesso no limite reemite com o modelo do tipo do banc
 test('CIT-72 CA2: requestId fora do formato usa o jobId na chave', { tag: '@CIT-72' }, async () => {
   const contaId = await contaComSenha()
   const solicitacaoId = await semearSolicitacao(banco.admin, { contaId, recuoMs: MIN_MS })
-  await semearEnvio(banco.admin, { solicitacaoId, estado: 'falhou' })
+  await semearEnvio(banco.admin, { solicitacaoId, estado: 'falhou', recuoMs: CINCO_MIN_MS + 1000 })
   await pedir(EMAIL, { requestId: 'req-ficticio-cit71', jobId: '42' })
   const novos = (await envios()).filter((e) => e.chave_idempotencia.startsWith('senha_reenvio-'))
   assert.deepStrictEqual(novos.map((e) => e.chave_idempotencia), [`senha_reenvio-${solicitacaoId}-42`])
@@ -373,14 +385,40 @@ test('CIT-72 CA2: prazo na reemissão: solicitação de 1 h recuada 39 min 30 s 
   assert.match(html, /vale por 20 minutos,/)
 })
 
-test('CIT-72 CA2: dois "esqueci" simultâneos na mesma conta → exatamente 1 envio novo', { tag: '@CIT-72' }, async () => {
+test('CIT-72 CA2: dois "esqueci" simultâneos na mesma conta → o 2º espera a trava da conta e há exatamente 1 envio novo', { tag: '@CIT-72', timeout: 30000 }, async () => {
   const contaId = await contaComSenha()
   const solicitacaoId = await semearSolicitacao(banco.admin, { contaId, recuoMs: MIN_MS })
   await semearEnvio(banco.admin, { solicitacaoId, estado: 'enviado', recuoMs: 10 * MIN_MS })
-  await Promise.all([
-    pedir(EMAIL, { requestId: randomUUID(), jobId: '1' }),
-    pedir(EMAIL, { requestId: randomUUID(), jobId: '2' })
-  ])
+  // O 1º pedido para com a conta travada, antes de reemitir; o 2º só pode seguir depois do COMMIT dele.
+  let liberar
+  const portao = new Promise((resolve) => { liberar = resolve })
+  let segurou
+  const segurando = new Promise((resolve) => { segurou = resolve })
+  let chamadas = 0
+  const antesDeReemitir = async () => {
+    chamadas += 1
+    if (chamadas === 1) {
+      segurou()
+      await portao
+    }
+  }
+  const pedirSegurando = (requestId, jobId) => criarHandlerEsqueci({ pool: banco.app, filas: filasFalsas().filas, antesDeReemitir })(
+    { log, tentativa: { feita: 0, maxima: 3 }, jobId }, { email: EMAIL, requestId }
+  )
+  const primeiro = pedirSegurando(randomUUID(), '1')
+  await segurando
+  let segundoTerminou = false
+  const segundo = pedirSegurando(randomUUID(), '2').finally(() => { segundoTerminou = true })
+  try {
+    // Espera o 2º bloquear no FOR UPDATE (lock não concedido) ou, sem a trava, terminar.
+    await aguardar(async () => segundoTerminou ||
+      (await banco.admin.query('SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted')).rows[0].n > 0)
+    assert.equal(segundoTerminou, false, 'o 2º pedido espera a trava da conta do 1º')
+  } finally {
+    liberar()
+    await Promise.allSettled([primeiro, segundo])
+  }
+  await Promise.all([primeiro, segundo])
   const novos = (await envios()).filter((e) => e.chave_idempotencia.startsWith('senha_reenvio-'))
   assert.equal(novos.length, 1)
   assert.ok(descarte('envio_pendente'))

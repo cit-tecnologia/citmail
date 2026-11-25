@@ -136,18 +136,20 @@ export async function buscarAbertaMaisRecente(executor, contaId) {
   return resultado.rows[0] ?? null
 }
 
-// Envios de link da solicitação: pendentes vivos (sem alerta e com menos de 1 h),
-// enviados nos últimos 5 min e total, pelo relógio do banco.
-export async function situacaoDoEnvio(executor, solicitacaoId) {
+// Envios de link da solicitação (`modelos`: os nomes dos modelos de senha): pendentes vivos
+// (sem alerta e com menos de 1 h), recentes (criados nos últimos 5 min em qualquer estado,
+// ou enviados nesse prazo) e total, pelo relógio do banco.
+export async function situacaoDoEnvio(executor, solicitacaoId, modelos) {
   const resultado = await executor.query(
     `SELECT count(*) FILTER (WHERE estado = 'pendente' AND alertado_parado_em IS NULL
                                AND criado_em > now() - interval '1 hour')::int AS pendentes_vivos,
-            count(*) FILTER (WHERE estado = 'enviado' AND enviado_em > now() - interval '5 minutes')::int
-              AS enviados_recentes,
+            count(*) FILTER (WHERE criado_em > now() - interval '5 minutes'
+                               OR (estado = 'enviado' AND enviado_em > now() - interval '5 minutes'))::int
+              AS recentes,
             count(*)::int AS total
        FROM email_envio
-      WHERE modelo IN ('senha_primeiro_acesso', 'senha_redefinicao') AND refs->>'solicitacaoId' = $1`,
-    [solicitacaoId]
+      WHERE modelo = ANY($2::text[]) AND refs->>'solicitacaoId' = $1`,
+    [solicitacaoId, modelos]
   )
   return resultado.rows[0]
 }
