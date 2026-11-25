@@ -85,6 +85,14 @@
         <button type="button" class="btn-login" id="btnTentarNovamente" data-definir-acao="tentar">Tentar novamente</button>
       </div>
 
+      <!-- POST definir sem resposta (rede ou prazo): a senha pode já ter sido gravada -->
+      <div class="login-indisponivel estado-invalido is-hidden" id="definirNaoConfirmado" role="alert">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-x"></use></svg>
+        <strong>Não confirmamos a definição</strong>
+        <p>Talvez sua senha já tenha sido definida: tente entrar.</p>
+        <a class="btn-login" id="btnIrLogin" href="login.html">Ir para o login</a>
+      </div>
+
       <!-- Sucesso (breve, antes do redirecionamento ao login) -->
       <div class="login-indisponivel estado-sucesso is-hidden" id="definirSucesso" role="status">
         <svg class="icon icon--success" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg>
@@ -143,7 +151,7 @@
     </div>
   </main>
 
-  <script src="assets/definir-senha.js?v=1"></script>
+  <script src="assets/definir-senha.js?v=2"></script>
 
 </body>
 </html>

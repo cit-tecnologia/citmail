@@ -108,6 +108,89 @@ test.describe('CIT-71 definir-senha.html (modo API)', { tag: '@CIT-71' }, () => 
     });
   });
 
+  test.describe('CA3 — envio da senha', () => {
+    test('CA3 definir sem resposta (rede) mostra #definirNaoConfirmado com link para login.html, sem "Tentar novamente"', async ({ page, erros }) => {
+      const estado = await mockarPainel(page, { definir: 'abort' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
+      await expect(page.locator('#definirForm')).toBeVisible();
+      await preencherEEnviar(page, SENHA_OK);
+      await expect(page.locator('#definirNaoConfirmado')).toBeVisible();
+      await expect(page.locator('#definirNaoConfirmado')).toContainText('Talvez sua senha já tenha sido definida: tente entrar.');
+      await expect(page.locator('#btnIrLogin')).toHaveAttribute('href', 'login.html');
+      await expect(page.locator('#definirErro')).toBeHidden();
+      await expect(page.locator('#definirForm')).toBeHidden();
+      expect(chamadas(estado, 'definir'), 'sem reenvio automático').toBe(1);
+      expect(await page.locator('#fNovaSenha').inputValue(), 'senha apagada do campo').toBe('');
+      descartarPainel(erros);
+    });
+
+    test('CA3 #btnDefinir fica desabilitado enquanto o POST definir não responde e volta ao receber o 400', async ({ page, erros }) => {
+      await mockarPainel(page, { definir: 400 });
+      /** @type {() => void} */
+      let liberar = () => {};
+      const segurar = new Promise(resolve => { liberar = () => resolve(undefined); });
+      // registrada depois do mock: tem prioridade e segura a resposta
+      await page.route('**/api/painel/senha/definir', async route => {
+        await segurar;
+        await route.fulfill({ status: 400, headers: { 'cache-control': 'no-store' }, contentType: 'application/json', body: JSON.stringify({ erro: 'senha_fora_da_politica' }) });
+      });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
+      await expect(page.locator('#definirForm')).toBeVisible();
+      await preencherEEnviar(page, SENHA_OK);
+      await expect(page.locator('#btnDefinir')).toBeDisabled();
+      liberar();
+      await expect(page.locator('#errNovaSenha')).toBeVisible();
+      await expect(page.locator('#btnDefinir')).toBeEnabled();
+      descartarPainel(erros);
+    });
+
+    test('CA3 pageshow com persisted restaura o botão quando o token ainda está em memória', async ({ page, erros }) => {
+      await mockarPainel(page);
+      await page.route('**/api/painel/senha/definir', () => { /* nunca responde: o botão fica preso */ });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
+      await expect(page.locator('#definirForm')).toBeVisible();
+      await preencherEEnviar(page, SENHA_OK);
+      await expect(page.locator('#btnDefinir')).toBeDisabled();
+      await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+      await expect(page.locator('#btnDefinir')).toBeEnabled();
+      descartarPainel(erros);
+    });
+
+    test('CA3 pageshow com persisted sem token em memória mostra #linkInvalido', async ({ page, erros }) => {
+      await mockarPainel(page, { definir: 'abort' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
+      await preencherEEnviar(page, SENHA_OK);
+      await expect(page.locator('#definirNaoConfirmado')).toBeVisible(); // o token foi zerado
+      await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+      await expect(page.locator('#linkInvalido')).toBeVisible();
+      await expect(page.locator('#definirNaoConfirmado')).toBeHidden();
+      descartarPainel(erros);
+    });
+
+    test('CA3 pageshow sem persisted não muda o estado', async ({ page, erros }) => {
+      await mockarPainel(page, { definir: 'abort' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
+      await preencherEEnviar(page, SENHA_OK);
+      await expect(page.locator('#definirNaoConfirmado')).toBeVisible();
+      await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: false })));
+      await expect(page.locator('#definirNaoConfirmado')).toBeVisible();
+      await expect(page.locator('#linkInvalido')).toBeHidden();
+      descartarPainel(erros);
+    });
+
+    test('CA4 novo fragmento colado no endereço (hashchange) recarrega e valida o novo token', async ({ page, erros }) => {
+      const estado = await mockarPainel(page);
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
+      await expect(page.locator('#definirForm')).toBeVisible();
+      const outro = 'C'.repeat(43);
+      await page.evaluate(t => { location.hash = `#t=${t}`; }, outro);
+      await expect.poll(() => estado.reqs.filter(r => r.rota === 'validar').map(r => r.corpo?.token)).toEqual([TOKEN, outro]);
+      await expect(page.locator('#definirForm')).toBeVisible();
+      expect(await page.evaluate(() => location.hash), 'fragmento apagado de novo').toBe('');
+      descartarPainel(erros);
+    });
+  });
+
   test.describe('CA4 — link expirado, usado ou inválido', () => {
     test('CA4 validar 410 mostra "Este link expirou ou já foi usado." e "Pedir novo link" para login.html?esqueci=1', async ({ page, erros }) => {
       await mockarPainel(page, { validar: 410 });
@@ -369,6 +452,14 @@ test.describe('CIT-71 modo local', { tag: '@CIT-71' }, () => {
     expect(api, 'requisições a /api/').toEqual([]);
   });
 
+  test('CA10 login.html?esqueci=1 em modo local não abre o modal, não faz requisição e tira o parâmetro', async ({ page, erros }) => {
+    const api = contarApi(page);
+    await page.goto('login.html?esqueci=1', { waitUntil: 'networkidle' });
+    await expect(page.locator('#forgotOverlay')).toBeHidden();
+    expect(new URL(page.url()).search).not.toContain('esqueci');
+    expect(api, 'requisições a /api/').toEqual([]);
+  });
+
   test('CA12 definir-senha.html local carrega sem violação de CSP', async ({ page, erros }) => {
     await page.addInitScript(() => {
       // @ts-ignore
@@ -458,9 +549,9 @@ test.describe('CIT-71 versões dos assets', { tag: '@CIT-71' }, () => {
     expect(html).toContain('assets/login.css?v=3"');
   });
 
-  test('CA12 definir-senha.html referencia definir-senha.js?v=1 e definir-senha.css?v=1', () => {
+  test('CA12 definir-senha.html referencia definir-senha.js?v=2 e definir-senha.css?v=1', () => {
     const html = ler('definir-senha.html');
-    expect(html).toContain('assets/definir-senha.js?v=1"');
+    expect(html).toContain('assets/definir-senha.js?v=2"');
     expect(html).toContain('assets/definir-senha.css?v=1"');
   });
 });

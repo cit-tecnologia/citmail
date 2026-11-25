@@ -22,7 +22,7 @@ function origemApi() {
 }
 
 const origem = origemApi();
-const ESTADOS = ['definirCarregando', 'definirIndisponivel', 'linkInvalido', 'definirErro', 'definirSucesso', 'definirForm'];
+const ESTADOS = ['definirCarregando', 'definirIndisponivel', 'linkInvalido', 'definirErro', 'definirNaoConfirmado', 'definirSucesso', 'definirForm'];
 let enviando = false;
 
 function el(id) { return document.getElementById(id); }
@@ -122,6 +122,14 @@ async function definir(e) {
     el('fConfirmaSenha').value = '';
     mostrarEstado('definirSucesso');
     location.replace('login.html?senha=definida');
+    return;
+  }
+  if (status === 0) {
+    // Sem resposta: a senha pode já ter sido gravada e o token consumido; repetir não ajuda. Orienta a entrar.
+    token = null;
+    el('fNovaSenha').value = '';
+    el('fConfirmaSenha').value = '';
+    mostrarEstado('definirNaoConfirmado');
     return;
   }
   restaurarBotao();

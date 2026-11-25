@@ -485,12 +485,27 @@ test.describe('CSP — login e painel', { tag: ['@CIT-158', '@CIT-70'] }, () => 
       await page.locator('[data-login-acao="esqueci"]').click();
       const emailForjado = '<b/id=x>a@b.co';
       await page.locator('#fForgotEmail').fill(emailForjado);
+      // nós criados depois do clique: nenhum pode vir de HTML (só o toast fixo, montado por createElement)
+      await page.evaluate(() => {
+        // @ts-ignore
+        window.__nosNovos = [];
+        new MutationObserver(lista => lista.forEach(m => m.addedNodes.forEach(n => {
+          // @ts-ignore
+          window.__nosNovos.push({ tag: n.nodeName, html: n.nodeType === 1 ? n.outerHTML : n.textContent });
+        }))).observe(document.body, { childList: true, subtree: true });
+      });
       await page.locator('[data-login-acao="enviar"]').click();
 
       // CIT-71: o toast é fixo (202 do mock) e não repete o e-mail digitado: nada é interpretado como HTML
       await expect(page.locator('body > div', { hasText: 'Se houver uma conta com este e-mail' })).toBeVisible();
       await expect(page.locator('body > div', { hasText: 'Se houver uma conta com este e-mail' })).not.toContainText(emailForjado);
       expect(await page.locator('#x').count(), 'elemento injetado não deveria existir').toBe(0);
+      // o campo mantém o valor como texto, e nenhum nó novo contém o e-mail nem a tag forjada
+      await expect(page.locator('#fForgotEmail')).toHaveValue(emailForjado);
+      const nos = await page.evaluate(() => /** @type {any} */ (window).__nosNovos);
+      expect(nos.length, 'houve nós novos (o toast)').toBeGreaterThan(0);
+      expect(JSON.stringify(nos), 'nó novo com o e-mail forjado').not.toContain('id=x');
+      expect(JSON.stringify(nos), 'nó novo com o e-mail forjado').not.toContain('a@b.co');
       descartarPainel(erros);
     });
 
