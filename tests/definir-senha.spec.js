@@ -1,6 +1,6 @@
 // @ts-check
 import { readFileSync } from 'node:fs';
-import { test, expect } from './fixtures.js';
+import { test, expect as expectBase } from './fixtures.js';
 import { BASE_API, CONTRA_SITE_PUBLICADO, mockarPainel, descartarPainel, chamadas } from './painel-mock.js';
 
 // CIT-71: página definir-senha.html (token no fragmento #t=<43>, POST senha/validar e senha/definir) e o "Esqueci a senha"
@@ -8,12 +8,16 @@ import { BASE_API, CONTRA_SITE_PUBLICADO, mockarPainel, descartarPainel, chamada
 // sempre mockado por tests/painel-mock.js. Modo local = baseURL padrão (127.0.0.1). Só dados fictícios.
 // Ver .omc/plans/CIT-71.md ("Critérios de aceite" e "Testes por critério"): CA2, CA3, CA4, CA5, CA7, CA10, CA11 e CA12 (versões).
 
+// Máquina de 1 CPU: o 1º estado da página (Vite a frio + validar) pode passar de 5 s com --repeat-each; 10 s evita o falso negativo.
+const expect = expectBase.configure({ timeout: 10000 });
+
 const TOKEN = 'B'.repeat(42) + 'h'; // 43 caracteres base64url, fictício
 const SENHA_OK = 'Senha-nova-de-teste'; // 19
 const REGRA = 'Use de 12 a 128 caracteres, diferente do seu e-mail.';
 const AVISO_SUCESSO = 'Senha definida. Entre com seu e-mail e a nova senha.';
 const TOAST_ESQUECI = 'Se houver uma conta com este e-mail, enviaremos um link em instantes.';
 const ERRO_ESQUECI = 'Não foi possível enviar agora. Tente novamente em instantes.';
+// goto com 'load' (não 'networkidle'): com o POST validar respondido 4xx/5xx pelo mock o networkidle do Chromium não dispara; os expect esperam o estado.
 const URL_DEFINIR = `definir-senha.html#t=${TOKEN}`;
 
 const ler = caminho => readFileSync(new URL(`../${caminho}`, import.meta.url), 'utf8');
@@ -50,7 +54,7 @@ test.describe('CIT-71 definir-senha.html (modo API)', { tag: '@CIT-71' }, () => 
   test.describe('CA3 — definir com link válido', () => {
     test('CA3 validar 200 de primeiro acesso mostra o formulário com o título "Defina sua senha"', async ({ page, erros }) => {
       const estado = await mockarPainel(page, { validar: 200, tipo: 'primeiro_acesso' });
-      await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
       await expect(page.locator('#definirForm')).toBeVisible();
       await expect(page.locator('#definirTitulo')).toHaveText('Defina sua senha');
       await expect(page.locator('#linkInvalido')).toBeHidden();
@@ -61,14 +65,14 @@ test.describe('CIT-71 definir-senha.html (modo API)', { tag: '@CIT-71' }, () => 
 
     test('CA3 validar 200 de redefinição mostra o título "Redefina sua senha"', async ({ page, erros }) => {
       await mockarPainel(page, { validar: 200, tipo: 'redefinicao' });
-      await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
       await expect(page.locator('#definirTitulo')).toHaveText('Redefina sua senha');
       descartarPainel(erros);
     });
 
     test('CA3 validar envia o token só no corpo do POST', async ({ page, erros }) => {
       const estado = await mockarPainel(page);
-      await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
       await expect(page.locator('#definirForm')).toBeVisible();
       const req = estado.reqs.find(r => r.rota === 'validar');
       expect(req?.metodo).toBe('POST');
@@ -78,7 +82,7 @@ test.describe('CIT-71 definir-senha.html (modo API)', { tag: '@CIT-71' }, () => 
 
     test('CA3 definir 204 envia { token, senha } e leva ao login com o aviso de sucesso, sem ?senha na URL', async ({ page, erros }) => {
       const estado = await mockarPainel(page, { definir: 204 });
-      await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
       await expect(page.locator('#definirForm')).toBeVisible();
       await preencherEEnviar(page, SENHA_OK);
 
@@ -93,7 +97,7 @@ test.describe('CIT-71 definir-senha.html (modo API)', { tag: '@CIT-71' }, () => 
 
     test('CA3 o botão de mostrar senha alterna o tipo do campo', async ({ page, erros }) => {
       await mockarPainel(page);
-      await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
       const campo = page.locator('#fNovaSenha');
       await expect(campo).toHaveAttribute('type', 'password');
       await page.locator('[data-definir-acao="mostrar-senha"][data-alvo="fNovaSenha"]').click();
@@ -107,7 +111,7 @@ test.describe('CIT-71 definir-senha.html (modo API)', { tag: '@CIT-71' }, () => 
   test.describe('CA4 — link expirado, usado ou inválido', () => {
     test('CA4 validar 410 mostra "Este link expirou ou já foi usado." e "Pedir novo link" para login.html?esqueci=1', async ({ page, erros }) => {
       await mockarPainel(page, { validar: 410 });
-      await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
       await expect(page.locator('#linkInvalido')).toBeVisible();
       await expect(page.locator('#linkInvalido')).toContainText('Este link expirou ou já foi usado.');
       await expect(page.locator('#definirForm')).toBeHidden();
@@ -119,7 +123,7 @@ test.describe('CIT-71 definir-senha.html (modo API)', { tag: '@CIT-71' }, () => 
 
     test('CA4 "Pedir novo link" leva ao login com o modal "Recuperar senha" aberto', async ({ page, erros }) => {
       await mockarPainel(page, { validar: 410 });
-      await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
       await page.locator('#btnPedirNovo').click();
       await expect(page).toHaveURL(/login\.html/);
       await expect(page.locator('#forgotOverlay')).toBeVisible();
@@ -142,7 +146,7 @@ test.describe('CIT-71 definir-senha.html (modo API)', { tag: '@CIT-71' }, () => 
     for (const falha of /** @type {const} */ ([503, 'abort'])) {
       test(`CA4 validar ${falha} mostra #definirErro e "Tentar novamente" repete a validação até abrir o formulário`, async ({ page, erros }) => {
         const estado = await mockarPainel(page, { validar: falha });
-        await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+        await page.goto(URL_DEFINIR, { waitUntil: 'load' });
         await expect(page.locator('#definirErro')).toBeVisible();
         await expect(page.locator('#linkInvalido')).toBeHidden();
         await expect(page.locator('#definirForm')).toBeHidden();
@@ -163,7 +167,7 @@ test.describe('CIT-71 definir-senha.html (modo API)', { tag: '@CIT-71' }, () => 
   test.describe('CA5 — política de senha', () => {
     test('CA5 #senhaRegra fica sempre visível com a regra', async ({ page, erros }) => {
       await mockarPainel(page);
-      await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
       await expect(page.locator('#senhaRegra')).toBeVisible();
       await expect(page.locator('#senhaRegra')).toHaveText(REGRA);
       await page.locator('#fNovaSenha').fill('curta');
@@ -173,7 +177,7 @@ test.describe('CIT-71 definir-senha.html (modo API)', { tag: '@CIT-71' }, () => 
 
     test('CA5 senha de 11 caracteres mostra a regra em #errNovaSenha e não envia o POST', async ({ page, erros }) => {
       const estado = await mockarPainel(page);
-      await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
       await preencherEEnviar(page, 'a'.repeat(11));
       await expect(page.locator('#errNovaSenha')).toBeVisible();
       await expect(page.locator('#errNovaSenha')).toContainText(REGRA);
@@ -183,7 +187,7 @@ test.describe('CIT-71 definir-senha.html (modo API)', { tag: '@CIT-71' }, () => 
 
     test('CA5 confirmação diferente mostra "As senhas não conferem." em #errConfirma e não envia o POST', async ({ page, erros }) => {
       const estado = await mockarPainel(page);
-      await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
       await preencherEEnviar(page, SENHA_OK, SENHA_OK + 'x');
       await expect(page.locator('#errConfirma')).toBeVisible();
       await expect(page.locator('#errConfirma')).toHaveText('As senhas não conferem.');
@@ -193,7 +197,7 @@ test.describe('CIT-71 definir-senha.html (modo API)', { tag: '@CIT-71' }, () => 
 
     test('CA5 definir 400 mockado mostra a regra em #errNovaSenha e mantém o formulário', async ({ page, erros }) => {
       const estado = await mockarPainel(page, { definir: 400 });
-      await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
       await preencherEEnviar(page, SENHA_OK);
       await expect(page.locator('#errNovaSenha')).toBeVisible();
       await expect(page.locator('#errNovaSenha')).toContainText(REGRA);
@@ -209,7 +213,7 @@ test.describe('CIT-71 definir-senha.html (modo API)', { tag: '@CIT-71' }, () => 
       const requisicoes = [];
       page.on('request', req => { if (!req.isNavigationRequest()) requisicoes.push(req); });
       const estado = await mockarPainel(page, { definir: 204 });
-      await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
       await expect(page.locator('#definirForm')).toBeVisible();
       await preencherEEnviar(page, SENHA_OK);
       await expect(page).toHaveURL(/login\.html/, { timeout: 10000 });
@@ -232,14 +236,14 @@ test.describe('CIT-71 definir-senha.html (modo API)', { tag: '@CIT-71' }, () => 
 
     test('CA7 meta[name="referrer"] vale no-referrer', async ({ page, erros }) => {
       await mockarPainel(page);
-      await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
       await expect(page.locator('meta[name="referrer"]')).toHaveAttribute('content', 'no-referrer');
       descartarPainel(erros);
     });
 
     test('CA7 o fragmento sai da barra de endereço logo após a carga', async ({ page, erros }) => {
       await mockarPainel(page);
-      await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
       expect(await page.evaluate(() => location.hash)).toBe('');
       expect(page.url()).not.toContain(TOKEN);
       descartarPainel(erros);
@@ -259,14 +263,14 @@ test.describe('CIT-71 definir-senha.html (modo API)', { tag: '@CIT-71' }, () => 
       const estado = await mockarPainel(page);
       const violacoes = () => page.evaluate(() => /** @type {any} */ (window).__csp || []);
 
-      await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
       await expect(page.locator('#definirForm')).toBeVisible();
       await preencherEEnviar(page, 'curta');
       await expect(page.locator('#errNovaSenha')).toBeVisible();
       expect(await violacoes(), 'violações com o formulário').toEqual([]);
 
       estado.validar = 410;
-      await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+      await page.goto(URL_DEFINIR, { waitUntil: 'load' });
       await expect(page.locator('#linkInvalido')).toBeVisible();
       expect(await violacoes(), 'violações com o link inválido').toEqual([]);
       descartarPainel(erros);
@@ -374,7 +378,7 @@ test.describe('CIT-71 modo local', { tag: '@CIT-71' }, () => {
         window.__csp.push({ violatedDirective: e.violatedDirective, blockedURI: e.blockedURI });
       });
     });
-    await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+    await page.goto(URL_DEFINIR, { waitUntil: 'load' });
     await expect(page.locator('#definirIndisponivel')).toBeVisible();
     expect(await page.evaluate(() => /** @type {any} */ (window).__csp || [])).toEqual([]);
   });
@@ -396,7 +400,7 @@ test.describe('CIT-71 mobile', { tag: '@CIT-71' }, () => {
 
         test(`CA11 formulário com #errNovaSenha visível a ${largura} px sem rolagem horizontal e com #btnDefinir de 44 px`, async ({ page, erros }) => {
           await mockarPainel(page);
-          await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+          await page.goto(URL_DEFINIR, { waitUntil: 'load' });
           await preencherEEnviar(page, 'curta');
           await expect(page.locator('#errNovaSenha')).toBeVisible();
           expect(await semRolagem(page), 'scrollWidth <= innerWidth').toBe(true);
@@ -406,7 +410,7 @@ test.describe('CIT-71 mobile', { tag: '@CIT-71' }, () => {
 
         test(`CA11 #linkInvalido a ${largura} px sem rolagem horizontal e com #btnPedirNovo de 44 px`, async ({ page, erros }) => {
           await mockarPainel(page, { validar: 410 });
-          await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+          await page.goto(URL_DEFINIR, { waitUntil: 'load' });
           await expect(page.locator('#linkInvalido')).toBeVisible();
           expect(await semRolagem(page), 'scrollWidth <= innerWidth').toBe(true);
           await alvoDeToque(page.locator('#btnPedirNovo'), '#btnPedirNovo');
@@ -434,7 +438,7 @@ test.describe('CIT-71 mobile', { tag: '@CIT-71' }, () => {
       });
 
       test(`CA11 #definirIndisponivel a ${largura} px sem rolagem horizontal`, async ({ page, erros }) => {
-        await page.goto(URL_DEFINIR, { waitUntil: 'networkidle' });
+        await page.goto(URL_DEFINIR, { waitUntil: 'load' });
         await expect(page.locator('#definirIndisponivel')).toBeVisible();
         expect(await semRolagem(page), 'scrollWidth <= innerWidth').toBe(true);
       });
