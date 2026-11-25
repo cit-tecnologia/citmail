@@ -98,3 +98,56 @@ export async function buscarContaIdPorEmail(executor, email) {
   const resultado = await executor.query('SELECT id FROM conta_titular WHERE email = lower(btrim($1))', [email])
   return resultado.rows[0]?.id ?? null
 }
+
+// Envio do link (CIT-72): solicitação aberta de conta não cancelada, com o e-mail da conta,
+// se já tinha token e os segundos que faltam pelo relógio do banco. Sem efeito colateral.
+export async function buscarParaEnvio(executor, solicitacaoId) {
+  const resultado = await executor.query(
+    `SELECT s.tipo, s.expira_em, s.token_hash IS NOT NULL AS tinha_token, c.email,
+            extract(epoch FROM s.expira_em - now())::float8 AS segundos_restantes
+       FROM solicitacao_senha s
+       JOIN conta_titular c ON c.id = s.conta_titular_id
+      WHERE s.id = $1 AND s.usada_em IS NULL AND s.expira_em > now() AND c.estado <> 'cancelada'`,
+    [solicitacaoId]
+  )
+  return resultado.rows[0] ?? null
+}
+
+// `enviada_em` só se o hash ainda é o do e-mail aceito; false se outro envio já o trocou.
+export async function marcarEnviada(executor, solicitacaoId, tokenHash) {
+  const resultado = await executor.query(
+    'UPDATE solicitacao_senha SET enviada_em = now() WHERE id = $1 AND token_hash = $2 RETURNING id',
+    [solicitacaoId, tokenHash]
+  )
+  return resultado.rowCount === 1
+}
+
+// Reemissão no limite do "esqueci" (CIT-72): a aberta mais recente da conta e se nasceu
+// nos últimos 5 min (janela do outbox), pelo relógio do banco.
+export async function buscarAbertaMaisRecente(executor, contaId) {
+  const resultado = await executor.query(
+    `SELECT id, tipo, criada_em > now() - interval '5 minutes' AS recente
+       FROM solicitacao_senha
+      WHERE conta_titular_id = $1 AND usada_em IS NULL AND expira_em > now()
+      ORDER BY criada_em DESC, id DESC
+      LIMIT 1`,
+    [contaId]
+  )
+  return resultado.rows[0] ?? null
+}
+
+// Envios de link da solicitação: pendentes vivos (sem alerta e com menos de 1 h),
+// enviados nos últimos 5 min e total, pelo relógio do banco.
+export async function situacaoDoEnvio(executor, solicitacaoId) {
+  const resultado = await executor.query(
+    `SELECT count(*) FILTER (WHERE estado = 'pendente' AND alertado_parado_em IS NULL
+                               AND criado_em > now() - interval '1 hour')::int AS pendentes_vivos,
+            count(*) FILTER (WHERE estado = 'enviado' AND enviado_em > now() - interval '5 minutes')::int
+              AS enviados_recentes,
+            count(*)::int AS total
+       FROM email_envio
+      WHERE modelo IN ('senha_primeiro_acesso', 'senha_redefinicao') AND refs->>'solicitacaoId' = $1`,
+    [solicitacaoId]
+  )
+  return resultado.rows[0]
+}
