@@ -483,6 +483,23 @@ test.describe('pedido — CA12: contrato do arquivo e da publicação', { tag: '
     });
   }
 
+  // CIT-71: definir-senha.js usa a mesma lista de origens do modo API.
+  test('CIT-71 CA10 ORIGENS_API de assets/definir-senha.js é igual à de assets/checkout.js', { tag: '@CIT-71' }, () => {
+    const declaracao = fonte => /const ORIGENS_API = Object\.freeze\([\s\S]*?\);/.exec(fonte)?.[0];
+    const checkout = declaracao(ler('assets/checkout.js'));
+    expect(checkout, 'ORIGENS_API em checkout.js').toBeTruthy();
+    expect(declaracao(ler('assets/definir-senha.js')), 'ORIGENS_API em assets/definir-senha.js').toBe(checkout);
+  });
+
+  test('CIT-71 CA12 a homologação confere e publica definir-senha.html, assets/definir-senha.js e assets/definir-senha.css nas duas listas', { tag: '@CIT-71' }, () => {
+    const workflow = ler('.github/workflows/publicar-homologacao.yml');
+    for (const arquivo of ['definir-senha.html', 'assets/definir-senha.js', 'assets/definir-senha.css']) {
+      const escapado = arquivo.replace(/[.]/g, '\\.');
+      expect(workflow, `${arquivo} na verificação do dist (test -f)`).toMatch(new RegExp(`test -f dist/${escapado}(\\s|$)`));
+      expect(workflow, `${arquivo} no laço de comparação com o publicado`).toMatch(new RegExp(`for arquivo in [^;]*\\b${escapado}\\b`));
+    }
+  });
+
   test('CA12 a homologação confere e publica pedido.html, assets/pedido.js e assets/pedido.css nas duas listas', () => {
     const workflow = ler('.github/workflows/publicar-homologacao.yml');
     for (const arquivo of ['pedido.html', 'assets/pedido.js', 'assets/pedido.css']) {

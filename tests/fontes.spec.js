@@ -12,7 +12,8 @@ const RAIZ = new URL('../', import.meta.url);
 const PAGINAS = ['index.html', 'checkout.html'];
 // CIT-156: login e painel trocam o Google Fonts por assets/fonts.css. Ver .omc/plans/CIT-156.md.
 // CIT-69: pedido.html segue o mesmo contrato (fontes locais, sem Google Fonts, sem rolagem horizontal).
-const PAGINAS_CIT156 = ['login.html', 'painel.html', 'pedido.html'];
+// CIT-71: definir-senha.html idem (no modo local mostra "disponível em breve"; sem mock).
+const PAGINAS_CIT156 = ['login.html', 'painel.html', 'pedido.html', 'definir-senha.html'];
 
 /**
  * Chamar dentro do describe do arquivo: o painel roda em localhost:4200 (BASE_API), e é essa origem que a fixture `erros`
@@ -81,6 +82,7 @@ const FALLBACK_CONHECIDO_POR_PAGINA = {
   'login.html': ['≤'],
   'painel.html': ['≤'],
   'pedido.html': [],
+  'definir-senha.html': [],
 };
 
 /** "U+0000-00FF, U+0131, ..." -> [[0, 255], [0x131, 0x131], ...] */

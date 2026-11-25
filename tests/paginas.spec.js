@@ -9,14 +9,15 @@ const paginas = [
   // CIT-70: painel.html sem sessão redireciona para login.html (caso próprio abaixo, fora desta lista).
   { arquivo: 'termos.html', titulo: 'Termos de Uso — CITMail' },
   { arquivo: 'pedido.html', titulo: 'Acompanhe seu pedido — CITMail' },
+  { arquivo: 'definir-senha.html', titulo: 'Definir senha — CITMail' },
 ];
 
 // CIT-49/CIT-158: páginas com CSP por meta e script externo (smoke também roda contra CITMAIL_BASE_URL).
-const comCsp = ['index.html', 'checkout.html', 'login.html', 'painel.html', 'termos.html', 'pedido.html'];
-const scriptDaPagina = { 'index.html': 'landing.js', 'checkout.html': 'checkout.js', 'login.html': 'login.js', 'painel.html': 'painel.js', 'pedido.html': 'pedido.js' };
+const comCsp = ['index.html', 'checkout.html', 'login.html', 'painel.html', 'termos.html', 'pedido.html', 'definir-senha.html'];
+const scriptDaPagina = { 'index.html': 'landing.js', 'checkout.html': 'checkout.js', 'login.html': 'login.js', 'painel.html': 'painel.js', 'pedido.html': 'pedido.js', 'definir-senha.html': 'definir-senha.js' };
 // CIT-51: termos.html não tem JS (fica fora de scriptDaPagina).
 // CIT-152: CSS de cada página em assets/<página>.css (conferido pelo caminho, sem a query ?v=).
-const folhaDaPagina = { 'index.html': 'landing.css', 'checkout.html': 'checkout.css', 'login.html': 'login.css', 'painel.html': 'painel.css', 'termos.html': 'termos.css', 'pedido.html': 'pedido.css' };
+const folhaDaPagina = { 'index.html': 'landing.css', 'checkout.html': 'checkout.css', 'login.html': 'login.css', 'painel.html': 'painel.css', 'termos.html': 'termos.css', 'pedido.html': 'pedido.css', 'definir-senha.html': 'definir-senha.css' };
 // login.html/painel.html entraram na CIT-158, não na CIT-49/CIT-52 (ver CA7 do plano).
 const tagsCspPorPagina = {
   'index.html': ['@CIT-49', '@CIT-52'],
@@ -25,6 +26,7 @@ const tagsCspPorPagina = {
   'painel.html': ['@CIT-158'],
   'termos.html': ['@CIT-51'],
   'pedido.html': ['@CIT-69'],
+  'definir-senha.html': ['@CIT-71'],
 };
 // CIT-52: fontes locais — lista fixa (smoke não lê assets/fonts.css do disco; roda também na homologação).
 const arquivosDeFonte = [
@@ -136,7 +138,7 @@ test.describe('CIT-152 CA5 — 320 px', { tag: '@CIT-152' }, () => {
 
   // CIT-70: no modo local o formulário e o modal ficam ocultos; o modal "Recuperar senha" só existe no modo API
   // (localhost:4200, com /api/painel/* mockado). Pulado quando CITMAIL_BASE_URL aponta para um site publicado.
-  test.describe('modo API', { tag: '@CIT-70' }, () => {
+  test.describe('modo API', { tag: ['@CIT-70', '@CIT-71'] }, () => {
     test.use({ baseURL: BASE_API });
     test.skip(CONTRA_SITE_PUBLICADO, 'modo API só existe em http://localhost:4200 (Vite local)');
 
@@ -148,7 +150,8 @@ test.describe('CIT-152 CA5 — 320 px', { tag: '@CIT-152' }, () => {
       expect(await semRolagemHorizontal(page), 'modal aberto').toBe(true);
       await page.locator('#fForgotEmail').fill('teste@fixture.com.br');
       await page.locator('[data-login-acao="enviar"]').click();
-      await expect(page.locator('body > div', { hasText: 'Link enviado' })).toBeVisible();
+      // CIT-71: o toast fixo não repete o e-mail; o mock responde 202 a POST senha/esqueci
+      await expect(page.locator('body > div', { hasText: 'Se houver uma conta com este e-mail' })).toBeVisible();
       expect(await semRolagemHorizontal(page), 'toast visível').toBe(true);
       descartarPainel(erros);
     });
