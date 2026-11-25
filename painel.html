@@ -9,9 +9,11 @@
   <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/apple-touch-icon.png" />
   <link rel="stylesheet" href="assets/fonts.css" />
   <link rel="stylesheet" href="assets/tokens.css" />
-  <link rel="stylesheet" href="assets/painel.css?v=1" />
+  <link rel="stylesheet" href="assets/painel.css?v=2" />
 </head>
-<body>
+<body class="sessao-pendente">
+
+<div class="app">
 
 <!-- SIDEBAR BACKDROP (mobile) -->
 <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
@@ -51,18 +53,17 @@
     </a>
     <a class="nav-item" data-section="suporte">
       <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#headset"></use></svg> Suporte
-      <span class="nav-badge" id="ticketBadge">2</span>
     </a>
   </nav>
 
   <div class="sidebar-footer">
     <div class="sidebar-user">
-      <div class="sidebar-avatar" id="sidebarInitials">JS</div>
+      <div class="sidebar-avatar" id="sidebarInitials" aria-hidden="true"></div>
       <div class="sidebar-user-info">
-        <div class="sidebar-user-name" id="sidebarName">João da Silva</div>
-        <div class="sidebar-user-plan">E-mail 25 GB · Mensal</div>
+        <div class="sidebar-user-name" id="sidebarName"></div>
+        <div class="sidebar-user-plan">Titular da conta</div>
       </div>
-      <button class="sidebar-logout" aria-label="Sair" data-tip="Sair" data-toast="Sessão encerrada." data-toast-tipo="info">
+      <button class="sidebar-logout" id="btnSair" aria-label="Sair" data-tip="Sair">
         <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#log-out"></use></svg>
       </button>
     </div>
@@ -79,19 +80,8 @@
     </button>
     <img class="topbar-logo" src="assets/brand/citmail-horizontal-claro.png" alt="CITMail" width="133" height="30">
     <div class="topbar-title" id="topbarTitle">Dashboard</div>
-    <div class="topbar-search">
-      <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#search"></use></svg>
-      <input type="text" placeholder="Buscar…" />
-    </div>
     <div class="topbar-actions">
-      <button class="topbar-btn" aria-label="Notificações" data-tip="Notificações" data-ir-para="suporte">
-        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#bell"></use></svg>
-        <span class="topbar-notif-dot"></span>
-      </button>
-      <button class="topbar-btn topbar-help" aria-label="Ajuda" data-tip="Ajuda">
-        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-help"></use></svg>
-      </button>
-      <div class="topbar-avatar" id="topbarAvatar" data-ir-para="configuracoes">JS</div>
+      <div class="topbar-avatar" id="topbarAvatar" data-ir-para="configuracoes" aria-hidden="true"></div>
     </div>
   </header>
 
@@ -103,1241 +93,124 @@
       <h1 class="sr-only">Dashboard</h1>
       <div class="alert alert-blue">
         <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg>
-        <span>Serviço ativo e operando normalmente. <strong>DNS configurado.</strong></span>
+        <span>Você entrou como <strong class="painel-email" id="painelEmail"></strong>.</span>
       </div>
-
-      <!-- Stats -->
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="stat-card-top">
-            <div class="stat-icon blue"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#mail"></use></svg></div>
-            <span class="stat-trend up">Ativo</span>
-          </div>
-          <div class="stat-value">5</div>
-          <div class="stat-label">Contas de e-mail ativas</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-card-top">
-            <div class="stat-icon turq"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#hard-drive"></use></svg></div>
-            <span class="stat-trend up">62%</span>
-          </div>
-          <div class="stat-value">15,5 GB</div>
-          <div class="stat-label">de 25 GB utilizados</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-card-top">
-            <div class="stat-icon yellow"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#calendar"></use></svg></div>
-            <span class="stat-trend warn">Em 8 dias</span>
-          </div>
-          <div class="stat-value">R$ 80,00</div>
-          <div class="stat-label">Próxima fatura · 08/jul</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-card-top">
-            <div class="stat-icon blue"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#headset"></use></svg></div>
-            <span class="stat-trend warn">2 abertos</span>
-          </div>
-          <div class="stat-value">2</div>
-          <div class="stat-label">Tickets de suporte</div>
-        </div>
-      </div>
-
-      <div class="grid-2">
-        <!-- Contas de e-mail (resumo) -->
-        <div class="card">
-          <div class="card-header">
-            <div class="card-title"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#mail"></use></svg> Contas de E-mail</div>
-            <button class="btn btn-primary btn-sm" data-ir-para="email">Gerenciar</button>
-          </div>
-          <div class="account-list">
-            <div class="account-row">
-              <div>
-                <div class="account-name">joao@empresa.com.br</div>
-                <div class="storage-bar-wrap">
-                  <div class="storage-bar-label"><span>3,2 GB</span><span>25 GB</span></div>
-                  <div class="progress-bar"><div class="progress-fill progress-fill--uso-13"></div></div>
-                </div>
-              </div>
-              <span class="badge badge-green">Ativo</span>
-            </div>
-            <div class="account-row">
-              <div>
-                <div class="account-name">contato@empresa.com.br</div>
-                <div class="storage-bar-wrap">
-                  <div class="storage-bar-label"><span>8,1 GB</span><span>25 GB</span></div>
-                  <div class="progress-bar"><div class="progress-fill warn progress-fill--uso-32"></div></div>
-                </div>
-              </div>
-              <span class="badge badge-green">Ativo</span>
-            </div>
-            <div class="account-row">
-              <div>
-                <div class="account-name">financeiro@empresa.com.br</div>
-                <div class="storage-bar-wrap">
-                  <div class="storage-bar-label"><span>4,2 GB</span><span>25 GB</span></div>
-                  <div class="progress-bar"><div class="progress-fill progress-fill--uso-17"></div></div>
-                </div>
-              </div>
-              <span class="badge badge-green">Ativo</span>
-            </div>
-            <button class="btn btn-outline btn-block" data-abrir-modal="modalNovaContaEmail">
-              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg> Nova conta de e-mail
-            </button>
-          </div>
-        </div>
-
-        <!-- Atividade recente -->
-        <div class="card">
-          <div class="card-header">
-            <div class="card-title"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#history"></use></svg> Atividade Recente</div>
-          </div>
-          <div class="activity-list">
-            <div class="activity-item">
-              <div class="activity-dot activity-dot--green"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg></div>
-              <div class="activity-body">
-                <div class="activity-text">Pagamento <strong>R$ 80,00</strong> confirmado via Pix</div>
-                <div class="activity-time">Hoje, 09:14</div>
-              </div>
-            </div>
-            <div class="activity-item">
-              <div class="activity-dot activity-dot--blue"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#user-plus"></use></svg></div>
-              <div class="activity-body">
-                <div class="activity-text">Nova conta <strong>ti@empresa.com.br</strong> criada</div>
-                <div class="activity-time">Ontem, 15:32</div>
-              </div>
-            </div>
-            <div class="activity-item">
-              <div class="activity-dot activity-dot--amber"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#headset"></use></svg></div>
-              <div class="activity-body">
-                <div class="activity-text">Ticket <strong>#1042</strong> respondido pelo suporte</div>
-                <div class="activity-time">28/jun, 11:07</div>
-              </div>
-            </div>
-            <div class="activity-item">
-              <div class="activity-dot activity-dot--green"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#shield-check"></use></svg></div>
-              <div class="activity-body">
-                <div class="activity-text">Certificado SSL renovado automaticamente</div>
-                <div class="activity-time">25/jun, 03:00</div>
-              </div>
-            </div>
-            <div class="activity-item">
-              <div class="activity-dot activity-dot--blue"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#globe"></use></svg></div>
-              <div class="activity-body">
-                <div class="activity-text">DNS configurado para <strong>empresa.com.br</strong></div>
-                <div class="activity-time">20/jun, 14:18</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Ações rápidas -->
-      <div class="card mt-20">
-        <div class="card-title mb-16"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#zap"></use></svg> Ações Rápidas</div>
-        <div class="quick-actions">
-          <button class="btn btn-outline" data-abrir-modal="modalNovaContaEmail"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#user-plus"></use></svg> Nova conta e-mail</button>
-          <button class="btn btn-outline" data-ir-para="financeiro"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#file-text"></use></svg> Ver faturas</button>
-          <button class="btn btn-outline" data-ir-para="dns"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#globe"></use></svg> Configurar DNS</button>
-          <button class="btn btn-outline" data-abrir-modal="modalNovoTicket"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#headset"></use></svg> Abrir ticket</button>
-          <button class="btn btn-outline" data-ir-para="marketplace"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#store"></use></svg> Contratar serviço</button>
-        </div>
+      <div class="empty-state">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#layout-dashboard"></use></svg>
+        <strong>Em breve</strong>
+        <p>Contas de e-mail, faturas, DNS e suporte aparecerão aqui nas próximas versões do painel.</p>
       </div>
     </section>
 
-    <!-- ===================== E-MAIL ===================== -->
     <section class="section" id="sec-email">
       <div class="page-hdr">
         <div class="page-hdr-left">
           <h1>Contas de E-mail</h1>
-          <p>Gerencie suas caixas postais, aliases e configurações</p>
-        </div>
-        <button class="btn btn-primary" data-abrir-modal="modalNovaContaEmail">
-          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg> Nova conta
-        </button>
-      </div>
-
-      <!-- Storage total -->
-      <div class="card mb-20">
-        <div class="flex-between mb-16">
-          <div>
-            <div class="storage-title">Armazenamento total</div>
-            <div class="field-hint">Plano 25 GB por conta · 5 contas</div>
-          </div>
-          <div class="storage-summary">
-            <div class="storage-value">15,5 GB</div>
-            <div class="field-hint">de 125 GB totais</div>
-          </div>
-        </div>
-        <div class="progress-bar progress-bar--lg">
-          <div class="progress-fill progress-fill--uso-12-4"></div>
+          <p>Caixas postais, aliases e configurações</p>
         </div>
       </div>
-
-      <div class="card">
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Endereço</th>
-                <th>Armazenamento</th>
-                <th>Aliases</th>
-                <th>Último acesso</th>
-                <th>Status</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><div class="email-chip"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#mail"></use></svg> joao@empresa.com.br</div></td>
-                <td>
-                  <div class="storage-used">3,2 / 25 GB</div>
-                  <div class="progress-bar progress-bar--table"><div class="progress-fill progress-fill--uso-13"></div></div>
-                </td>
-                <td><span class="badge badge-blue">3 aliases</span></td>
-                <td class="cell-sub">Hoje, 08:41</td>
-                <td><span class="badge badge-green"><span class="badge-dot"></span> Ativo</span></td>
-                <td>
-                  <div class="row-actions">
-                    <button class="btn btn-ghost btn-sm" aria-label="Editar conta" data-tip="Editar" data-toast="Abrindo configurações…" data-toast-tipo="info"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#pencil"></use></svg></button>
-                    <button class="btn btn-danger btn-sm" aria-label="Excluir conta" data-tip="Excluir" data-toast="Conta removida." data-toast-tipo="error"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#trash-2"></use></svg></button>
-                  </div>
-                </td>
-              </tr>
-              <tr>
-                <td><div class="email-chip"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#mail"></use></svg> contato@empresa.com.br</div></td>
-                <td>
-                  <div class="storage-used">8,1 / 25 GB</div>
-                  <div class="progress-bar progress-bar--table"><div class="progress-fill warn progress-fill--uso-32"></div></div>
-                </td>
-                <td><span class="badge badge-blue">1 alias</span></td>
-                <td class="cell-sub">Hoje, 10:15</td>
-                <td><span class="badge badge-green"><span class="badge-dot"></span> Ativo</span></td>
-                <td>
-                  <div class="row-actions">
-                    <button class="btn btn-ghost btn-sm" aria-label="Editar conta" data-tip="Editar"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#pencil"></use></svg></button>
-                    <button class="btn btn-danger btn-sm" aria-label="Excluir conta" data-tip="Excluir"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#trash-2"></use></svg></button>
-                  </div>
-                </td>
-              </tr>
-              <tr>
-                <td><div class="email-chip"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#mail"></use></svg> financeiro@empresa.com.br</div></td>
-                <td>
-                  <div class="storage-used">4,2 / 25 GB</div>
-                  <div class="progress-bar progress-bar--table"><div class="progress-fill progress-fill--uso-17"></div></div>
-                </td>
-                <td><span class="badge badge-gray">0 aliases</span></td>
-                <td class="cell-sub">29/jun, 16:02</td>
-                <td><span class="badge badge-green"><span class="badge-dot"></span> Ativo</span></td>
-                <td>
-                  <div class="row-actions">
-                    <button class="btn btn-ghost btn-sm" aria-label="Editar conta" data-tip="Editar"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#pencil"></use></svg></button>
-                    <button class="btn btn-danger btn-sm" aria-label="Excluir conta" data-tip="Excluir"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#trash-2"></use></svg></button>
-                  </div>
-                </td>
-              </tr>
-              <tr>
-                <td><div class="email-chip"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#mail"></use></svg> rh@empresa.com.br</div></td>
-                <td>
-                  <div class="storage-used">0,0 / 25 GB</div>
-                  <div class="progress-bar progress-bar--table"><div class="progress-fill progress-fill--uso-0"></div></div>
-                </td>
-                <td><span class="badge badge-gray">0 aliases</span></td>
-                <td class="cell-sub">Nunca</td>
-                <td><span class="badge badge-yellow"><span class="badge-dot"></span> Pendente</span></td>
-                <td>
-                  <div class="row-actions">
-                    <button class="btn btn-ghost btn-sm" aria-label="Editar conta" data-tip="Editar"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#pencil"></use></svg></button>
-                    <button class="btn btn-danger btn-sm" aria-label="Excluir conta" data-tip="Excluir"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#trash-2"></use></svg></button>
-                  </div>
-                </td>
-              </tr>
-              <tr>
-                <td><div class="email-chip"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#mail"></use></svg> ti@empresa.com.br</div></td>
-                <td>
-                  <div class="storage-used">0,0 / 25 GB</div>
-                  <div class="progress-bar progress-bar--table"><div class="progress-fill progress-fill--uso-0"></div></div>
-                </td>
-                <td><span class="badge badge-gray">0 aliases</span></td>
-                <td class="cell-sub">Nunca</td>
-                <td><span class="badge badge-green"><span class="badge-dot"></span> Ativo</span></td>
-                <td>
-                  <div class="row-actions">
-                    <button class="btn btn-ghost btn-sm" aria-label="Editar conta" data-tip="Editar"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#pencil"></use></svg></button>
-                    <button class="btn btn-danger btn-sm" aria-label="Excluir conta" data-tip="Excluir"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#trash-2"></use></svg></button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      <div class="empty-state">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#mail"></use></svg>
+        <strong>Em breve</strong>
+        <p>Esta área estará disponível nas próximas versões do painel.</p>
       </div>
     </section>
-
-    <!-- ===================== FINANCEIRO ===================== -->
     <section class="section" id="sec-financeiro">
       <div class="page-hdr">
         <div class="page-hdr-left">
           <h1>Financeiro</h1>
-          <p>Assinaturas, faturas e formas de pagamento</p>
+          <p>Faturas, assinaturas e formas de pagamento</p>
         </div>
       </div>
-
-      <div class="grid-2 mb-20">
-        <!-- Assinatura ativa -->
-        <div class="card">
-          <div class="card-title mb-16"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#refresh-cw"></use></svg> Assinatura Ativa</div>
-          <div class="plan-banner">
-            <div class="plan-banner-label">Plano atual</div>
-            <div class="plan-banner-name">E-mail Corporativo 25 GB</div>
-            <div class="plan-banner-meta">5 contas · Cobrança mensal</div>
-            <div class="plan-banner-price">
-              <strong>R$ 80,00</strong>
-              <span>/mês</span>
-            </div>
-          </div>
-          <div class="info-list">
-            <div class="info-row">
-              <span>Próxima cobrança</span>
-              <span>08/jul/2026</span>
-            </div>
-            <div class="info-row">
-              <span>Método de pagamento</span>
-              <span><svg class="icon icon-pix" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg> Pix</span>
-            </div>
-            <div class="info-row">
-              <span>Status</span>
-              <span class="badge badge-green">Em dia</span>
-            </div>
-          </div>
-          <div class="divider"></div>
-          <div class="btn-row">
-            <button class="btn btn-outline" data-ir-para="marketplace"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#arrow-up"></use></svg> Upgrade</button>
-            <button class="btn btn-ghost" data-toast="Para cancelar, abra um ticket no Suporte." data-toast-tipo="info"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg> Cancelar</button>
-          </div>
-        </div>
-
-        <!-- Próxima fatura -->
-        <div class="card">
-          <div class="card-title mb-16"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#file-text"></use></svg> Próxima Fatura</div>
-          <div class="invoice-lines">
-            <div class="invoice-line">
-              <span>5× E-mail 25 GB</span>
-              <span>R$ 80,00</span>
-            </div>
-            <div class="invoice-line">
-              <span>Talk — Videoconferência (5 contas)</span>
-              <span>R$ 23,50</span>
-            </div>
-            <div class="invoice-line">
-              <span>Backup 90 dias (5 contas)</span>
-              <span>R$ 30,00</span>
-            </div>
-          </div>
-          <div class="invoice-total">
-            <span>Total em 08/jul</span>
-            <span>R$ 133,50</span>
-          </div>
-          <div class="divider"></div>
-          <div class="btn-row">
-            <button class="btn btn-primary" data-toast="Pix gerado. Escaneie o QR Code para pagar." data-toast-tipo="success">
-              <svg class="icon icon-pix" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg> Pagar agora
-            </button>
-            <button class="btn btn-outline btn-fit" aria-label="Baixar fatura" data-tip="Baixar fatura" data-toast="Fatura baixada." data-toast-tipo="success">
-              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#download"></use></svg>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Histórico de faturas -->
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#history"></use></svg> Histórico de Faturas</div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Nº</th>
-                <th>Período</th>
-                <th>Vencimento</th>
-                <th>Valor</th>
-                <th>Pagamento</th>
-                <th>Status</th>
-                <th>Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td class="cell-sub">#0012</td>
-                <td class="cell-sm">jun/2026</td>
-                <td class="cell-sm">08/jun/2026</td>
-                <td class="invoice-amount">R$ 133,50</td>
-                <td class="cell-sm"><svg class="icon icon-pix" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg> Pix</td>
-                <td><span class="badge badge-green">Pago</span></td>
-                <td><button class="btn btn-ghost btn-sm" aria-label="Baixar PDF da fatura" data-tip="Baixar PDF" data-toast="Baixando PDF…" data-toast-tipo="info"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#download"></use></svg></button></td>
-              </tr>
-              <tr>
-                <td class="cell-sub">#0011</td>
-                <td class="cell-sm">mai/2026</td>
-                <td class="cell-sm">08/mai/2026</td>
-                <td class="invoice-amount">R$ 133,50</td>
-                <td class="cell-sm"><svg class="icon icon-pix" aria-hidden="true"><use href="assets/icons.svg#pix"></use></svg> Pix</td>
-                <td><span class="badge badge-green">Pago</span></td>
-                <td><button class="btn btn-ghost btn-sm" aria-label="Baixar PDF da fatura" data-tip="Baixar PDF" data-toast="Baixando PDF…" data-toast-tipo="info"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#download"></use></svg></button></td>
-              </tr>
-              <tr>
-                <td class="cell-sub">#0010</td>
-                <td class="cell-sm">abr/2026</td>
-                <td class="cell-sm">08/abr/2026</td>
-                <td class="invoice-amount">R$ 80,00</td>
-                <td class="cell-sm"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#credit-card"></use></svg> Cartão</td>
-                <td><span class="badge badge-green">Pago</span></td>
-                <td><button class="btn btn-ghost btn-sm" aria-label="Baixar PDF da fatura" data-tip="Baixar PDF" data-toast="Baixando PDF…" data-toast-tipo="info"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#download"></use></svg></button></td>
-              </tr>
-              <tr>
-                <td class="cell-sub">#0009</td>
-                <td class="cell-sm">mar/2026</td>
-                <td class="cell-sm">08/mar/2026</td>
-                <td class="invoice-amount">R$ 80,00</td>
-                <td class="cell-sm"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#credit-card"></use></svg> Cartão</td>
-                <td><span class="badge badge-green">Pago</span></td>
-                <td><button class="btn btn-ghost btn-sm" aria-label="Baixar PDF da fatura" data-tip="Baixar PDF" data-toast="Baixando PDF…" data-toast-tipo="info"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#download"></use></svg></button></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      <div class="empty-state">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#file-text"></use></svg>
+        <strong>Em breve</strong>
+        <p>Esta área estará disponível nas próximas versões do painel.</p>
       </div>
     </section>
-
-    <!-- ===================== PRODUTOS ===================== -->
     <section class="section" id="sec-produtos">
       <div class="page-hdr">
         <div class="page-hdr-left">
           <h1>Meus Produtos</h1>
-          <p>Serviços ativos na sua conta CITMail</p>
+          <p>Serviços contratados na CITMail</p>
         </div>
-        <button class="btn btn-primary" data-ir-para="marketplace">
-          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg> Contratar mais
-        </button>
       </div>
-
-      <div class="product-grid">
-        <div class="product-card">
-          <div class="product-card-top">
-            <div class="product-card-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#mail"></use></svg></div>
-            <span class="badge badge-green">Ativo</span>
-          </div>
-          <div>
-            <div class="product-card-name">E-mail Corporativo 25 GB</div>
-            <div class="product-card-desc">5 contas · domínio empresa.com.br</div>
-          </div>
-          <div class="product-card-features">
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Webmail + IMAP/POP3/SMTP</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Antispam e antivírus</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Backup automático 30 dias</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> SSL/TLS grátis</div>
-          </div>
-          <div class="flex-between">
-            <div class="product-card-price">R$ 80,00 <span>/mês</span></div>
-            <button class="btn btn-outline btn-sm" data-ir-para="email">Gerenciar</button>
-          </div>
-        </div>
-
-        <div class="product-card">
-          <div class="product-card-top">
-            <div class="product-card-icon pi-turq"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#video"></use></svg></div>
-            <span class="badge badge-green">Ativo</span>
-          </div>
-          <div>
-            <div class="product-card-name">Talk — Videoconferência</div>
-            <div class="product-card-desc">5 licenças · integrado ao e-mail</div>
-          </div>
-          <div class="product-card-features">
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Reuniões, chamadas e webinars</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Compartilhamento de tela</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Gravação na nuvem</div>
-          </div>
-          <div class="flex-between">
-            <div class="product-card-price">R$ 23,50 <span>/mês</span></div>
-            <button class="btn btn-outline btn-sm" data-toast="Abrindo Talk…" data-toast-tipo="info">Acessar</button>
-          </div>
-        </div>
-
-        <div class="product-card">
-          <div class="product-card-top">
-            <div class="product-card-icon pi-neutral"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#database"></use></svg></div>
-            <span class="badge badge-green">Ativo</span>
-          </div>
-          <div>
-            <div class="product-card-name">Backup 90 dias</div>
-            <div class="product-card-desc">5 contas · retenção de 90 dias</div>
-          </div>
-          <div class="product-card-features">
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Backup diário automático</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Restauração por e-mail</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Painel de controle</div>
-          </div>
-          <div class="flex-between">
-            <div class="product-card-price">R$ 30,00 <span>/mês</span></div>
-            <button class="btn btn-outline btn-sm" data-toast="Abrindo Backup…" data-toast-tipo="info">Gerenciar</button>
-          </div>
-        </div>
+      <div class="empty-state">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#package"></use></svg>
+        <strong>Em breve</strong>
+        <p>Esta área estará disponível nas próximas versões do painel.</p>
       </div>
     </section>
-
-    <!-- ===================== MARKETPLACE ===================== -->
     <section class="section" id="sec-marketplace">
       <div class="page-hdr">
         <div class="page-hdr-left">
           <h1>Marketplace</h1>
-          <p>Serviços de TI contratados pela sua conta CITMail</p>
+          <p>Servidores, backup e DevOps</p>
         </div>
       </div>
-
-      <div class="alert alert-blue">
-        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#tag"></use></svg>
-        <span>Os serviços contratados entram na mesma fatura mensal da assinatura.</span>
-      </div>
-
-      <div class="product-grid">
-        <div class="product-card">
-          <div class="product-card-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#cloud"></use></svg></div>
-          <div>
-            <div class="product-card-name">Skybox — Armazenamento Cloud</div>
-            <div class="product-card-desc">Arquivos da equipe guardados e compartilhados na nuvem, integrados ao e-mail.</div>
-          </div>
-          <div class="product-card-features">
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> 50 GB · R$ 17,70/conta/mês</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> 100 GB · R$ 28,70/conta/mês</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> 1 TB · R$ 319,00/conta/mês</div>
-          </div>
-          <button class="btn btn-primary btn-push" data-toast="Redirecionando para contratação…" data-toast-tipo="info">
-            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#shopping-cart"></use></svg> Contratar
-          </button>
-        </div>
-
-        <div class="product-card">
-          <div class="product-card-icon pi-turq"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#server"></use></svg></div>
-          <div>
-            <div class="product-card-name">Servidores Cloud</div>
-            <div class="product-card-desc">VPS e servidores dedicados na nuvem, com suporte técnico 24/7.</div>
-          </div>
-          <div class="product-card-features">
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> vCPU dedicado</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> SSD NVMe</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Tráfego incluso</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Backup automático</div>
-          </div>
-          <button class="btn btn-primary btn-push" data-abrir-modal="modalContratarServidor">
-            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#shopping-cart"></use></svg> Ver planos
-          </button>
-        </div>
-
-        <div class="product-card">
-          <div class="product-card-icon pi-neutral"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#database"></use></svg></div>
-          <div>
-            <div class="product-card-name">Backup em Nuvem</div>
-            <div class="product-card-desc">Cópias automáticas, criptografadas e redundantes dos dados críticos da empresa.</div>
-          </div>
-          <div class="product-card-features">
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Backup incremental</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Criptografia AES-256</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Retenção configurável</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Restauração pelo painel</div>
-          </div>
-          <button class="btn btn-primary btn-push" data-toast="Redirecionando para contratação…" data-toast-tipo="info">
-            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#shopping-cart"></use></svg> Contratar
-          </button>
-        </div>
-
-        <div class="product-card">
-          <div class="product-card-icon pi-neutral"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#settings"></use></svg></div>
-          <div>
-            <div class="product-card-name">DevOps & Infraestrutura</div>
-            <div class="product-card-desc">Automação, CI/CD, containers e gestão de infraestrutura com especialistas certificados.</div>
-          </div>
-          <div class="product-card-features">
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Pipeline CI/CD</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Docker / Kubernetes</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Monitoramento 24/7</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> IaC com Terraform</div>
-          </div>
-          <button class="btn btn-primary btn-push" data-abrir-modal="modalContratarConsultoria">
-            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#calendar-check"></use></svg> Agendar conversa
-          </button>
-        </div>
-
-        <div class="product-card">
-          <div class="product-card-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#shield-check"></use></svg></div>
-          <div>
-            <div class="product-card-name">Consultoria em TI</div>
-            <div class="product-card-desc">Projetos personalizados de TI, segurança da informação, migração e gestão de ambientes.</div>
-          </div>
-          <div class="product-card-features">
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Diagnóstico gratuito</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Plano de ação detalhado</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Profissionais certificados</div>
-          </div>
-          <button class="btn btn-primary btn-push" data-abrir-modal="modalContratarConsultoria">
-            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#calendar-check"></use></svg> Agendar conversa
-          </button>
-        </div>
-
-        <div class="product-card">
-          <div class="product-card-icon pi-turq"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#globe"></use></svg></div>
-          <div>
-            <div class="product-card-name">Domínio extra .com.br</div>
-            <div class="product-card-desc">Registre ou transfira domínios adicionais para sua conta. Gestão centralizada no painel.</div>
-          </div>
-          <div class="product-card-features">
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> .com.br — R$ 79,00/ano</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> .com — R$ 150,00/ano</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> DNS gerenciado</div>
-            <div class="product-feat"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> WHOIS protegido</div>
-          </div>
-          <button class="btn btn-primary btn-push" data-toast="Redirecionando…" data-toast-tipo="info">
-            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#shopping-cart"></use></svg> Registrar domínio
-          </button>
-        </div>
+      <div class="empty-state">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#store"></use></svg>
+        <strong>Em breve</strong>
+        <p>Esta área estará disponível nas próximas versões do painel.</p>
       </div>
     </section>
-
-    <!-- ===================== CONFIGURAÇÕES ===================== -->
-    <!-- ===================== DNS ===================== -->
     <section class="section" id="sec-dns">
       <div class="page-hdr">
         <div class="page-hdr-left">
           <h1>DNS</h1>
-          <p>Gerencie os registros DNS dos seus domínios</p>
-        </div>
-        <button class="btn btn-primary" id="btnDnsAdd">
-          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg> Adicionar registro
-        </button>
-      </div>
-
-      <!-- Domain selector -->
-      <div class="domain-tabs" id="dnsDomainTabs"></div>
-
-      <!-- Propagation status -->
-      <div class="card dns-prop-card" id="dnsPropCard">
-        <div class="dns-prop">
-          <div id="dnsPropIcon" class="stat-icon"></div>
-          <div class="dns-prop-info">
-            <div class="dns-prop-title" id="dnsPropTitle"></div>
-            <div class="dns-prop-sub" id="dnsPropSub"></div>
-          </div>
-          <button class="btn btn-outline btn-sm" id="btnDnsCheckProp">
-            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#refresh-cw"></use></svg> Verificar propagação
-          </button>
+          <p>Registros DNS dos seus domínios</p>
         </div>
       </div>
-
-      <!-- Records card -->
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#list"></use></svg> Registros DNS — <span id="dnsActiveDomainLabel" class="dns-domain-label"></span></div>
-          <div class="dns-count" id="dnsRecordCount"></div>
-        </div>
-
-        <!-- Search + type filter -->
-        <div class="dns-search-row">
-          <div class="topbar-search dns-search">
-            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#search"></use></svg>
-            <input type="text" id="dnsSearch" placeholder="Buscar registro…" />
-          </div>
-          <div id="dnsTypeFilters" class="dns-filters"></div>
-        </div>
-
-        <!-- Table header -->
-        <div class="dns-table-wrap">
-          <div class="dns-table-head">
-            <div>Tipo</div>
-            <div>Host</div>
-            <div>Valor / Destino</div>
-            <div>TTL</div>
-            <div class="center">Prio.</div>
-            <div></div>
-          </div>
-          <div id="dnsTableBody"></div>
-        </div>
-
-        <!-- Empty state -->
-        <div id="dnsEmpty" class="empty-state is-hidden">
-          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#search"></use></svg>
-          Nenhum registro encontrado.
-        </div>
-      </div>
-
-      <!-- Recommended email records alert -->
-      <div class="alert alert-blue alert--mt" id="dnsEmailAlert">
-        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#info"></use></svg>
-        <div>
-          <strong>Registros recomendados para e-mail:</strong>
-          MX entrega os e-mails. SPF e DMARC (TXT) bloqueiam spam e spoofing. CNAME webmail aponta para o webmail CITMail.
-          A CITMail já configurou todos esses registros.
-        </div>
+      <div class="empty-state">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#server"></use></svg>
+        <strong>Em breve</strong>
+        <p>Esta área estará disponível nas próximas versões do painel.</p>
       </div>
     </section>
-
     <section class="section" id="sec-configuracoes">
       <div class="page-hdr">
         <div class="page-hdr-left">
           <h1>Configurações</h1>
-          <p>Perfil, segurança e preferências</p>
+          <p>Dados da conta e preferências</p>
         </div>
       </div>
-
-      <div class="tabs">
-        <button class="tab-btn active" data-aba="tab-perfil">Perfil</button>
-        <button class="tab-btn" data-aba="tab-seguranca">Segurança</button>
-        <button class="tab-btn" data-aba="tab-notif">Notificações</button>
-      </div>
-
-      <!-- TAB PERFIL -->
-      <div class="tab-panel active" id="tab-perfil">
-        <div class="grid-2">
-          <div class="card">
-            <div class="card-title mb-20"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#user"></use></svg> Dados Cadastrais</div>
-            <div class="form-row">
-              <div class="field">
-                <label>Nome completo</label>
-                <input type="text" value="João da Silva" />
-              </div>
-              <div class="field">
-                <label>E-mail de contato</label>
-                <input type="email" value="joao@empresa.com.br" />
-              </div>
-            </div>
-            <div class="form-row">
-              <div class="field">
-                <label>Telefone / WhatsApp</label>
-                <input type="tel" value="(11) 99999-9999" />
-              </div>
-              <div class="field">
-                <label>CNPJ</label>
-                <input type="text" value="12.345.678/0001-90" />
-              </div>
-            </div>
-            <div class="field">
-              <label>Razão Social</label>
-              <input type="text" value="Empresa Exemplo Ltda" />
-            </div>
-            <button class="btn btn-primary" data-toast="Dados cadastrais salvos." data-toast-tipo="success">
-              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#save"></use></svg> Salvar alterações
-            </button>
-          </div>
-          <div class="card">
-            <div class="card-title mb-20"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#map-pin"></use></svg> Endereço</div>
-            <div class="form-row">
-              <div class="field">
-                <label>CEP</label>
-                <input type="text" value="01310-100" />
-              </div>
-              <div class="field">
-                <label>Estado</label>
-                <select><option>SP</option><option>RJ</option><option>MG</option></select>
-              </div>
-            </div>
-            <div class="field">
-              <label>Logradouro</label>
-              <input type="text" value="Av. Paulista" />
-            </div>
-            <div class="form-row">
-              <div class="field">
-                <label>Número</label>
-                <input type="text" value="1000" />
-              </div>
-              <div class="field">
-                <label>Bairro</label>
-                <input type="text" value="Bela Vista" />
-              </div>
-            </div>
-            <div class="field">
-              <label>Cidade</label>
-              <input type="text" value="São Paulo" />
-            </div>
-            <button class="btn btn-primary" data-toast="Endereço salvo." data-toast-tipo="success">
-              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#save"></use></svg> Salvar
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- TAB SEGURANÇA -->
-      <div class="tab-panel" id="tab-seguranca">
-        <div class="grid-2">
-          <div class="card">
-            <div class="card-title mb-20"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg> Alterar Senha do Painel</div>
-            <div class="field">
-              <label>Senha atual</label>
-              <input type="password" placeholder="••••••••" />
-            </div>
-            <div class="field">
-              <label>Nova senha</label>
-              <input type="password" placeholder="Mínimo 8 caracteres" />
-            </div>
-            <div class="field">
-              <label>Confirmar nova senha</label>
-              <input type="password" placeholder="Repita a nova senha" />
-            </div>
-            <button class="btn btn-primary" data-toast="Senha alterada. Use a nova senha no próximo acesso." data-toast-tipo="success">
-              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg> Alterar senha
-            </button>
-          </div>
-          <div class="card">
-            <div class="card-title mb-20"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#shield-check"></use></svg> Sessões Ativas</div>
-            <div class="session-list">
-              <div class="session-item session-item--current">
-                <svg class="icon icon--primary" aria-hidden="true"><use href="assets/icons.svg#laptop"></use></svg>
-                <div class="session-info">
-                  <div class="session-name">Computador — São Paulo, BR</div>
-                  <div class="session-meta">Chrome 126 · Sessão atual</div>
-                </div>
-                <span class="badge badge-green">Ativa</span>
-              </div>
-              <div class="session-item">
-                <svg class="icon icon--secondary" aria-hidden="true"><use href="assets/icons.svg#smartphone"></use></svg>
-                <div class="session-info">
-                  <div class="session-name">iPhone — São Paulo, BR</div>
-                  <div class="session-meta">Safari · Há 2 horas</div>
-                </div>
-                <button class="btn btn-danger btn-sm" data-toast="Sessão encerrada." data-toast-tipo="success">Encerrar</button>
-              </div>
-            </div>
-            <div class="divider"></div>
-            <button class="btn btn-danger" data-toast="Todas as outras sessões foram encerradas." data-toast-tipo="success">
-              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#log-out"></use></svg> Encerrar todas as outras sessões
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- TAB NOTIFICAÇÕES -->
-      <div class="tab-panel" id="tab-notif">
-        <div class="card pref-card">
-          <div class="card-title mb-20"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#bell"></use></svg> Preferências de Notificação</div>
-          <div class="pref-list">
-            <div class="pref-row">
-              <div>
-                <div class="pref-title">Faturas e cobranças</div>
-                <div class="pref-desc">Lembretes de vencimento e confirmações</div>
-              </div>
-              <label class="toggle-switch">
-                <input type="checkbox" checked data-toast="Preferência salva." data-toast-tipo="success" />
-                <span class="toggle-knob"></span>
-              </label>
-            </div>
-            <div class="pref-row">
-              <div>
-                <div class="pref-title">Manutenções e atualizações</div>
-                <div class="pref-desc">Avisos de manutenção programada</div>
-              </div>
-              <label class="toggle-switch">
-                <input type="checkbox" checked data-toast="Preferência salva." data-toast-tipo="success" />
-                <span class="toggle-knob"></span>
-              </label>
-            </div>
-            <div class="pref-row">
-              <div>
-                <div class="pref-title">Respostas de tickets</div>
-                <div class="pref-desc">Notificar quando o suporte responder</div>
-              </div>
-              <label class="toggle-switch">
-                <input type="checkbox" checked data-toast="Preferência salva." data-toast-tipo="success" />
-                <span class="toggle-knob"></span>
-              </label>
-            </div>
-            <div class="pref-row">
-              <div>
-                <div class="pref-title">Novidades e promoções</div>
-                <div class="pref-desc">Lançamentos e ofertas especiais</div>
-              </div>
-              <label class="toggle-switch">
-                <input type="checkbox" data-toast="Preferência salva." data-toast-tipo="success" />
-                <span class="toggle-knob"></span>
-              </label>
-            </div>
-          </div>
-        </div>
+      <div class="empty-state">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#sliders-horizontal"></use></svg>
+        <strong>Em breve</strong>
+        <p>Esta área estará disponível nas próximas versões do painel.</p>
       </div>
     </section>
-
-    <!-- ===================== SUPORTE ===================== -->
     <section class="section" id="sec-suporte">
       <div class="page-hdr">
         <div class="page-hdr-left">
           <h1>Suporte</h1>
-          <p>Abra tickets e acompanhe seus chamados</p>
-        </div>
-        <button class="btn btn-primary" data-abrir-modal="modalNovoTicket">
-          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg> Novo ticket
-        </button>
-      </div>
-
-      <div class="grid-2 mb-20">
-        <div class="card support-stat">
-          <div class="stat-icon stat-icon--lg green">
-            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg>
-          </div>
-          <div>
-            <div class="support-stat-label">Tempo médio de resposta</div>
-            <div class="support-stat-value">≤ 2 horas</div>
-          </div>
-        </div>
-        <div class="card support-stat">
-          <div class="stat-icon stat-icon--lg blue">
-            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#headset"></use></svg>
-          </div>
-          <div>
-            <div class="support-stat-label">Suporte disponível</div>
-            <div class="support-stat-value">Seg–Sex 8h–18h</div>
-          </div>
+          <p>Atendimento técnico e chamados</p>
         </div>
       </div>
-
-      <div class="card">
-        <div class="card-header">
-          <div class="card-title"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#list"></use></svg> Meus Tickets</div>
-          <div>
-            <select class="select-sm" aria-label="Filtrar tickets">
-              <option>Todos</option>
-              <option>Abertos</option>
-              <option>Resolvidos</option>
-            </select>
-          </div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Assunto</th>
-                <th>Categoria</th>
-                <th>Aberto em</th>
-                <th>Última atualização</th>
-                <th>Status</th>
-                <th>Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr class="ticket-row" data-ver-ticket="linha">
-                <td class="cell-sub">#1044</td>
-                <td>
-                  <div class="ticket-subject">E-mail não chega no iPhone</div>
-                  <div class="ticket-preview">Configurei o IMAP mas não consigo receber…</div>
-                </td>
-                <td><span class="badge badge-blue">Técnico</span></td>
-                <td class="cell-sub">30/jun, 10:22</td>
-                <td class="cell-sub">30/jun, 14:08</td>
-                <td><span class="badge badge-yellow">Aguardando</span></td>
-                <td><button class="btn btn-ghost btn-sm" aria-label="Ver ticket" data-tip="Ver ticket" data-ver-ticket="olho"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#eye"></use></svg></button></td>
-              </tr>
-              <tr class="ticket-row">
-                <td class="cell-sub">#1042</td>
-                <td>
-                  <div class="ticket-subject">Configuração SPF / DKIM</div>
-                  <div class="ticket-preview">Preciso de ajuda para validar os registros DNS…</div>
-                </td>
-                <td><span class="badge badge-blue">Técnico</span></td>
-                <td class="cell-sub">28/jun, 09:15</td>
-                <td class="cell-sub">29/jun, 11:07</td>
-                <td><span class="badge badge-yellow">Em andamento</span></td>
-                <td><button class="btn btn-ghost btn-sm" aria-label="Ver ticket" data-tip="Ver ticket"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#eye"></use></svg></button></td>
-              </tr>
-              <tr class="ticket-row">
-                <td class="cell-sub">#1038</td>
-                <td>
-                  <div class="ticket-subject">Nota fiscal da fatura #0011</div>
-                  <div class="ticket-preview">Preciso da NF para prestação de contas…</div>
-                </td>
-                <td><span class="badge badge-gray">Financeiro</span></td>
-                <td class="cell-sub">15/jun, 16:40</td>
-                <td class="cell-sub">16/jun, 09:30</td>
-                <td><span class="badge badge-green">Resolvido</span></td>
-                <td><button class="btn btn-ghost btn-sm" aria-label="Ver ticket" data-tip="Ver ticket"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#eye"></use></svg></button></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      <div class="empty-state">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#headset"></use></svg>
+        <strong>Em breve</strong>
+        <p>Esta área estará disponível nas próximas versões do painel.</p>
       </div>
     </section>
 
   </main>
 </div>
 
-<!-- ===================== MODALS ===================== -->
-
-<!-- Nova conta de e-mail -->
-<!-- ── MODAL DNS RECORD ── -->
-<div class="modal-overlay" id="modalDnsRecord">
-  <div class="modal modal--md">
-    <div class="modal-header">
-      <h3 id="modalDnsTitle"><svg class="icon mr-8" aria-hidden="true"><use href="assets/icons.svg#server"></use></svg>Adicionar Registro</h3>
-      <button class="modal-close" aria-label="Fechar" data-fechar-modal="modalDnsRecord"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
-    </div>
-    <div class="modal-body">
-      <div class="form-row">
-        <div class="field">
-          <label>Tipo</label>
-          <select id="dnsRType">
-            <option>A</option>
-            <option>AAAA</option>
-            <option>CNAME</option>
-            <option>MX</option>
-            <option>TXT</option>
-            <option>NS</option>
-            <option>SRV</option>
-            <option>CAA</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>TTL</label>
-          <select id="dnsRTtl">
-            <option value="300">5 min (300)</option>
-            <option value="1800">30 min (1800)</option>
-            <option value="3600" selected>1 hora (3600)</option>
-            <option value="21600">6 horas (21600)</option>
-            <option value="86400">24 horas (86400)</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="field">
-          <label>Host / Nome</label>
-          <input type="text" id="dnsRHost" placeholder="@ ou subdomínio" />
-          <span class="field-hint">Use @ para o domínio raiz</span>
-        </div>
-        <div class="field is-hidden" id="dnsRPrioField">
-          <label>Prioridade</label>
-          <input type="number" id="dnsRPrio" value="10" min="0" max="65535" />
-        </div>
-      </div>
-      <div class="field">
-        <label>Valor / Destino</label>
-        <textarea id="dnsRValue" class="mono textarea-sm" rows="3" placeholder="IP, hostname ou texto…"></textarea>
-        <span class="field-hint" id="dnsRValueHint">Ex: 177.126.48.201</span>
-      </div>
-      <input type="hidden" id="dnsREditId" value="" />
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" data-fechar-modal="modalDnsRecord">Cancelar</button>
-      <button class="btn btn-primary" id="btnDnsSave"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#save"></use></svg> Salvar registro</button>
-    </div>
-  </div>
 </div>
 
-<div class="modal-overlay" id="modalNovaContaEmail">
-  <div class="modal">
-    <div class="modal-header">
-      <h3><svg class="icon mr-8" aria-hidden="true"><use href="assets/icons.svg#user-plus"></use></svg>Nova Conta de E-mail</h3>
-      <button class="modal-close" aria-label="Fechar" data-fechar-modal="modalNovaContaEmail"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
-    </div>
-    <div class="modal-body">
-      <div class="form-row">
-        <div class="field mb-0">
-          <label>Nome do usuário <span class="req">*</span></label>
-          <input type="text" placeholder="joao.silva" id="newEmailUser" />
-          <span class="field-hint">Será: joao.silva@empresa.com.br</span>
-        </div>
-        <div class="field mb-0">
-          <label>Nome completo</label>
-          <input type="text" placeholder="João Silva" />
-        </div>
-      </div>
-      <div class="field mt-field">
-        <label>Senha <span class="req">*</span></label>
-        <input type="password" placeholder="Mínimo 8 caracteres" />
-      </div>
-      <div class="field">
-        <label>Quota de armazenamento</label>
-        <select>
-          <option>25 GB (padrão do plano)</option>
-          <option>10 GB</option>
-          <option>5 GB</option>
-        </select>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" data-fechar-modal="modalNovaContaEmail">Cancelar</button>
-      <button class="btn btn-primary" data-fechar-modal="modalNovaContaEmail" data-toast="Conta de e-mail criada." data-toast-tipo="success">
-        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#plus"></use></svg> Criar conta
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- Novo ticket -->
-<div class="modal-overlay" id="modalNovoTicket">
-  <div class="modal modal--md">
-    <div class="modal-header">
-      <h3><svg class="icon mr-8" aria-hidden="true"><use href="assets/icons.svg#headset"></use></svg>Novo Ticket de Suporte</h3>
-      <button class="modal-close" aria-label="Fechar" data-fechar-modal="modalNovoTicket"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
-    </div>
-    <div class="modal-body">
-      <div class="form-row">
-        <div class="field mb-0">
-          <label>Categoria <span class="req">*</span></label>
-          <select>
-            <option>Técnico — E-mail</option>
-            <option>Técnico — DNS</option>
-            <option>Financeiro</option>
-            <option>Acesso ao Painel</option>
-            <option>Outro</option>
-          </select>
-        </div>
-        <div class="field mb-0">
-          <label>Prioridade</label>
-          <select>
-            <option>Normal</option>
-            <option>Alta</option>
-            <option>Urgente</option>
-          </select>
-        </div>
-      </div>
-      <div class="field mt-field">
-        <label>Assunto <span class="req">*</span></label>
-        <input type="text" placeholder="Descreva brevemente o problema" />
-      </div>
-      <div class="field">
-        <label>Descrição <span class="req">*</span></label>
-        <textarea placeholder="Descreva o problema com o máximo de detalhes possível. Inclua mensagens de erro, horário do ocorrido e passos para reproduzir…"></textarea>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" data-fechar-modal="modalNovoTicket">Cancelar</button>
-      <button class="btn btn-primary" data-fechar-modal="modalNovoTicket" data-toast="Ticket #1045 aberto. Tempo médio de resposta: até 2 horas." data-toast-tipo="success">
-        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#send"></use></svg> Abrir ticket
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- Ver ticket -->
-<div class="modal-overlay" id="modalVerTicket">
-  <div class="modal modal--lg">
-    <div class="modal-header">
-      <div>
-        <h3>Ticket #1044 — E-mail não chega no iPhone</h3>
-        <div class="badge-row">
-          <span class="badge badge-yellow">Aguardando sua resposta</span>
-          <span class="badge badge-blue">Técnico</span>
-        </div>
-      </div>
-      <button class="modal-close" aria-label="Fechar" data-fechar-modal="modalVerTicket"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
-    </div>
-    <div class="modal-body modal-body--scroll">
-      <div class="msg-list">
-        <div class="msg msg--mine">
-          <div class="msg-meta">VOCÊ — 30/jun, 10:22</div>
-          <div class="msg-body">Configurei o IMAP no iPhone mas não consigo receber mensagens. Já tentei com as configurações padrão do guia mas não funciona. O servidor é mail.empresa.com.br?</div>
-        </div>
-        <div class="msg">
-          <div class="msg-meta">Suporte CITMail — 30/jun, 14:08</div>
-          <div class="msg-body">João, as configurações IMAP corretas são:<br><br>
-            <strong>Servidor:</strong> imap.citmail.com.br<br>
-            <strong>Porta:</strong> 993 (SSL)<br>
-            <strong>Usuário:</strong> endereço completo de e-mail<br><br>
-            Teste com esses dados e responda aqui com o resultado.
-          </div>
-        </div>
-      </div>
-      <div class="field mt-field">
-        <label>Sua resposta</label>
-        <textarea class="textarea-sm" placeholder="Digite sua resposta aqui…"></textarea>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" data-fechar-modal="modalVerTicket">Fechar</button>
-      <button class="btn btn-primary" data-fechar-modal="modalVerTicket" data-toast="Resposta enviada ao suporte." data-toast-tipo="success">
-        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#send"></use></svg> Responder
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- Contratar consultoria -->
-<div class="modal-overlay" id="modalContratarConsultoria">
-  <div class="modal">
-    <div class="modal-header">
-      <h3><svg class="icon mr-8" aria-hidden="true"><use href="assets/icons.svg#calendar-check"></use></svg>Agendar Conversa</h3>
-      <button class="modal-close" aria-label="Fechar" data-fechar-modal="modalContratarConsultoria"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
-    </div>
-    <div class="modal-body">
-      <p>Um especialista CITMail retorna em até 1 dia útil com uma proposta para a sua necessidade.</p>
-      <div class="field">
-        <label>Serviço de interesse</label>
-        <select><option>DevOps & Infraestrutura</option><option>Consultoria em TI</option><option>Servidores Cloud</option></select>
-      </div>
-      <div class="field">
-        <label>Melhor horário para contato</label>
-        <select>
-          <option>Manhã (8h–12h)</option>
-          <option>Tarde (13h–18h)</option>
-        </select>
-      </div>
-      <div class="field mb-0">
-        <label>Descreva brevemente sua necessidade</label>
-        <textarea class="textarea-sm" placeholder="Ex.: Precisamos configurar um pipeline CI/CD para 3 microserviços…"></textarea>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" data-fechar-modal="modalContratarConsultoria">Cancelar</button>
-      <button class="btn btn-primary" data-fechar-modal="modalContratarConsultoria" data-toast="Solicitação enviada. Um especialista retorna em até 1 dia útil." data-toast-tipo="success">
-        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#send"></use></svg> Enviar solicitação
-      </button>
-    </div>
-  </div>
-</div>
-
-<!-- Contratar servidor -->
-<div class="modal-overlay" id="modalContratarServidor">
-  <div class="modal modal--md">
-    <div class="modal-header">
-      <h3><svg class="icon mr-8" aria-hidden="true"><use href="assets/icons.svg#server"></use></svg>Planos de Servidor Cloud</h3>
-      <button class="modal-close" aria-label="Fechar" data-fechar-modal="modalContratarServidor"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#x"></use></svg></button>
-    </div>
-    <div class="modal-body">
-      <div class="plan-opts">
-        <label class="plan-opt" data-plano-opcao>
-          <input type="radio" name="server" />
-          <div class="plan-opt-info">
-            <div class="plan-opt-name">VPS Starter</div>
-            <div class="plan-opt-desc">2 vCPU · 4 GB RAM · 80 GB SSD</div>
-          </div>
-          <div class="plan-opt-price">R$ 89/mês</div>
-        </label>
-        <label class="plan-opt" data-plano-opcao>
-          <input type="radio" name="server" />
-          <div class="plan-opt-info">
-            <div class="plan-opt-name">VPS Pro</div>
-            <div class="plan-opt-desc">4 vCPU · 8 GB RAM · 160 GB SSD</div>
-          </div>
-          <div class="plan-opt-price">R$ 169/mês</div>
-        </label>
-        <label class="plan-opt" data-plano-opcao>
-          <input type="radio" name="server" />
-          <div class="plan-opt-info">
-            <div class="plan-opt-name">Dedicado</div>
-            <div class="plan-opt-desc">8 vCPU · 32 GB RAM · 500 GB NVMe</div>
-          </div>
-          <div class="plan-opt-price">R$ 499/mês</div>
-        </label>
-      </div>
-    </div>
-    <div class="modal-footer">
-      <button class="btn btn-ghost" data-fechar-modal="modalContratarServidor">Cancelar</button>
-      <button class="btn btn-primary" data-fechar-modal="modalContratarServidor" data-toast="Servidor contratado. Ativação em até 5 minutos." data-toast-tipo="success">
-        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#check"></use></svg> Contratar plano
-      </button>
-    </div>
+<!-- ERRO AO CARREGAR A SESSÃO (fora de .app: visível enquanto o painel está oculto) -->
+<div class="painel-erro is-hidden" id="painelErro" role="alert">
+  <div class="painel-erro-card">
+    <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-x"></use></svg>
+    <p>Não foi possível carregar o painel agora.</p>
+    <button type="button" class="btn btn-primary" id="btnPainelTentar"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#refresh-cw"></use></svg> Tentar novamente</button>
   </div>
 </div>
 
 <!-- TOAST CONTAINER -->
 <div class="toast-wrap" id="toastWrap"></div>
 
-
-<script src="assets/painel.js?v=2"></script>
+<script src="assets/painel.js?v=4"></script>
 </body>
 </html>

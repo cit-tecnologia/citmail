@@ -211,9 +211,45 @@ function lerEmail(env, nodeEnv) {
   }
 }
 
-// Configuração da API. `REDIS_URL` é opcional: sem ela não há fila nem rota de exemplo
-// de job. A API não usa o Redis em produção: o webhook do Asaas (CIT-64) só grava no
-// banco, e quem enfileira é o worker. Não lê Telegram. `termosMinuta` e
+// Lista de origens exatas separadas por vírgula (CORS_ORIGENS e PAINEL_ORIGENS); vazia é permitido aqui.
+function lerOrigens(env, nome) {
+  const origens = (env[nome] ?? '')
+    .split(',')
+    .map((origem) => origem.trim())
+    .filter(Boolean)
+  if (origens.some((origem) => origem.includes('*'))) {
+    throw new Error(`${nome} não aceita curinga (*): informe as origens exatas`)
+  }
+  if (!origens.every(origemExata)) {
+    throw new Error(`${nome} inválida: cada item deve ser uma origem exata (esquema://host[:porta], sem caminho nem barra final)`)
+  }
+  return origens
+}
+
+// Login do painel (ADR 0008; CIT-70). Desligado em produção e ligado fora dela. Ligado em
+// produção, a API não sobe enquanto não houver limitador de tentativas (CIT-78, ADR 0013):
+// cada tentativa custa 19 MiB no Argon2id. Fora de produção, sem `REDIS_URL`, as rotas
+// respondem 503. `PAINEL_ORIGENS` (origens com cookie e as únicas aceitas no `Origin` do
+// login e do logout) é subconjunto de `CORS_ORIGENS`.
+function lerPainel(env, nodeEnv, corsOrigens) {
+  const producao = nodeEnv === 'production'
+  const painelHabilitado = lerBooleano(env, 'PAINEL_HABILITADO', !producao)
+  const painelOrigens = lerOrigens(env, 'PAINEL_ORIGENS')
+  if (!painelOrigens.every((origem) => corsOrigens.includes(origem))) {
+    throw new Error('PAINEL_ORIGENS inválida: cada origem deve estar também em CORS_ORIGENS')
+  }
+  if (painelHabilitado && producao) {
+    throw new Error(
+      'PAINEL_HABILITADO recusada em produção: sem limitador de tentativas no login (CIT-78, ADR 0013)'
+    )
+  }
+  return { painelHabilitado, painelOrigens }
+}
+
+// Configuração da API. `REDIS_URL` é opcional: sem ela não há fila, rota de exemplo de job
+// nem sessão do painel (503). A API ainda não usa o Redis em produção: o painel (CIT-70),
+// único uso lá, fica recusado até o limitador de tentativas; o webhook do Asaas (CIT-64) só
+// grava no banco, e quem enfileira é o worker. Não lê Telegram. `termosMinuta` e
 // `privacidadeProvisoria` são injetáveis para os testes (padrão: as constantes de
 // pedidos/aceite.js).
 export function carregarConfig(
@@ -225,18 +261,9 @@ export function carregarConfig(
     throw new Error('DATABASE_URL não definida')
   }
 
-  const corsOrigens = (env.CORS_ORIGENS ?? '')
-    .split(',')
-    .map((origem) => origem.trim())
-    .filter(Boolean)
+  const corsOrigens = lerOrigens(env, 'CORS_ORIGENS')
   if (corsOrigens.length === 0) {
     throw new Error('CORS_ORIGENS vazia: informe a lista exata de origens permitidas')
-  }
-  if (corsOrigens.some((origem) => origem.includes('*'))) {
-    throw new Error('CORS_ORIGENS não aceita curinga (*): informe as origens exatas')
-  }
-  if (!corsOrigens.every(origemExata)) {
-    throw new Error('CORS_ORIGENS inválida: cada item deve ser uma origem exata (esquema://host[:porta], sem caminho nem barra final)')
   }
 
   const nodeEnv = lerNodeEnv(env)
@@ -255,7 +282,8 @@ export function carregarConfig(
     nodeEnv,
     ...lerFila(env),
     ...lerAsaas(env, nodeEnv, termosMinuta, privacidadeProvisoria),
-    ...lerWebhook(env, nodeEnv)
+    ...lerWebhook(env, nodeEnv),
+    ...lerPainel(env, nodeEnv, corsOrigens)
   }
 }
 

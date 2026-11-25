@@ -17,7 +17,9 @@ import { fileURLToPath } from 'node:url';
 import { runner } from 'node-pg-migrate';
 import { construirApp } from '../src/app.js';
 import { criarLogger } from '../src/log.js';
-import { criarConexaoWorker } from '../src/fila/conexao.js';
+import { criarConexaoProdutor, criarConexaoWorker } from '../src/fila/conexao.js';
+import { gerarHashSenha } from '../src/painel/senha.js';
+import { criarSessoes } from '../src/painel/sessoes.js';
 import { criarFilas } from '../src/fila/filas.js';
 import { criarWorkers } from '../src/fila/worker.js';
 import { criarEnvioTelegram } from '../src/alertas/telegram.js';
@@ -164,12 +166,13 @@ export function criarConfigTeste(sobrescritas = {}) {
  * - `asaas` e `pedidos` (CIT-61): adaptador do Asaas injetado e opções do serviço
  *   de pedidos (`agora`, `versaoTabela`, `prazoPedidoMs`, `prazoCriandoMs`),
  *   repassados a `construirApp`.
+ * - `painel` (CIT-70): `{ sessoes, agora, hash, auditoria }`, repassado a `construirApp`.
  *
  * Devolve `{ app, pool, captura, fechar }`; `fechar()` encerra o app, o pool
  * (quando criado aqui) e remove o banco temporário (quando criado aqui).
  */
 export async function construirAppTeste(opcoes = {}) {
-  const { comBanco = true, sobrescritasConfig = {}, pool: poolFornecido, filas, asaas, pedidos } = opcoes;
+  const { comBanco = true, sobrescritasConfig = {}, pool: poolFornecido, filas, asaas, pedidos, painel } = opcoes;
 
   let nomeBanco;
   let url;
@@ -187,7 +190,7 @@ export async function construirAppTeste(opcoes = {}) {
     ...sobrescritasConfig,
   });
 
-  const app = construirApp(config, { pool, logStream: captura.stream, filas, asaas, pedidos });
+  const app = construirApp(config, { pool, logStream: captura.stream, filas, asaas, pedidos, painel });
 
   return {
     app,
@@ -303,6 +306,66 @@ export function criarFilasTeste(opcoes = {}) {
         }
       } finally {
         await conexao.quit().catch(() => conexao.disconnect());
+      }
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Painel (CIT-70): conta com senha semeada e sessões no Redis de teste.
+// ---------------------------------------------------------------------------
+
+let contadorContas = 0;
+let contadorSessoes = 0;
+
+/**
+ * Semeia `cliente` + `conta_titular` (superusuário) com o hash Argon2id da `senha`
+ * (sem senha → `senha_hash` nulo). Devolve `{ clienteId, contaId, senhaHash }`.
+ */
+export async function semearContaPainel(pool, { email, senha, estado = 'ativa' }) {
+  const n = contadorContas++;
+  const senhaHash = senha === undefined ? null : await gerarHashSenha(senha);
+  const cliente = await pool.query(
+    `INSERT INTO cliente (tipo_pessoa, documento, nome, email, telefone)
+     VALUES ('fisica', $1, 'Titular Ficticio', $2, '11999990000') RETURNING id`,
+    [String(30000000000 + n), email],
+  );
+  const conta = await pool.query(
+    `INSERT INTO conta_titular (cliente_id, email, estado, senha_hash, senha_definida_em)
+     VALUES ($1, lower(btrim($2)), $3, $4, CASE WHEN $4::text IS NULL THEN NULL ELSE now() END) RETURNING id`,
+    [cliente.rows[0].id, email, estado, senhaHash],
+  );
+  return { clienteId: cliente.rows[0].id, contaId: conta.rows[0].id, senhaHash };
+}
+
+/**
+ * Sessões sobre o Redis de teste com prefixo único (`teste-sessao-<pid>-<n>`), relógio
+ * e gancho opcionais. `fechar()` apaga as chaves do prefixo e fecha a conexão.
+ */
+export function criarSessoesTeste({ agora, antesDeRenovar, url = urlRedisTeste() } = {}) {
+  const prefixo = `teste-sessao-${process.pid}-${contadorSessoes++}`;
+  const redis = criarConexaoProdutor(url);
+  redis.on('error', () => {});
+  const sessoes = criarSessoes({ redis, prefixo, agora, antesDeRenovar });
+  return {
+    prefixo,
+    redis,
+    sessoes,
+    async pronta() {
+      if (redis.status !== 'ready') await new Promise((resolve) => redis.once('ready', resolve));
+    },
+    async fechar() {
+      try {
+        if (redis.status === 'ready') {
+          let cursor = '0';
+          do {
+            const [proximo, chaves] = await redis.scan(cursor, 'MATCH', `${prefixo}:*`, 'COUNT', 1000);
+            cursor = proximo;
+            if (chaves.length > 0) await redis.del(...chaves);
+          } while (cursor !== '0');
+        }
+      } finally {
+        redis.disconnect();
       }
     },
   };

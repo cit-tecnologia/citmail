@@ -2,6 +2,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { test, expect } from './fixtures.js';
 import { test as testSemErros } from '@playwright/test';
+import { BASE_API, EMAIL, SENHA, mockarPainel, descartarPainel } from './painel-mock.js';
 
 // CIT-49: landing e checkout sem handler nem script inline, com CSP por meta (ADR 0013).
 // Ver .omc/plans/CIT-49.md ("Testes por critério") para o desenho de cada verificação.
@@ -252,17 +253,16 @@ test.describe('CSP — landing e checkout', { tag: '@CIT-49' }, () => {
 // DNS e esc() no texto do usuário. Ver .omc/plans/CIT-158.md ("Testes por critério") e as Decisões
 // (atributos genéricos fixados, modelo assets/checkout.js:753-783).
 
-// Atributos únicos do login (login.js, vinculados por data-login-acao).
-const MODAIS_PAINEL = ['modalDnsRecord', 'modalNovaContaEmail', 'modalNovoTicket', 'modalVerTicket', 'modalContratarConsultoria', 'modalContratarServidor'];
+// CIT-70: login e painel só existem por inteiro no modo API (http://localhost:4200, com /api/painel/* mockado por
+// tests/painel-mock.js); no modo local o formulário fica oculto e o painel redireciona para o login.
 const SECTION_TITLES_PAINEL = {
   dashboard: 'Dashboard', email: 'E-mail', financeiro: 'Financeiro', produtos: 'Meus Produtos',
   marketplace: 'Marketplace', dns: 'DNS', configuracoes: 'Configurações', suporte: 'Suporte',
 };
-const ABA_TEXTO = { 'tab-perfil': 'Perfil', 'tab-seguranca': 'Segurança', 'tab-notif': 'Notificações' };
-
-/** Percorre os fluxos do login por clique, exceto o redirecionamento com credenciais demo (fica de
- * fora porque zera window.__csp — ver CA3 "login + redirecionamento"). */
-async function percorrerLogin(page) {
+/** Percorre os fluxos do login por clique, exceto o login válido (fica de fora porque zera window.__csp ao
+ * navegar — ver CA3 "login + redirecionamento"). Exige o modo API (baseURL = BASE_API). Devolve o estado do mock. */
+async function percorrerLogin(page, estado) {
+  estado ??= await mockarPainel(page, { login: 401 });
   await page.goto('login.html', { waitUntil: 'networkidle' });
   await page.locator('[data-login-acao="mostrar-senha"]').click();
   await page.locator('[data-login-acao="mostrar-senha"]').click();
@@ -289,10 +289,12 @@ async function percorrerLogin(page) {
   await page.keyboard.press('Escape');
   await expect(page.locator('#forgotOverlay')).toBeHidden();
 
-  await page.locator('#fEmail').fill('demo@citmail.com.br');
-  await page.locator('#fPassword').fill('senhaErrada');
+  // credenciais inválidas: alerta de erro (401 mockado), sem navegar
+  await page.locator('#fEmail').fill(EMAIL);
+  await page.locator('#fPassword').fill('senha-errada');
   await page.locator('form button[type="submit"]').click();
   await expect(page.locator('#alertError')).toBeVisible({ timeout: 5000 });
+  return estado;
 }
 
 /** No mobile, o menu só existe depois de abrir a sidebar (fora da tela abaixo de 768px);
@@ -302,9 +304,12 @@ async function irParaSecao(page, secao, testInfo) {
   await page.locator(`.nav-item[data-section="${secao}"]`).click();
 }
 
-/** Percorre os fluxos do painel por clique: menu, tabs, os 6 modais, plano, ticket e DNS. */
+/** Percorre o painel com a sessão mockada (200): carga, menu e avatar. "Sair" fica por conta do chamador
+ * (`sair()`), porque navega para o login e zera window.__csp. Exige o modo API (baseURL = BASE_API). */
 async function percorrerPainel(page, testInfo) {
+  const estado = await mockarPainel(page, { sessao: 200 });
   await page.goto('painel.html', { waitUntil: 'networkidle' });
+  await expect(page.locator('#painelEmail')).toHaveText(EMAIL);
 
   for (const secao of ['email', 'financeiro', 'produtos', 'marketplace', 'dns', 'configuracoes', 'suporte', 'dashboard']) {
     await irParaSecao(page, secao, testInfo);
@@ -312,74 +317,14 @@ async function percorrerPainel(page, testInfo) {
   }
   await page.locator('#topbarAvatar').click();
   await expect(page.locator('#sec-configuracoes')).toHaveClass(/active/);
-
-  await page.locator('[data-aba="tab-seguranca"]').click();
-  await page.locator('[data-aba="tab-notif"]').click();
-  await page.locator('[data-aba="tab-perfil"]').click();
-
-  // abre pelo gatilho real (não por window.openModal) — modalDnsRecord e modalVerTicket não têm
-  // data-abrir-modal (são vínculo único) e já são exercidos abaixo, no bloco do DNS e do ticket.
-  const MODAIS_COM_GATILHO = { modalNovaContaEmail: 'email', modalNovoTicket: 'suporte', modalContratarConsultoria: 'marketplace', modalContratarServidor: 'marketplace' };
-  for (const [modal, secao] of Object.entries(MODAIS_COM_GATILHO)) {
-    await irParaSecao(page, secao, testInfo);
-    // escopado à seção ativa: modalNovaContaEmail também tem gatilho no dashboard (oculto aqui
-    // por CSS, mas antes de .first() no DOM) — sem o escopo, .first() cairia nele.
-    await page.locator(`#sec-${secao} [data-abrir-modal="${modal}"]`).first().click();
-    await expect(page.locator(`#${modal}`)).toHaveClass(/open/);
-    if (modal === 'modalNovoTicket') {
-      await page.locator(`#${modal}`).click({ position: { x: 5, y: 5 } }); // overlay, fora do modal
-    } else {
-      await page.locator(`[data-fechar-modal="${modal}"]`).first().click();
-    }
-    await expect(page.locator(`#${modal}`)).not.toHaveClass(/open/);
-  }
-
-  await irParaSecao(page, 'marketplace', testInfo);
-  await page.locator('[data-abrir-modal="modalContratarServidor"]').click();
-  await page.locator('[data-plano-opcao]').nth(1).click();
-  await expect(page.locator('[data-plano-opcao]').nth(1)).toHaveClass(/selected/);
-  await page.locator('[data-fechar-modal="modalContratarServidor"]').first().click();
-
-  await irParaSecao(page, 'suporte', testInfo);
-  await page.locator('[data-ver-ticket="olho"]').click();
-  await expect(page.locator('#modalVerTicket')).toHaveClass(/open/);
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#modalVerTicket')).not.toHaveClass(/open/);
-
-  await irParaSecao(page, 'dns', testInfo);
-  await page.locator('[data-dns-dominio="empresa.com"]').click();
-  await page.locator('[data-dns-dominio="empresa.com.br"]').click();
-  await page.locator('[data-dns-tipo="MX"]').click();
-  await page.locator('[data-dns-tipo="Todos"]').click();
-  await page.locator('#dnsSearch').fill('webmail');
-  await page.locator('#dnsSearch').fill('');
-
-  await page.locator('#btnDnsAdd').click();
-  await page.locator('#dnsRType').selectOption('MX');
-  await expect(page.locator('#dnsRPrioField')).toBeVisible();
-  await page.locator('#dnsRHost').fill('teste');
-  await page.locator('#dnsRValue').fill('valor.ficticio.teste');
-  await page.locator('#btnDnsSave').click();
-
-  await page.locator('#btnDnsCheckProp').click();
-  await expect(page.locator('#toastWrap .toast', { hasText: 'DNS propagado' })).toBeVisible({ timeout: 5000 });
-
-  page.once('dialog', d => d.accept());
-  await page.locator('[data-dns-acao="excluir"][data-dns-id="1"]').click();
+  return estado;
 }
 
-/** Lê do DOM (já no painel) cada [data-toast] com o contexto (seção/modal/aba) para abrir antes de
- * clicar — equivalente a "ler do fonte", mas pela árvore viva (não quebra com reordenação). */
-async function listarToasts(page) {
-  return page.evaluate(() => [...document.querySelectorAll('[data-toast]')].map((el, idx) => ({
-    idx,
-    texto: el.getAttribute('data-toast'),
-    tipo: el.getAttribute('data-toast-tipo'),
-    secao: el.closest('.section')?.id?.replace(/^sec-/, '') || null,
-    modal: el.closest('.modal-overlay')?.id || null,
-    aba: el.closest('.tab-panel')?.id || null,
-    checkbox: el.matches('input[type="checkbox"]'),
-  })));
+/** Clica em "Sair" (abre o menu no mobile) e espera o login. */
+async function sair(page, testInfo) {
+  if (testInfo?.project.name === 'mobile') await page.locator('#sidebarToggle').click();
+  await page.locator('.sidebar-logout').click();
+  await expect(page).toHaveURL(/\/login\.html$/);
 }
 
 async function listarIrPara(page) {
@@ -390,7 +335,9 @@ async function listarIrPara(page) {
   })));
 }
 
-test.describe('CSP — login e painel', { tag: '@CIT-158' }, () => {
+test.describe('CSP — login e painel', { tag: ['@CIT-158', '@CIT-70'] }, () => {
+  // CIT-70: login e painel só têm o formulário e o conteúdo no modo API (origem em ORIGENS_API), com /api/painel/* mockado.
+  test.use({ baseURL: BASE_API });
 
   test('CIT-158 CA1 (a) HTML fonte do login e do painel: nenhum <script> inline nem atributo on*', async ({ page }) => {
     for (const arquivo of ['login.html', 'painel.html']) {
@@ -410,11 +357,13 @@ test.describe('CSP — login e painel', { tag: '@CIT-158' }, () => {
   test('CIT-158 CA1 (b) login: nenhum atributo on* no DOM após os fluxos por clique', async ({ page, erros }) => {
     await percorrerLogin(page);
     expect(await atributosOnNoDom(page)).toEqual([]);
+    descartarPainel(erros);
   });
 
   test('CIT-158 CA1 (b) painel: nenhum atributo on* no DOM após os fluxos por clique', async ({ page, erros }, testInfo) => {
     await percorrerPainel(page, testInfo);
     expect(await atributosOnNoDom(page)).toEqual([]);
+    descartarPainel(erros);
   });
 
   test('CIT-158 CA1 (c)/(d) assets/login.js e assets/painel.js: sem handler on* embutido em string nem caminho absoluto', () => {
@@ -432,39 +381,49 @@ test.describe('CSP — login e painel', { tag: '@CIT-158' }, () => {
       expect(tag1, 'primeira tag do head').toMatch(/^<meta\s+charset=/i);
       expect(tag2, 'segunda tag do head').toMatch(/http-equiv="Content-Security-Policy"/i);
 
+      await mockarPainel(page, { sessao: 200 });
       await page.goto(arquivo, { waitUntil: 'networkidle' });
       await expect(page.locator('meta[http-equiv="Content-Security-Policy"]')).toHaveCount(1);
       await expect(page.locator('meta[charset] + meta[http-equiv="Content-Security-Policy"]')).toHaveCount(1);
 
       const content = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
       expect(content).toBe(CSP_LOGIN_PAINEL);
+      descartarPainel(erros);
     });
   }
 
   test('CIT-158 CA3 login + redirecionamento: zero violação de CSP em login.html e em painel.html', async ({ page, erros }) => {
     await registrarViolacoesCsp(page);
-    await percorrerLogin(page);
+    const estado = await percorrerLogin(page);
     // window.__csp é lido ainda em login.html, antes do redirecionamento (zera ao navegar).
     expect(await violacoesCsp(page), 'violações de CSP no login').toEqual([]);
 
-    await page.locator('#fEmail').fill('demo@citmail.com.br');
-    await page.locator('#fPassword').fill('demo123');
+    estado.login = 204; // CIT-70: agora o servidor aceita a credencial (a sessão passa a existir)
+    await page.locator('#fEmail').fill(EMAIL);
+    await page.locator('#fPassword').fill(SENHA);
     await page.locator('form button[type="submit"]').click();
     await expect(page).toHaveURL(/painel\.html/, { timeout: 10000 });
+    await expect(page.locator('#painelEmail')).toHaveText(EMAIL);
 
     // o coletor é reaplicado pelo page.addInitScript em toda navegação; lido de novo já em painel.html.
     expect(await violacoesCsp(page), 'violações de CSP no painel após o redirecionamento').toEqual([]);
+    descartarPainel(erros);
   });
 
-  test('CIT-158 CA3 painel: zero violação de CSP na carga e nos fluxos por clique', async ({ page, erros }, testInfo) => {
+  test('CIT-158 CA3 painel: zero violação de CSP na carga, na navegação e ao sair', async ({ page, erros }, testInfo) => {
     await registrarViolacoesCsp(page);
     await percorrerPainel(page, testInfo);
     expect(await violacoesCsp(page), 'violações de CSP no painel').toEqual([]);
+
+    await sair(page, testInfo);
+    expect(await violacoesCsp(page), 'violações de CSP no login depois de sair').toEqual([]);
+    descartarPainel(erros);
   });
 
   for (const arquivo of ['login.html', 'painel.html']) {
     testSemErros(`CIT-158 CA3 bloqueio: <script> injetado em ${arquivo} não executa e gera 1 violação de script-src`, async ({ page }) => {
       await registrarViolacoesCsp(page);
+      await mockarPainel(page, { sessao: 200 });
       await page.goto(arquivo, { waitUntil: 'networkidle' });
 
       await page.evaluate(() => {
@@ -485,35 +444,16 @@ test.describe('CSP — login e painel', { tag: '@CIT-158' }, () => {
 
   test.describe('CA5 — vínculos (painel, desktop)', () => {
     test.beforeEach(({}, testInfo) => {
-      // CA5 é desktop por desenho do plano (ver "Testes por critério"); no mobile o menu fica
-      // fora da tela (sidebar off-canvas abaixo de 768px) e a maioria dos seletores pressupõe
-      // layout desktop.
+      // CA5 é desktop por desenho do plano; no mobile o menu fica fora da tela (sidebar off-canvas abaixo de 768px).
       test.skip(testInfo.project.name !== 'desktop', 'CA5 é desktop apenas');
     });
 
-    test('CIT-158 CA5 contagens: atributos novos batem com o inventário de 206ba52', async ({ page, erros }) => {
-      await page.goto('painel.html', { waitUntil: 'networkidle' });
-      // Contagens fixadas no plano contra o commit 206ba52 (ver "Testes por critério" / CA5).
-      await expect(page.locator('[data-ir-para]')).toHaveCount(9);
-      await expect(page.locator('[data-abrir-modal]')).toHaveCount(8);
-      await expect(page.locator('[data-fechar-modal]')).toHaveCount(17);
-      await expect(page.locator('[data-toast]')).toHaveCount(29);
-      await expect(page.locator('input[type="checkbox"][data-toast]')).toHaveCount(4);
-      await expect(page.locator('[data-fechar-modal][data-toast]')).toHaveCount(5);
-      await expect(page.locator('[data-toast-tipo="success"]')).toHaveCount(16);
-      await expect(page.locator('[data-toast-tipo="info"]')).toHaveCount(12);
-      await expect(page.locator('[data-toast-tipo="error"]')).toHaveCount(1);
-
-      const idsAbrir = await page.evaluate(() => [...document.querySelectorAll('[data-abrir-modal]')].map(el => el.getAttribute('data-abrir-modal')));
-      const idsFechar = await page.evaluate(() => [...document.querySelectorAll('[data-fechar-modal]')].map(el => el.getAttribute('data-fechar-modal')));
-      expect(idsAbrir.every(id => MODAIS_PAINEL.includes(id)), 'todo data-abrir-modal aponta para um modal da lista fixa').toBe(true);
-      expect(idsFechar.every(id => MODAIS_PAINEL.includes(id)), 'todo data-fechar-modal aponta para um modal da lista fixa').toBe(true);
-    });
-
     test('CIT-158 CA5 navegação: cada [data-ir-para] leva à seção certa', async ({ page, erros }) => {
+      await mockarPainel(page, { sessao: 200 });
       await page.goto('painel.html', { waitUntil: 'networkidle' });
+      await expect(page.locator('#painelEmail')).toHaveText(EMAIL);
       const casos = await listarIrPara(page);
-      expect(casos, 'contagem de [data-ir-para]').toHaveLength(9);
+      expect(casos.length, 'há ao menos um [data-ir-para]').toBeGreaterThan(0);
 
       for (const c of casos) {
         await test.step(`#${c.idx} -> ${c.destino}`, async () => {
@@ -522,230 +462,23 @@ test.describe('CSP — login e painel', { tag: '@CIT-158' }, () => {
           await expect(page.locator('#topbarTitle')).toHaveText(SECTION_TITLES_PAINEL[c.destino]);
         });
       }
+      descartarPainel(erros);
     });
 
-    test('CIT-158 CA5 modais: cada [data-abrir-modal] abre e cada [data-fechar-modal] fecha', async ({ page, erros }) => {
+    test('CIT-70 o painel não tem [data-toast], [data-abrir-modal], modais nem tabela de DNS (conteúdo fictício removido)', async ({ page, erros }) => {
+      await mockarPainel(page, { sessao: 200 });
       await page.goto('painel.html', { waitUntil: 'networkidle' });
-
-      const abrir = await page.evaluate(() => [...document.querySelectorAll('[data-abrir-modal]')].map(el => ({
-        modal: el.getAttribute('data-abrir-modal'),
-        secao: el.closest('.section')?.id?.replace(/^sec-/, '') || null,
-      })));
-      for (let i = 0; i < abrir.length; i++) {
-        await test.step(`abrir #${i}: ${abrir[i].modal}`, async () => {
-          await page.locator(`.nav-item[data-section="${abrir[i].secao}"]`).click();
-          await page.locator('[data-abrir-modal]').nth(i).click();
-          await expect(page.locator(`#${abrir[i].modal}`)).toHaveClass(/open/);
-          await page.evaluate(id => window.closeModal(id), abrir[i].modal);
-        });
+      await expect(page.locator('#painelEmail')).toHaveText(EMAIL);
+      for (const seletor of ['[data-toast]', '[data-abrir-modal]', '[data-fechar-modal]', '.modal-overlay', '[data-dns-acao]', '#dnsTableBody']) {
+        await expect(page.locator(seletor), seletor).toHaveCount(0);
       }
-
-      const fechar = await page.evaluate(() => [...document.querySelectorAll('[data-fechar-modal]')].map(el => el.getAttribute('data-fechar-modal')));
-      for (let i = 0; i < fechar.length; i++) {
-        await test.step(`fechar #${i}: ${fechar[i]}`, async () => {
-          await page.evaluate(id => window.openModal(id), fechar[i]);
-          await page.locator('[data-fechar-modal]').nth(i).click();
-          await expect(page.locator(`#${fechar[i]}`)).not.toHaveClass(/open/);
-        });
-      }
-    });
-
-    test('CIT-158 CA5 toasts: cada [data-toast] mostra o texto exato ao clicar', async ({ page, erros }) => {
-      await page.goto('painel.html', { waitUntil: 'networkidle' });
-      const casos = await listarToasts(page);
-      expect(casos, 'contagem de [data-toast]').toHaveLength(29);
-
-      for (const c of casos) {
-        await test.step(`#${c.idx} "${c.texto}" (${c.tipo})`, async () => {
-          if (c.modal) await page.evaluate(id => window.openModal(id), c.modal);
-          else if (c.secao) await page.locator(`.nav-item[data-section="${c.secao}"]`).click();
-          if (c.aba) await page.locator('.tab-btn', { hasText: ABA_TEXTO[c.aba] }).click();
-
-          // checkboxes dos toggles de notificação são opacity:0/0x0 por design (o .toggle-knob
-          // visível é irmão, não ancestral, do <input>) — fora da área clicável que o Playwright
-          // aceita. O .click() nativo do elemento alterna o estado e dispara click+change, igual
-          // ao usuário clicando no .toggle-knob.
-          if (c.checkbox) await page.evaluate(idx => document.querySelectorAll('[data-toast]')[idx].click(), c.idx);
-          else await page.locator('[data-toast]').nth(c.idx).click();
-          await expect(page.locator('#toastWrap .toast span', { hasText: c.texto })).toBeVisible({ timeout: 5000 });
-
-          await page.evaluate(() => document.querySelectorAll('#toastWrap .toast').forEach(t => t.remove()));
-          if (c.modal) await page.evaluate(id => window.closeModal(id), c.modal);
-        });
-      }
-    });
-
-    test('CIT-158 CA5 ticket: só a 1ª linha e o 1º olho abrem o modal; a 2ª linha não abre', async ({ page, erros }) => {
-      await page.goto('painel.html', { waitUntil: 'networkidle' });
-      await page.locator('.nav-item[data-section="suporte"]').click();
-      await page.evaluate(() => {
-        // @ts-ignore
-        window.__chamadas = [];
-        const original = window.openModal;
-        // @ts-ignore
-        window.openModal = function (id) { window.__chamadas.push(id); return original(id); };
-      });
-
-      await page.locator('.ticket-row').nth(1).click(); // 2ª linha, sem data-ver-ticket
-      expect(await page.evaluate(() => window.__chamadas.length), '2ª linha não deveria chamar openModal').toBe(0);
-
-      await page.locator('[data-ver-ticket="olho"]').click();
-      expect(await page.evaluate(() => window.__chamadas.length), '1º olho deve chamar openModal 1 vez').toBe(1);
-      await page.evaluate(() => window.closeModal('modalVerTicket'));
-
-      await page.locator('[data-ver-ticket="linha"]').locator('.cell-sub').first().click();
-      expect(await page.evaluate(() => window.__chamadas.length), '1ª linha deve abrir (acumulado = 2)').toBe(2);
-    });
-
-    test('CIT-158 CA5 DNS: navegação, filtro, busca, editar e excluir mantêm o comportamento (ordem fixa, filtro Todos no excluir)', async ({ page, erros }) => {
-      const dialogs = [];
-      page.on('dialog', d => { dialogs.push(d.message()); d.accept(); });
-      await page.goto('painel.html', { waitUntil: 'networkidle' });
-      await page.locator('.nav-item[data-section="dns"]').click();
-
-      await expect(page.locator('#dnsTableBody .dns-table-row')).toHaveCount(8);
-
-      await page.locator('[data-dns-tipo="MX"]').click();
-      await expect(page.locator('#dnsTableBody .dns-table-row')).toHaveCount(2);
-      await page.locator('[data-dns-tipo="Todos"]').click();
-      await expect(page.locator('#dnsTableBody .dns-table-row')).toHaveCount(8);
-
-      await page.locator('#dnsSearch').fill('webmail');
-      await expect(page.locator('#dnsTableBody .dns-table-row')).toHaveCount(1);
-      await page.locator('#dnsSearch').fill('');
-      await expect(page.locator('#dnsTableBody .dns-table-row')).toHaveCount(8);
-
-      await page.locator('[data-dns-acao="editar"][data-dns-id="1"]').click();
-      await expect(page.locator('#dnsRHost')).toHaveValue('@');
-      await expect(page.locator('#dnsRValue')).toHaveValue('177.126.48.201');
-      await page.locator('#dnsRValue').fill('177.126.48.202');
-      await page.locator('#btnDnsSave').click();
-      await expect(page.locator('#dnsTableBody .dns-table-row').first().locator('.dns-val')).toHaveText('177.126.48.202');
-
-      await page.locator('[data-dns-dominio="empresa.com"]').click();
-      await page.locator('[data-dns-dominio="empresa.com.br"]').click();
-      await page.locator('[data-dns-acao="editar"][data-dns-id="1"]').click();
-      await expect(page.locator('#dnsRValue')).toHaveValue('177.126.48.202'); // o domínio voltou intacto
-      await page.locator('[data-fechar-modal="modalDnsRecord"]').first().click();
-
-      await page.locator('[data-dns-acao="excluir"][data-dns-id="2"]').click();
-      await expect(page.locator('#dnsTableBody .dns-table-row')).toHaveCount(7);
-      await expect(page.locator('#dnsRecordCount')).toHaveText('7 de 7 registros');
-
-      // "excluir" não serve para flagrar listener duplicado: dnsDeleteRecord já é idempotente
-      // (early-return por findIndex quando o id não existe mais), então a 2ª chamada de um
-      // listener duplicado não acha o registro e nem chega a abrir o confirm() — mascara o bug.
-      // "editar" não tem esse guard (dnsOpenEditRecord acha o registro de novo todas as vezes),
-      // então espiar dnsOpenEditRecord flagra a duplicação de verdade.
-      await page.evaluate(() => {
-        // @ts-ignore
-        window.__chamadasEditar = 0;
-        const original = window.dnsOpenEditRecord;
-        // @ts-ignore
-        window.dnsOpenEditRecord = function (id) { window.__chamadasEditar++; return original(id); };
-      });
-      await page.locator('.nav-item[data-section="email"]').click();
-      await page.locator('.nav-item[data-section="dns"]').click();
-      await page.locator('[data-dns-acao="editar"][data-dns-id="4"]').click();
-      expect(await page.evaluate(() => window.__chamadasEditar), 'o listener do DNS não deveria duplicar após revisitar a seção').toBe(1);
-      await page.locator('[data-fechar-modal="modalDnsRecord"]').first().click();
-
-      await page.locator('[data-dns-acao="excluir"][data-dns-id="3"]').click();
-      await expect(page.locator('#dnsTableBody .dns-table-row')).toHaveCount(6);
-    });
-
-    test('CIT-158 CA5 DNS forjado: atributo num ancestral de #dnsTableBody não é acionado pelo clique dentro de .dns-host', async ({ page, erros }) => {
-      const dialogs = [];
-      page.on('dialog', d => { dialogs.push(d.message()); d.accept(); });
-      await page.goto('painel.html', { waitUntil: 'networkidle' });
-      await page.locator('.nav-item[data-section="dns"]').click();
-      await expect(page.locator('#dnsTableBody .dns-table-row')).toHaveCount(8);
-
-      await page.evaluate(() => {
-        const ancestral = document.getElementById('dnsTableBody').parentElement;
-        ancestral.setAttribute('data-dns-acao', 'excluir');
-        ancestral.setAttribute('data-dns-id', '1');
-      });
-      await page.locator('.dns-host').first().click();
-
-      expect(dialogs, 'não deveria abrir confirm()').toHaveLength(0);
-      await expect(page.locator('#dnsTableBody .dns-table-row')).toHaveCount(8);
-    });
-
-    test('CIT-158 CA5 DNS forjado: data-dns-id não numérico ("1abc") é ignorado', async ({ page, erros }) => {
-      const dialogs = [];
-      page.on('dialog', d => { dialogs.push(d.message()); d.accept(); });
-      await page.goto('painel.html', { waitUntil: 'networkidle' });
-      await page.locator('.nav-item[data-section="dns"]').click();
-
-      await page.evaluate(() => {
-        const btn = document.createElement('button');
-        btn.textContent = 'forjado';
-        btn.setAttribute('data-dns-acao', 'excluir');
-        btn.setAttribute('data-dns-id', '1abc');
-        document.getElementById('dnsTableBody').appendChild(btn);
-      });
-      await page.locator('#dnsTableBody').getByRole('button', { name: 'forjado' }).click();
-
-      expect(dialogs, 'data-dns-id não numérico não deveria passar do parseInt/regex').toHaveLength(0);
-      await expect(page.locator('#dnsTableBody .dns-table-row')).toHaveCount(8);
-    });
-
-    test('CIT-158 CA5 DNS forjado: chip de tipo inexistente ("xyz") mantém as 8 linhas', async ({ page, erros }) => {
-      await page.goto('painel.html', { waitUntil: 'networkidle' });
-      await page.locator('.nav-item[data-section="dns"]').click();
-
-      await page.evaluate(() => {
-        const chip = document.createElement('button');
-        chip.textContent = 'xyz';
-        chip.setAttribute('data-dns-tipo', 'xyz');
-        document.getElementById('dnsTypeFilters').appendChild(chip);
-      });
-      await page.getByRole('button', { name: 'xyz', exact: true }).click();
-      await expect(page.locator('#dnsTableBody .dns-table-row')).toHaveCount(8);
-    });
-
-    test('CIT-158 CA5 DNS forjado: aba de domínio "__proto__" não muda o domínio ativo', async ({ page, erros }) => {
-      await page.goto('painel.html', { waitUntil: 'networkidle' });
-      await page.locator('.nav-item[data-section="dns"]').click();
-      // activeDnsDomain é `let` no topo de um script clássico: não vira window.activeDnsDomain,
-      // mas é visível por nome no mesmo escopo léxico global. Expressão em string (sem function
-      // nem eval local): sob a CSP sem 'unsafe-eval', Runtime.evaluate ainda enxerga o `let`
-      // top-level, mas um eval() dentro de uma function avaliada violaria script-src.
-      const antes = await page.evaluate('activeDnsDomain');
-
-      await page.evaluate(() => {
-        const aba = document.createElement('button');
-        aba.textContent = '__proto__';
-        aba.setAttribute('data-dns-dominio', '__proto__');
-        document.getElementById('dnsDomainTabs').appendChild(aba);
-      });
-      await page.getByRole('button', { name: '__proto__', exact: true }).click();
-
-      const depois = await page.evaluate('activeDnsDomain');
-      expect(depois, 'domínio ativo não deveria mudar com um domínio forjado').toBe(antes);
+      descartarPainel(erros);
     });
   });
 
   test.describe('CA8 — escape', () => {
-    test('CIT-158 CA8 host/valor forjados no registro DNS aparecem como texto, nunca como marcação', async ({ page, erros }, testInfo) => {
-      await page.goto('painel.html', { waitUntil: 'networkidle' });
-      await irParaSecao(page, 'dns', testInfo);
-      await page.locator('#btnDnsAdd').click();
-
-      const forjado = '"><b id=x>forjado';
-      await page.locator('#dnsRHost').fill(forjado);
-      await page.locator('#dnsRValue').fill(forjado);
-      await page.locator('#btnDnsSave').click();
-
-      const linha = page.locator('#dnsTableBody .dns-table-row', { hasText: 'forjado' }).first();
-      await expect(linha.locator('.dns-host')).toHaveText(forjado);
-      await expect(linha.locator('.dns-val')).toHaveText(forjado);
-      await expect(linha.locator('.dns-host')).toHaveAttribute('title', forjado);
-      expect(await page.locator('#x').count(), 'elemento injetado não deveria existir').toBe(0);
-    });
-
     test('CIT-158 CA8 e-mail forjado em "esqueci a senha" aparece como texto', async ({ page, erros }) => {
+      await mockarPainel(page);
       await page.goto('login.html', { waitUntil: 'networkidle' });
       await page.locator('[data-login-acao="esqueci"]').click();
       const emailForjado = '<b/id=x>a@b.co';
@@ -754,20 +487,25 @@ test.describe('CSP — login e painel', { tag: '@CIT-158' }, () => {
 
       await expect(page.locator('body')).toContainText(emailForjado);
       expect(await page.locator('#x').count(), 'elemento injetado não deveria existir').toBe(0);
+      descartarPainel(erros);
     });
 
-    test('CIT-158 CA8 showToast com marcação forjada mostra o texto literal', async ({ page, erros }) => {
+    test('CIT-70 CA8 e-mail forjado vindo de GET /sessao aparece como texto no painel', async ({ page, erros }) => {
+      const forjado = '<b id=x>a</b>@exemplo.com.br';
+      await mockarPainel(page, { sessao: 200, email: forjado });
       await page.goto('painel.html', { waitUntil: 'networkidle' });
-      await page.evaluate(() => window.showToast('<b id=x>forjado</b>', 'info'));
-      await expect(page.locator('#toastWrap .toast span')).toHaveText('<b id=x>forjado</b>');
+      await expect(page.locator('#painelEmail')).toHaveText(forjado);
       expect(await page.locator('#x').count(), 'elemento injetado não deveria existir').toBe(0);
+      descartarPainel(erros);
     });
   });
 
   test.describe('CA6 — mobile', () => {
     test('CIT-158 CA6 sidebar abre pelo toggle e fecha pelo backdrop e ao escolher item do menu', async ({ page, erros }, testInfo) => {
       test.skip(testInfo.project.name !== 'mobile', 'só aplica no perfil mobile');
+      await mockarPainel(page, { sessao: 200 });
       await page.goto('painel.html', { waitUntil: 'networkidle' });
+      await expect(page.locator('#painelEmail')).toHaveText(EMAIL);
 
       await page.locator('#sidebarToggle').click();
       await expect(page.locator('#sidebar')).toHaveClass(/open/);
@@ -779,12 +517,14 @@ test.describe('CSP — login e painel', { tag: '@CIT-158' }, () => {
       await page.locator('#sidebarToggle').click();
       await page.locator('.nav-item[data-section="email"]').click();
       await expect(page.locator('#sidebar')).not.toHaveClass(/open/);
+      descartarPainel(erros);
     });
 
     for (const largura of [320, 375]) {
-      test(`CIT-158 CA6 ${largura}px: sem overflow horizontal no login (modal aberto) e no painel (DNS aberto)`, async ({ page, erros }, testInfo) => {
+      test(`CIT-158 CA6 ${largura}px: sem overflow horizontal no login (modal aberto) e no painel (menu aberto)`, async ({ page, erros }, testInfo) => {
         test.skip(testInfo.project.name !== 'mobile', 'só aplica no perfil mobile');
         await page.setViewportSize({ width: largura, height: 800 });
+        await mockarPainel(page, { sessao: 200 });
 
         await page.goto('login.html', { waitUntil: 'networkidle' });
         await page.locator('[data-login-acao="esqueci"]').click();
@@ -792,9 +532,10 @@ test.describe('CSP — login e painel', { tag: '@CIT-158' }, () => {
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), `login ${largura}px sem overflow horizontal`).toBe(true);
 
         await page.goto('painel.html', { waitUntil: 'networkidle' });
+        await expect(page.locator('#painelEmail')).toHaveText(EMAIL);
         await page.locator('#sidebarToggle').click();
-        await page.locator('.nav-item[data-section="dns"]').click();
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), `painel ${largura}px sem overflow horizontal`).toBe(true);
+        descartarPainel(erros);
       });
     }
   });
@@ -915,60 +656,66 @@ test.describe('CSP sem estilo inline', { tag: '@CIT-152' }, () => {
     expect(await violacoesCsp(page), 'violações de CSP no checkout').toEqual([]);
   });
 
-  test('CA3 login: toast "Link enviado" e Escape sem violação de CSP', async ({ page, erros }) => {
-    await registrarViolacoesCsp(page);
-    await page.goto('login.html', { waitUntil: 'networkidle' });
-    await page.locator('[data-login-acao="esqueci"]').click();
-    await page.locator('#fForgotEmail').fill('teste@fixture.com.br');
-    await page.locator('[data-login-acao="enviar"]').click();
-    const toast = page.locator('body > div', { hasText: 'Link enviado' });
-    await expect(toast).toBeVisible();
-    await expect(toast.locator('.icon')).toBeVisible();
-    await page.locator('[data-login-acao="esqueci"]').click();
-    await page.keyboard.press('Escape');
-    await expect(page.locator('#forgotOverlay')).toBeHidden();
-    expect(await violacoesCsp(page), 'violações de CSP no login').toEqual([]);
-  });
+  // CIT-70: login e painel exigem o modo API (baseURL = BASE_API) com /api/painel/* mockado.
+  test.describe('login e painel (modo API)', () => {
+    test.use({ baseURL: BASE_API });
 
-  test('CA3 painel: modal DNS em "Adicionar" e "Editar" e toast sem violação de CSP', async ({ page, erros }, testInfo) => {
-    await registrarViolacoesCsp(page);
-    await page.goto('painel.html', { waitUntil: 'networkidle' });
-    await irParaSecao(page, 'dns', testInfo);
-    await page.locator('#btnDnsAdd').click();
-    await expect(page.locator('#modalDnsTitle')).toContainText('Adicionar Registro');
-    await expect(page.locator('#modalDnsTitle .icon use')).toHaveAttribute('href', 'assets/icons.svg#plus');
-    await page.locator('[data-fechar-modal="modalDnsRecord"]').first().click();
-    await page.locator('[data-dns-acao="editar"][data-dns-id="1"]').click();
-    await expect(page.locator('#modalDnsTitle')).toContainText('Editar Registro');
-    await expect(page.locator('#modalDnsTitle .icon use')).toHaveAttribute('href', 'assets/icons.svg#pencil');
-    await page.locator('[data-fechar-modal="modalDnsRecord"]').first().click();
-    await page.locator('#btnDnsCheckProp').click();
-    await expect(page.locator('#toastWrap .toast').first()).toBeVisible();
-    expect(await violacoesCsp(page), 'violações de CSP no painel').toEqual([]);
-  });
-
-  test('CA8 login: Escape com o modal fechado não chama closeForgot; com o modal aberto, fecha', async ({ page, erros }) => {
-    await page.goto('login.html', { waitUntil: 'networkidle' });
-    await page.evaluate(() => {
-      // @ts-ignore
-      window.__fechamentos = 0;
-      // @ts-ignore
-      const original = window.closeForgot;
-      // @ts-ignore
-      window.closeForgot = function () { window.__fechamentos++; return original(); };
+    test('CA3 login: toast "Link enviado" e Escape sem violação de CSP', async ({ page, erros }) => {
+      await registrarViolacoesCsp(page);
+      await mockarPainel(page);
+      await page.goto('login.html', { waitUntil: 'networkidle' });
+      await page.locator('[data-login-acao="esqueci"]').click();
+      await page.locator('#fForgotEmail').fill('teste@fixture.com.br');
+      await page.locator('[data-login-acao="enviar"]').click();
+      const toast = page.locator('body > div', { hasText: 'Link enviado' });
+      await expect(toast).toBeVisible();
+      await expect(toast.locator('.icon')).toBeVisible();
+      await page.locator('[data-login-acao="esqueci"]').click();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#forgotOverlay')).toBeHidden();
+      expect(await violacoesCsp(page), 'violações de CSP no login').toEqual([]);
+      descartarPainel(erros);
     });
-    const fechamentos = () => page.evaluate(() => /** @type {any} */ (window).__fechamentos);
 
-    await expect(page.locator('#forgotOverlay')).toBeHidden();
-    await page.keyboard.press('Escape');
-    await expect(page.locator('#forgotOverlay')).toBeHidden();
-    expect(await fechamentos(), 'Escape com o modal fechado não deveria fechar nada').toBe(0);
+    test('CA3 painel: erro de "Sair" mostra o toast com o ícone e sem violação de CSP', async ({ page, erros }, testInfo) => {
+      await registrarViolacoesCsp(page);
+      await mockarPainel(page, { sessao: 200, logout: 503 });
+      await page.goto('painel.html', { waitUntil: 'networkidle' });
+      await expect(page.locator('#painelEmail')).toHaveText(EMAIL);
+      if (testInfo.project.name === 'mobile') await page.locator('#sidebarToggle').click();
+      await page.locator('.sidebar-logout').click();
+      const toast = page.locator('#toastWrap .toast', { hasText: 'Não foi possível sair' });
+      await expect(toast).toBeVisible();
+      await expect(toast.locator('.icon')).toBeVisible();
+      expect(await violacoesCsp(page), 'violações de CSP no painel').toEqual([]);
+      descartarPainel(erros);
+    });
 
-    await page.locator('[data-login-acao="esqueci"]').click();
-    await expect(page.locator('#forgotOverlay')).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(page.locator('#forgotOverlay')).toBeHidden();
-    expect(await fechamentos(), 'Escape com o modal aberto fecha uma vez').toBe(1);
+    test('CA8 login: Escape com o modal fechado não chama closeForgot; com o modal aberto, fecha', async ({ page, erros }) => {
+      await mockarPainel(page);
+      await page.goto('login.html', { waitUntil: 'networkidle' });
+      await page.evaluate(() => {
+        // @ts-ignore
+        window.__fechamentos = 0;
+        // @ts-ignore
+        const original = window.closeForgot;
+        // @ts-ignore
+        window.closeForgot = function () { window.__fechamentos++; return original(); };
+      });
+      const fechamentos = () => page.evaluate(() => /** @type {any} */ (window).__fechamentos);
+
+      await expect(page.locator('#forgotOverlay')).toBeHidden();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#forgotOverlay')).toBeHidden();
+      expect(await fechamentos(), 'Escape com o modal fechado não deveria fechar nada').toBe(0);
+
+      await page.locator('[data-login-acao="esqueci"]').click();
+      await expect(page.locator('#forgotOverlay')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#forgotOverlay')).toBeHidden();
+      expect(await fechamentos(), 'Escape com o modal aberto fecha uma vez').toBe(1);
+      descartarPainel(erros);
+    });
   });
 
   test('CA8/CA9 landing: CTA desabilitado com o carrinho vazio e habilitado após escolher um plano', async ({ page, erros }) => {
@@ -1042,32 +789,5 @@ test.describe('CSP sem estilo inline', { tag: '@CIT-152' }, () => {
       await expect(page.locator('.avatar', { hasText: new RegExp(`^${sigla}$`) }), `.avatar ${sigla}`)
         .toHaveCSS('background-color', await corDoToken(page, token));
     }
-  });
-
-  test('CA9 painel: .activity-dot com fundo e cor de cada variante e barras de uso com a largura de cada classe', async ({ page, erros }, testInfo) => {
-    await page.goto('painel.html', { waitUntil: 'networkidle' });
-
-    const variantes = [
-      ['--cit-green-50', '--cit-green-700'], ['--cit-blue-50', '--cit-primary'], ['--cit-amber-50', '--cit-amber-700'],
-      ['--cit-green-50', '--cit-green-700'], ['--cit-blue-50', '--cit-primary'],
-    ];
-    const pontos = page.locator('#sec-dashboard .activity-dot');
-    await expect(pontos).toHaveCount(variantes.length);
-    for (const [i, [fundo, cor]] of variantes.entries()) {
-      await expect(pontos.nth(i), `.activity-dot #${i} fundo`).toHaveCSS('background-color', await corDoToken(page, fundo));
-      await expect(pontos.nth(i), `.activity-dot #${i} cor`).toHaveCSS('color', await corDoToken(page, cor));
-    }
-
-    /** Largura de cada .progress-fill visível da seção, relativa ao seu .progress-bar. */
-    const proporcoes = secao => page.evaluate(sel => [...document.querySelectorAll(`${sel} .progress-fill`)]
-      .map(f => f.getBoundingClientRect().width / /** @type {Element} */ (f.parentElement).getBoundingClientRect().width), secao);
-    const conferir = async (secao, esperadas) => {
-      await expect.poll(async () => (await proporcoes(secao)).length).toBe(esperadas.length);
-      await expect.poll(async () => (await proporcoes(secao)).every((p, i) => Math.abs(p - esperadas[i]) <= 0.005),
-        `${secao}: proporções ${esperadas.join(', ')}`).toBe(true);
-    };
-    await conferir('#sec-dashboard', [0.13, 0.32, 0.17]);
-    await irParaSecao(page, 'email', testInfo);
-    await conferir('#sec-email', [0.124, 0.13, 0.32, 0.17, 0, 0]);
   });
 });

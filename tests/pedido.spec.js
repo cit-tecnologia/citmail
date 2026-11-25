@@ -473,6 +473,16 @@ test.describe('pedido — CA12: contrato do arquivo e da publicação', { tag: '
     expect(declaracao(ler('assets/pedido.js'))).toBe(checkout);
   });
 
+  // CIT-70: login.js e painel.js usam a mesma lista de origens do modo API.
+  for (const arquivo of ['assets/login.js', 'assets/painel.js']) {
+    test(`CIT-70 CA10 ORIGENS_API de ${arquivo} é igual à de assets/checkout.js`, { tag: '@CIT-70' }, () => {
+      const declaracao = fonte => /const ORIGENS_API = Object\.freeze\([\s\S]*?\);/.exec(fonte)?.[0];
+      const checkout = declaracao(ler('assets/checkout.js'));
+      expect(checkout, 'ORIGENS_API em checkout.js').toBeTruthy();
+      expect(declaracao(ler(arquivo)), `ORIGENS_API em ${arquivo}`).toBe(checkout);
+    });
+  }
+
   test('CA12 a homologação confere e publica pedido.html, assets/pedido.js e assets/pedido.css nas duas listas', () => {
     const workflow = ler('.github/workflows/publicar-homologacao.yml');
     for (const arquivo of ['pedido.html', 'assets/pedido.js', 'assets/pedido.css']) {

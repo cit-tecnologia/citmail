@@ -21,8 +21,61 @@ function togglePassword() {
   }
 }
 
-function handleLogin(e) {
+// Origem da página → origem da API. Cópia de assets/checkout.js (paridade por teste): as cópias mudam juntas, e com o
+// connect-src da CSP (#57). Fora do mapa (Pages, homologação, 127.0.0.1) o login fica no modo local, sem formulário.
+const ORIGENS_API = Object.freeze({ 'http://localhost:4200': 'http://localhost:4200' });
+const LOGIN_TIMEOUT_MS = 15000;
+const MSG_CREDENCIAIS = 'E-mail ou senha incorretos.';
+const MSG_INDISPONIVEL = 'Não foi possível entrar agora. Tente novamente em instantes.';
+
+function origemApi() {
+  return Object.prototype.hasOwnProperty.call(ORIGENS_API, location.origin) ? ORIGENS_API[location.origin] : null;
+}
+
+const origem = origemApi();
+let entrando = false;
+
+function mostrarErroLogin(msg) {
+  document.getElementById('alertErrorMsg').textContent = msg;
+  document.getElementById('alertError').classList.add('visible');
+}
+
+function restaurarBotao() {
+  const btn = document.getElementById('btnLogin');
+  btn.disabled = false;
+  btn.querySelector('.spinner')?.remove();
+  document.getElementById('btnLabel').textContent = 'Entrar no Painel';
+  setIcon(document.getElementById('btnIcon'), 'log-in');
+}
+
+// POST /api/painel/login (ADR 0008): 204 com o cookie de sessão; 401 genérico; demais respostas e rede, mensagem de
+// indisponibilidade.
+async function entrar(email, senha) {
+  const controlador = new AbortController();
+  // setTimeout + abort (e não AbortSignal.timeout) para o page.clock dos testes controlar o prazo.
+  const prazo = setTimeout(() => controlador.abort(), LOGIN_TIMEOUT_MS);
+  let status = 0;
+  try {
+    const r = await fetch(`${origem}/api/painel/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, senha }),
+      credentials: 'include',
+      cache: 'no-store',
+      signal: controlador.signal,
+    });
+    status = r.status;
+  } catch {
+    status = 0;
+  } finally {
+    clearTimeout(prazo);
+  }
+  return status;
+}
+
+async function handleLogin(e) {
   e.preventDefault();
+  if (!origem || entrando) return;
   const email = document.getElementById('fEmail').value.trim();
   const pass  = document.getElementById('fPassword').value;
   let ok = true;
@@ -38,7 +91,7 @@ function handleLogin(e) {
     document.getElementById('fEmail').classList.add('error');
     ok = false;
   }
-  if (pass.length < 3) {
+  if (!pass) {
     document.getElementById('errPassword').classList.add('visible');
     document.getElementById('fPassword').classList.add('error');
     ok = false;
@@ -46,6 +99,7 @@ function handleLogin(e) {
   if (!ok) return;
 
   // Loading state
+  entrando = true;
   const btn   = document.getElementById('btnLogin');
   const label = document.getElementById('btnLabel');
   const icon  = document.getElementById('btnIcon');
@@ -56,31 +110,20 @@ function handleLogin(e) {
   spinner.className = 'spinner';
   btn.insertBefore(spinner, label);
 
-  /*
-   * INTEGRAÇÃO BACKEND:
-   * POST /api/login  { email, password }
-   * Resposta: { token, user } ou { error: 'credenciais inválidas' }
-   * Em sucesso: salvar token em localStorage/sessionStorage → redirecionar para painel.html
-   */
-  setTimeout(() => {
-    btn.disabled = false;
-    spinner.remove();
-    label.textContent = 'Entrar no Painel';
-    setIcon(icon, 'log-in');
-
-    // Demo: credenciais de teste
-    if (email === 'demo@citmail.com.br' && pass === 'demo123') {
-      label.textContent = 'Abrindo painel…';
-      setIcon(icon, 'check');
-      btn.style.background = 'var(--cit-success)';
-      setTimeout(() => { window.location.href = 'painel.html'; }, 600);
-    } else {
-      document.getElementById('alertErrorMsg').textContent = 'E-mail ou senha incorretos. Tente novamente.';
-      document.getElementById('alertError').classList.add('visible');
-      document.getElementById('fPassword').value = '';
-      document.getElementById('fPassword').focus();
-    }
-  }, 1400);
+  const status = await entrar(email, pass);
+  if (status === 204) {
+    location.replace('painel.html');
+    return;
+  }
+  entrando = false;
+  restaurarBotao();
+  if (status === 401) {
+    mostrarErroLogin(MSG_CREDENCIAIS);
+    document.getElementById('fPassword').value = '';
+    document.getElementById('fPassword').focus();
+  } else {
+    mostrarErroLogin(MSG_INDISPONIVEL);
+  }
 }
 
 function showForgot(e) {
@@ -122,9 +165,22 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && getComputedStyle(document.getElementById('forgotOverlay')).display !== 'none') closeForgot();
 });
 
+// Modo local: sem formulário, só o aviso "Painel disponível em breve" (nenhuma requisição à API).
+if (!origem) {
+  document.getElementById('loginIndisponivel').classList.remove('is-hidden');
+  document.querySelector('.login-card').classList.add('login-card--local');
+}
+
 // Auto-focus email on load
 window.addEventListener('load', () => {
-  document.getElementById('fEmail').focus();
+  if (origem) document.getElementById('fEmail').focus();
+});
+
+// Volta pelo histórico (bfcache): a página não pode reaparecer presa em "Entrando…".
+window.addEventListener('pageshow', e => {
+  if (!e.persisted) return;
+  entrando = false;
+  restaurarBotao();
 });
 
 /* ================================================================

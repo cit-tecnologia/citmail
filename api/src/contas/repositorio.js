@@ -21,3 +21,19 @@ export async function buscarContaPorClienteOuEmail(executor, clienteId, email) {
   )
   return resultado.rows
 }
+
+// Login do painel (CIT-70): mesma normalização da gravação. Só leitura (o papel da
+// aplicação tem `SELECT`); o `senha_hash` nunca sai deste módulo para log nem resposta.
+export async function buscarContaParaLogin(executor, email) {
+  const resultado = await executor.query(
+    'SELECT id, cliente_id, estado, senha_hash FROM conta_titular WHERE email = lower(btrim($1))',
+    [email]
+  )
+  return resultado.rows[0] ?? null
+}
+
+// Sessão do painel (CIT-70): e-mail e estado atuais da conta da sessão.
+export async function buscarContaPorId(executor, id) {
+  const resultado = await executor.query('SELECT id, email, estado FROM conta_titular WHERE id = $1', [id])
+  return resultado.rows[0] ?? null
+}
