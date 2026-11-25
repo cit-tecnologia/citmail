@@ -15,6 +15,7 @@ import { caminhosMascarados, LogCitmail, serializadores } from './log.js'
 import { criarConexaoProdutor } from './fila/conexao.js'
 import { criarFilas } from './fila/filas.js'
 import rotasPainel from './painel/rotas.js'
+import rotasSenha from './painel/rotas-senha.js'
 import { criarSessoes } from './painel/sessoes.js'
 
 // ADR 0003: toda rota que recebe corpo declara `schema.body`. Exceções, se
@@ -38,7 +39,9 @@ function construirValidador(externos, opcoesAjv) {
 // `pedidos`: opções do serviço de pedidos para os testes (`agora`, `versaoTabela`,
 // `versaoTermos`, `versaoPrivacidade`, `prazoPedidoMs`, `prazoCriandoMs`).
 // `painel` (CIT-70, testes): `sessoes` (de `criarSessoes`, de quem a criou), `agora`,
-// `hash` (`{ verificar }`) e `auditoria` (função no lugar de `registrarAuditoria`).
+// `hash` (`{ verificar, gerar }`) e `auditoria` (função no lugar de `registrarAuditoria`);
+// da senha por link (CIT-71): `filas` (de quem as criou), `antesDeConsumir` e
+// `auditoriaSenha` (`(cliente, dados)`, no lugar de `registrarAuditoria` na transação).
 export function construirApp(config, { pool, logStream, filas, asaas, pedidos, painel = {} } = {}) {
   const origens = config?.corsOrigens
   if (!Array.isArray(origens) || origens.length === 0 || origens.some((o) => !o || o.includes('*'))) {
@@ -126,24 +129,49 @@ export function construirApp(config, { pool, logStream, filas, asaas, pedidos, p
   // ADR 0008 (CIT-70): mesmo padrão; desligada, as rotas não são registradas (404). Sem
   // `REDIS_URL`, login e sessão respondem 503 e o logout, 204. Em produção, `carregarConfig`
   // recusa a flag ligada até o limitador de tentativas (CIT-78).
+  // Senha por link (CIT-71): mesma flag; o "esqueci" enfileira na fila `jobs` pela mesma
+  // conexão de produtor das sessões (falha rápida).
   if (config.painelHabilitado ?? config.nodeEnv !== 'production') {
     app.register(cookie)
     let sessoes = painel.sessoes
+    let filasPainel = painel.filas
     if (!sessoes && config.redisUrl) {
       const redis = criarConexaoProdutor(config.redisUrl)
       // Só o código: a mensagem pode trazer host e porta.
       redis.on('error', (erro) => app.log.warn({ codigo: erro.code ?? 'desconhecido' }, 'erro na conexão de sessões'))
       sessoes = criarSessoes({ redis, prefixo: config.filaPrefixo ?? 'citmail', agora: painel.agora })
+      const filasProprias = filasPainel ? null : criarFilas({
+        conexao: redis,
+        prefixo: config.filaPrefixo ?? 'citmail',
+        tentativas: config.filaTentativas,
+        backoffMs: config.filaBackoffMs,
+        log: app.log
+      })
+      filasPainel ??= filasProprias
       app.addHook('onClose', async () => {
-        redis.disconnect()
+        try {
+          await filasProprias?.close()
+        } finally {
+          redis.disconnect()
+        }
       })
     }
+    const origensPainel = config.painelOrigens ?? []
     app.register(rotasPainel, {
       prefix: '/api',
-      origens: config.painelOrigens ?? [],
+      origens: origensPainel,
       sessoes,
       hash: painel.hash,
       auditoria: painel.auditoria
+    })
+    app.register(rotasSenha, {
+      prefix: '/api',
+      origens: origensPainel,
+      sessoes,
+      filas: filasPainel,
+      hash: painel.hash,
+      antesDeConsumir: painel.antesDeConsumir,
+      auditoria: painel.auditoriaSenha
     })
   }
   // A guarda de produção vem antes de qualquer fila: lá a rota de exemplo não existe,

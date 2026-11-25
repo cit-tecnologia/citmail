@@ -176,7 +176,7 @@ async function comBancoMigrado(corpo) {
 test('CA10: o down com linha em email_envio é recusado (P0001) e a tabela continua', async () => {
   await comBancoMigrado(async (url, pool) => {
     await inserir(pool);
-    await assert.rejects(aplicarMigracoes(url, 'down', 2), (erro) => {
+    await assert.rejects(aplicarMigracoes(url, 'down', 3), (erro) => {
       assert.match(erro.message, /email_envio com registros: down recusado/);
       assert.equal(erro.code, 'P0001');
       return true;
@@ -189,7 +189,7 @@ test('CA10: o down com linha em email_envio é recusado (P0001) e a tabela conti
 
 test('CA10: o down com a tabela vazia a remove e o up seguinte a recria', async () => {
   await comBancoMigrado(async (url, pool) => {
-    await aplicarMigracoes(url, 'down', 2);
+    await aplicarMigracoes(url, 'down', 3);
     assert.equal((await pool.query("SELECT to_regclass('email_envio') AS tabela")).rows[0].tabela, null);
     await aplicarMigracoes(url, 'up', 1);
     assert.notEqual((await pool.query("SELECT to_regclass('email_envio') AS tabela")).rows[0].tabela, null);

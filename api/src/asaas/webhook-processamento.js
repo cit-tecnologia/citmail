@@ -5,7 +5,7 @@
 // eventos pelo outbox e resultado do bruto. Erro recuperável lança: a fila tenta de novo,
 // alerta o esgotado e aceita `npm run reprocessar -- asaas_webhook-<brutoId>`.
 import { UnrecoverableError } from 'bullmq'
-import { LIMITE_PUBLICACAO_MS } from '../eventos/publicador.js'
+import { comPrazo } from '../fila/prazo.js'
 import { registrarEvento } from '../eventos/servico.js'
 import { buscarContaPorClienteOuEmail, inserirContaSeNova } from '../contas/repositorio.js'
 import { ErroAsaas } from './cliente.js'
@@ -33,23 +33,6 @@ const STATUS_ESTORNO = new Set([
 
 // Pedido nesses estados nunca recebe efeito de pagamento nem de vencimento.
 const ESTADOS_SEM_EFEITO = new Set(['falhou_na_criacao', 'cancelado'])
-
-// Prazo do `add`/`addBulk`: com o Redis fora, o BullMQ espera a conexão indefinidamente.
-async function comPrazo(promessa) {
-  let timer
-  try {
-    return await Promise.race([
-      promessa,
-      new Promise((_, rejeitar) => {
-        timer = setTimeout(() => {
-          rejeitar(Object.assign(new Error('limite da fila'), { name: 'TimeoutError' }))
-        }, LIMITE_PUBLICACAO_MS)
-      })
-    ])
-  } finally {
-    clearTimeout(timer)
-  }
-}
 
 // Alerta do resultado do bruto, depois do COMMIT: um por bruto (`alerta-wh-<brutoId>`).
 // Falha só vai ao log (o bruto já guarda situação e código).

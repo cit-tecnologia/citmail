@@ -3,7 +3,7 @@
 // linha `pendente` ainda não enfileirada e, no mesmo ciclo, alerta uma vez cada linha
 // parada (`email_parado`). O job nasce só depois do COMMIT do consumidor que gravou a
 // linha: nunca fica órfão por ROLLBACK.
-import { LIMITE_PUBLICACAO_MS } from '../eventos/publicador.js'
+import { comPrazo } from '../fila/prazo.js'
 import {
   buscarParados, buscarPendentesNaoEnfileirados, marcarAlertadoParado, marcarEnfileirados
 } from './repositorio.js'
@@ -12,23 +12,6 @@ import { JOB_EMAIL } from './servico.js'
 export const INTERVALO_PADRAO_MS = 2000
 export const LOTE_PADRAO = 50
 export const PARADO_HORAS_PADRAO = 6
-
-// Prazo do `add`/`addBulk`: com o Redis fora, o BullMQ espera a conexão indefinidamente.
-async function comPrazo(promessa) {
-  let timer
-  try {
-    return await Promise.race([
-      promessa,
-      new Promise((_, rejeitar) => {
-        timer = setTimeout(() => {
-          rejeitar(Object.assign(new Error('limite da fila'), { name: 'TimeoutError' }))
-        }, LIMITE_PUBLICACAO_MS)
-      })
-    ])
-  } finally {
-    clearTimeout(timer)
-  }
-}
 
 /** `jobId` do envio: a geração entra no id, e o reenvio (geração + 1) cria job novo. */
 export function jobIdEmail(envioId, geracao) {

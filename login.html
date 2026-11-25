@@ -9,7 +9,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/apple-touch-icon.png" />
   <link rel="stylesheet" href="assets/fonts.css" />
   <link rel="stylesheet" href="assets/tokens.css" />
-  <link rel="stylesheet" href="assets/login.css?v=2" />
+  <link rel="stylesheet" href="assets/login.css?v=3" />
 </head>
 <body>
 
@@ -61,6 +61,11 @@
 
       <h1>Acesse seu painel</h1>
       <p class="subtitle">Entre com seu e-mail e senha de acesso ao painel</p>
+
+      <div class="alert-ok is-hidden" id="loginAviso" role="status">
+        <svg class="icon icon--success" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg>
+        <span>Senha definida. Entre com seu e-mail e a nova senha.</span>
+      </div>
 
       <div class="alert-error" id="alertError" role="alert">
         <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-x"></use></svg>
@@ -140,8 +145,12 @@
           <label for="fForgotEmail">E-mail cadastrado</label>
           <div class="input-wrap">
             <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#mail"></use></svg>
-            <input type="email" id="fForgotEmail" placeholder="joao@empresa.com.br" />
+            <input type="email" id="fForgotEmail" placeholder="joao@empresa.com.br" autocomplete="email" autocapitalize="none" />
           </div>
+        </div>
+        <div class="alert-error" id="forgotErro" role="alert">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-x"></use></svg>
+          <span>Não foi possível enviar agora. Tente novamente em instantes.</span>
         </div>
       </div>
       <div class="modal-foot">
@@ -153,7 +162,7 @@
     </div>
   </div>
 
-  <script src="assets/login.js?v=3"></script>
+  <script src="assets/login.js?v=4"></script>
 
 </body>
 </html>

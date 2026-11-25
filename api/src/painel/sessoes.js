@@ -10,6 +10,16 @@ export const ABSOLUTO_MS = 8 * 60 * 60 * 1000
 const ID_SESSAO = /^[A-Za-z0-9_-]{43}$/
 const AGENTE_MAX = 256
 
+// KEYS[1]: conjunto da conta; ARGV[1]: prefixo das chaves de sessão.
+const SCRIPT_ENCERRAR_TODAS = `
+local membros = redis.call('SMEMBERS', KEYS[1])
+for _, membro in ipairs(membros) do
+  redis.call('DEL', ARGV[1] .. membro)
+end
+redis.call('DEL', KEYS[1])
+return #membros
+`
+
 export function hashDoId(id) {
   return createHash('sha256').update(id, 'utf8').digest('hex')
 }
@@ -38,13 +48,16 @@ export function criarSessoes({ redis, prefixo, agora = Date.now, antesDeRenovar 
       return redis.status === 'ready'
     },
 
-    async criar({ contaId, clienteId, ip, agenteUsuario }) {
+    // `senhaEm` (CIT-71): epoch ms de `senha_definida_em` no login (null sem data); a
+    // sessão vale só enquanto a conta tiver o mesmo valor (`exigirSessao`).
+    async criar({ contaId, clienteId, senhaEm = null, ip, agenteUsuario }) {
       const id = randomBytes(32).toString('base64url')
       const idHash = hashDoId(id)
       const instante = agora()
       const dados = {
         contaId,
         clienteId,
+        senhaEm,
         criadoEm: instante,
         ultimoAcesso: instante,
         ip,
@@ -101,6 +114,13 @@ export function criarSessoes({ redis, prefixo, agora = Date.now, antesDeRenovar 
       const existentes = await executar(lote)
       const vencidos = membros.filter((_, indice) => existentes[indice] === 0)
       if (vencidos.length > 0) await redis.srem(conjunto(contaId), ...vencidos)
+    },
+
+    // Senha definida ou redefinida (CIT-71): apaga todas as sessões da conta e o conjunto
+    // num script só (atômico: um login concorrente não fica entre a leitura e a remoção).
+    // Erro do script lança. Devolve quantas sessões havia no conjunto.
+    encerrarTodas(contaId) {
+      return redis.eval(SCRIPT_ENCERRAR_TODAS, 1, conjunto(contaId), `${prefixo}:sessao:`)
     },
 
     // Logout e troca de sessão no login: apaga a sessão do id, se existir.

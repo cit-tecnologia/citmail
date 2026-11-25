@@ -75,13 +75,25 @@ export function criarWorkers({
     if (typeof handler !== 'function') {
       // Vai a `failed` na hora (sem as tentativas) e gera alerta.
       log.error({ jobId: job.id }, 'job desconhecido')
+      // Job removido ao falhar (`removeOnFail: true`, ex.: `senha_esqueci` com a API e o
+      // worker em flags diferentes, CIT-71) some antes do aviso de esgotamento: alerta aqui,
+      // só com o id e o nome (nunca `job.data`).
+      if (job.opts?.removeOnFail === true) {
+        try {
+          await filas.alertas.add('job_esgotado', { jobId: job.id, job: job.name },
+            { jobId: `alerta-${job.id}-desconhecido` })
+        } catch (err) {
+          log.error({ erro: err?.name, jobId: job.id }, 'alerta não enfileirado')
+        }
+      }
       throw new UnrecoverableError('job desconhecido')
     }
     // `tentativa` (CIT-65): a atual (`feita`, contadas as anteriores) e o máximo, sem o
     // `job` inteiro; o handler do e-mail grava `falhou` antes de relançar na última.
+    // `jobId` (CIT-71): o "esqueci a senha" alerta sozinho na última (job removido ao falhar).
     const tentativa = { feita: job.attemptsMade, maxima: job.opts?.attempts ?? 1 }
     return executarJob({ nome: job.name, correlacaoId: job.data?.requestId, log },
-      (contexto) => handler({ ...contexto, tentativa }, job.data))
+      (contexto) => handler({ ...contexto, tentativa, jobId: job.id }, job.data))
   }, { ...opcoesComuns, connection: conexao, prefix: prefixo })
 
   // Sem listener de esgotado aqui: alerta que falha não gera outro alerta.

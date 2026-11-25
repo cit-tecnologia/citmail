@@ -1,0 +1,42 @@
+/* Estilos de definir-senha.html (CIT-71); a base visual vem de login.css. Fora do HTML por causa da CSP (sem 'unsafe-inline'). */
+main.right-panel { min-width: 0; }
+.login-card { min-width: 0; }
+
+#definirForm h1, .login-card h1 { overflow-wrap: anywhere; }
+#definirForm .subtitle { margin-bottom: 24px; }
+
+.field-help { line-height: 1.4; }
+.field-error { line-height: 1.4; }
+.input-wrap input { padding-right: 48px; }
+.input-wrap .toggle-pass {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; right: 0; padding: 0;
+  border-radius: var(--cit-radius-sm);
+}
+.input-wrap .toggle-pass:focus-visible,
+.btn-login:focus-visible {
+  outline: 2px solid var(--cit-turquoise-500); outline-offset: 2px;
+}
+
+/* Estados informativos ocupam o lugar do formulário */
+.estado-aviso {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 16px; margin-bottom: 16px;
+  background: var(--cit-bg-subtle); border: 1px solid var(--cit-border-color);
+  border-radius: var(--cit-radius-md); color: var(--cit-text-secondary);
+}
+.estado-aviso .icon { flex-shrink: 0; color: var(--cit-neutral-500); }
+.estado-aviso.is-hidden { display: none; }
+
+.estado-invalido .icon { color: var(--cit-error); }
+.estado-sucesso .icon { color: var(--cit-success); }
+.estado-invalido .btn-login,
+.estado-invalido a.btn-login { margin-top: 12px; min-height: 48px; }
+.estado-invalido p { max-width: 32ch; }
+
+.btn-login { min-height: 48px; }
+#definirForm.is-hidden, .login-indisponivel.is-hidden { display: none; }
+
+@media (max-width: 768px) {
+  .right-panel { padding-top: 32px; }
+}

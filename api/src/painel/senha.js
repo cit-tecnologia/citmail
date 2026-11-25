@@ -24,4 +24,4 @@ export async function verificarSenha(hashArmazenado, senha) {
   }
 }
 
-export const hashPadrao = Object.freeze({ verificar: verificarSenha })
+export const hashPadrao = Object.freeze({ verificar: verificarSenha, gerar: gerarHashSenha })

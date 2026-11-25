@@ -3,12 +3,6 @@ function setIcon(el, name) {
   el.querySelector('use').setAttribute('href', 'assets/icons.svg#' + name);
 }
 
-function esc(s) {
-  return String(s).replace(/[&<>"']/g, c => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-  }[c]));
-}
-
 function togglePassword() {
   const input = document.getElementById('fPassword');
   const icon  = document.getElementById('eyeIcon');
@@ -27,6 +21,7 @@ const ORIGENS_API = Object.freeze({ 'http://localhost:4200': 'http://localhost:4
 const LOGIN_TIMEOUT_MS = 15000;
 const MSG_CREDENCIAIS = 'E-mail ou senha incorretos.';
 const MSG_INDISPONIVEL = 'Não foi possível entrar agora. Tente novamente em instantes.';
+const MSG_ESQUECI = 'Se houver uma conta com este e-mail, enviaremos um link em instantes.';
 
 function origemApi() {
   return Object.prototype.hasOwnProperty.call(ORIGENS_API, location.origin) ? ORIGENS_API[location.origin] : null;
@@ -127,34 +122,87 @@ async function handleLogin(e) {
 }
 
 function showForgot(e) {
-  e.preventDefault();
+  e?.preventDefault();
   const overlay = document.getElementById('forgotOverlay');
+  overlay.classList.remove('is-hidden');
   overlay.style.display = 'flex';
   document.getElementById('fForgotEmail').classList.remove('error');
+  document.getElementById('forgotErro').classList.remove('visible');
   const emailVal = document.getElementById('fEmail').value;
   if (emailVal) document.getElementById('fForgotEmail').value = emailVal;
   setTimeout(() => document.getElementById('fForgotEmail').focus(), 100);
 }
 function closeForgot() {
-  document.getElementById('forgotOverlay').style.display = 'none';
+  const overlay = document.getElementById('forgotOverlay');
+  overlay.style.display = 'none';
+  overlay.classList.add('is-hidden');
 }
-function sendForgot() {
+
+// Resposta fixa, sem o e-mail digitado (CIT-71): o mesmo texto exista a conta ou não. Montado por createElementNS,
+// sem innerHTML.
+function mostrarToastEsqueci() {
+  const NS = 'http://www.w3.org/2000/svg';
+  const note = document.createElement('div');
+  note.className = 'toast-link';
+  note.setAttribute('role', 'status');
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'icon icon--success');
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS(NS, 'use');
+  use.setAttribute('href', 'assets/icons.svg#circle-check');
+  svg.appendChild(use);
+  note.append(svg, document.createTextNode(' ' + MSG_ESQUECI));
+  document.body.appendChild(note);
+  setTimeout(() => { note.style.opacity='0'; note.style.transition='opacity .3s'; setTimeout(()=>note.remove(),300); }, 4000);
+}
+
+// POST /api/painel/senha/esqueci (ADR 0008; CIT-71): 202 sem corpo para qualquer e-mail; demais respostas e rede, erro
+// no modal.
+async function pedirLink(email) {
+  const controlador = new AbortController();
+  const prazo = setTimeout(() => controlador.abort(), LOGIN_TIMEOUT_MS);
+  let status = 0;
+  try {
+    const r = await fetch(`${origem}/api/painel/senha/esqueci`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+      credentials: 'omit',
+      cache: 'no-store',
+      referrerPolicy: 'no-referrer',
+      signal: controlador.signal,
+    });
+    status = r.status;
+  } catch {
+    status = 0;
+  } finally {
+    clearTimeout(prazo);
+  }
+  return status;
+}
+
+let pedindoLink = false;
+async function sendForgot() {
+  if (!origem || pedindoLink) return;
   const email = document.getElementById('fForgotEmail').value.trim();
+  document.getElementById('forgotErro').classList.remove('visible');
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     document.getElementById('fForgotEmail').classList.add('error');
     return;
   }
-  /*
-   * INTEGRAÇÃO BACKEND:
-   * POST /api/forgot-password { email }
-   */
-  closeForgot();
-  // show toast-like feedback
-  const note = document.createElement('div');
-  note.className = 'toast-link';
-  note.innerHTML = `<svg class="icon icon--success" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg> Link enviado para <strong>${esc(email)}</strong>`;
-  document.body.appendChild(note);
-  setTimeout(() => { note.style.opacity='0'; note.style.transition='opacity .3s'; setTimeout(()=>note.remove(),300); }, 4000);
+  document.getElementById('fForgotEmail').classList.remove('error');
+  pedindoLink = true;
+  const botao = document.querySelector('[data-login-acao="enviar"]');
+  botao.disabled = true;
+  const status = await pedirLink(email);
+  pedindoLink = false;
+  botao.disabled = false;
+  if (status === 202) {
+    closeForgot();
+    mostrarToastEsqueci();
+  } else {
+    document.getElementById('forgotErro').classList.add('visible');
+  }
 }
 
 // Close forgot on overlay click
@@ -171,9 +219,23 @@ if (!origem) {
   document.querySelector('.login-card').classList.add('login-card--local');
 }
 
+// Parâmetros de chegada (CIT-71), tirados da barra depois de lidos: ?senha=definida (vindo de definir-senha.html)
+// mostra o aviso, também no modo local; ?esqueci=1 ("Pedir novo link") abre o modal no modo API.
+(function lerParametros() {
+  const url = new URL(location.href);
+  const senhaDefinida = url.searchParams.get('senha') === 'definida';
+  const esqueci = url.searchParams.get('esqueci') === '1';
+  if (!url.searchParams.has('senha') && !url.searchParams.has('esqueci')) return;
+  url.searchParams.delete('senha');
+  url.searchParams.delete('esqueci');
+  history.replaceState(null, '', url.pathname + url.search + url.hash);
+  if (senhaDefinida) document.getElementById('loginAviso').classList.remove('is-hidden');
+  if (esqueci && origem) showForgot();
+})();
+
 // Auto-focus email on load
 window.addEventListener('load', () => {
-  if (origem) document.getElementById('fEmail').focus();
+  if (origem && document.getElementById('forgotOverlay').classList.contains('is-hidden')) document.getElementById('fEmail').focus();
 });
 
 // Volta pelo histórico (bfcache): a página não pode reaparecer presa em "Entrando…".

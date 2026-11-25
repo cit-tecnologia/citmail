@@ -231,17 +231,24 @@ function lerOrigens(env, nome) {
 // cada tentativa custa 19 MiB no Argon2id. Fora de produção, sem `REDIS_URL`, as rotas
 // respondem 503. `PAINEL_ORIGENS` (origens com cookie e as únicas aceitas no `Origin` do
 // login e do logout) é subconjunto de `CORS_ORIGENS`.
-function lerPainel(env, nodeEnv, corsOrigens) {
+// A mesma trava vale para o worker (CIT-71): ligado em produção, o consumidor do primeiro
+// acesso criaria solicitações que venceriam sem envio (#72).
+function lerPainelHabilitado(env, nodeEnv) {
   const producao = nodeEnv === 'production'
   const painelHabilitado = lerBooleano(env, 'PAINEL_HABILITADO', !producao)
-  const painelOrigens = lerOrigens(env, 'PAINEL_ORIGENS')
-  if (!painelOrigens.every((origem) => corsOrigens.includes(origem))) {
-    throw new Error('PAINEL_ORIGENS inválida: cada origem deve estar também em CORS_ORIGENS')
-  }
   if (painelHabilitado && producao) {
     throw new Error(
       'PAINEL_HABILITADO recusada em produção: sem limitador de tentativas no login (CIT-78, ADR 0013)'
     )
+  }
+  return painelHabilitado
+}
+
+function lerPainel(env, nodeEnv, corsOrigens) {
+  const painelHabilitado = lerPainelHabilitado(env, nodeEnv)
+  const painelOrigens = lerOrigens(env, 'PAINEL_ORIGENS')
+  if (!painelOrigens.every((origem) => corsOrigens.includes(origem))) {
+    throw new Error('PAINEL_ORIGENS inválida: cada origem deve estar também em CORS_ORIGENS')
   }
   return { painelHabilitado, painelOrigens }
 }
@@ -313,7 +320,9 @@ export function carregarConfigBanco(env = process.env) {
 // Com `WEBHOOK_ASAAS_HABILITADO` (mesmo padrão da API), lê também chave, URL e timeout do
 // Asaas (conferência do pagamento, CIT-64), obrigatórios em produção; nunca o token do webhook.
 // Lê também o transporte e o remetente do e-mail transacional (CIT-65, `lerEmail`) e o
-// intervalo do laço das tarefas de domínio (CIT-77, `DOMINIO_TAREFAS_INTERVALO_MS`).
+// intervalo do laço das tarefas de domínio (CIT-77, `DOMINIO_TAREFAS_INTERVALO_MS`) e
+// `PAINEL_HABILITADO` (CIT-71: consumidor do primeiro acesso e job do "esqueci a senha"),
+// com a mesma trava da API (`lerPainelHabilitado`: desligada por padrão e recusada em produção).
 export function carregarConfigWorker(env = process.env) {
   const config = carregarConfigFila(env)
   const databaseUrl = (env.DATABASE_URL ?? '').trim()
@@ -333,6 +342,7 @@ export function carregarConfigWorker(env = process.env) {
   return {
     ...config, databaseUrl, outboxIntervaloMs, dominioTarefasIntervaloMs, telegramBotToken, telegramChatId,
     webhookAsaasHabilitado, ...asaas,
+    painelHabilitado: lerPainelHabilitado(env, config.nodeEnv),
     ...lerEmail(env, config.nodeEnv)
   }
 }

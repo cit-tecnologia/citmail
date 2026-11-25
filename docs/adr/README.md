@@ -143,8 +143,8 @@ Ajustes que os ADRs pedem em critérios de aceite de outras histórias, para o P
 | E4-H5 | 2 | A reativação é disparada por `cobranca_paga`. | Anexo de eventos |
 | E4-H4 | 1 | Aceita `dominio_pago` com o pedido ainda `aguardando_pagamento`: abre a tarefa sem mudar o estado. | Anexo de modelo de dados |
 | E4-H4 | 2 | Só enfileira o provisionamento com as contas pagas; antes disso, só grava o registro. | Anexo de modelo de dados |
-| E5-H2 | 1 | Publica só `solicitacaoId` (tabela de solicitação de senha), sem gerar o token. | Anexo de eventos |
-| E7-H3 | 1 e 2 | O job gera o token no envio e grava só o hash; o link leva o token no fragmento da URL. | Anexo de eventos, ADR 0008 |
+| E5-H2 | 1 | Publica só `solicitacaoId` (tabela de solicitação de senha), sem gerar o token. **Aplicado** (CIT-71): critério reescrito no Taiga; a solicitação nasce sem token. | Anexo de eventos |
+| E7-H3 | 1 e 2 | O job gera o token no envio e grava só o hash; o link leva o token no fragmento da URL. O envio chama `emitirToken(executor, solicitacaoId)` (CIT-71) com o contrato do ADR 0008: executor em autocommit, `null` vira `nao_enviado` sem nova tentativa, token só em memória, `enviada_em` gravado por quem envia, conta `cancelada` também dá `null`, e, quando o pedido bate no limite, o envio reemite o token da solicitação aberta mais recente. | Anexo de eventos, ADR 0008 |
 | E6-H7 | 1 | Incluir o registro manual de domínio pela equipe (E4-H4) nas ações auditadas. | ADR 0013 |
 | E2-H6 | 3 | CORS aceita duas origens em produção até a migração da landing: `https://cittecnologia.github.io` e `https://citmail.com.br`. | ADR 0007 |
 

@@ -345,3 +345,17 @@ h1,h2,h3 { font-family: var(--font-title); font-weight: 600; line-height: 1.2; l
 .login-card.login-card--local .subtitle,
 .login-card.login-card--local form,
 .login-card.login-card--local .alert-error { display: none; }
+
+/* ── CIT-71: aviso de senha definida e erro do modal "Esqueci minha senha" ── */
+.alert-ok {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--cit-success-subtle); color: var(--cit-success-strong);
+  border: 1px solid var(--cit-success);
+  border-radius: var(--cit-radius-md);
+  padding: 12px 14px; font-size: 1rem; margin-bottom: 16px;
+}
+.alert-ok.is-hidden { display: none; }
+.alert-ok .icon { flex-shrink: 0; color: var(--cit-success-strong); }
+.modal-body .alert-error { margin: 16px 0 0; font-size: .875rem; }
+.modal-body .alert-error .icon { flex-shrink: 0; }
+.modal-foot .btn { min-height: 44px; }

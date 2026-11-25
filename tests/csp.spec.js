@@ -271,7 +271,9 @@ async function percorrerLogin(page, estado) {
   await expect(page.locator('#forgotOverlay')).toBeVisible();
   await page.locator('#fForgotEmail').fill('teste@fixture.com.br');
   await page.locator('[data-login-acao="enviar"]').click();
+  // CIT-71: o modal chama POST senha/esqueci (mock: 202 por padrão), fecha e mostra o toast fixo
   await expect(page.locator('#forgotOverlay')).toBeHidden();
+  await expect(page.locator('body > div', { hasText: 'Se houver uma conta com este e-mail' })).toBeVisible();
 
   await page.locator('[data-login-acao="esqueci"]').click();
   await page.locator('[data-login-acao="fechar"]').first().click(); // X
@@ -483,10 +485,27 @@ test.describe('CSP — login e painel', { tag: ['@CIT-158', '@CIT-70'] }, () => 
       await page.locator('[data-login-acao="esqueci"]').click();
       const emailForjado = '<b/id=x>a@b.co';
       await page.locator('#fForgotEmail').fill(emailForjado);
+      // nós criados depois do clique: nenhum pode vir de HTML (só o toast fixo, montado por createElement)
+      await page.evaluate(() => {
+        // @ts-ignore
+        window.__nosNovos = [];
+        new MutationObserver(lista => lista.forEach(m => m.addedNodes.forEach(n => {
+          // @ts-ignore
+          window.__nosNovos.push({ tag: n.nodeName, html: n.nodeType === 1 ? n.outerHTML : n.textContent });
+        }))).observe(document.body, { childList: true, subtree: true });
+      });
       await page.locator('[data-login-acao="enviar"]').click();
 
-      await expect(page.locator('body')).toContainText(emailForjado);
+      // CIT-71: o toast é fixo (202 do mock) e não repete o e-mail digitado: nada é interpretado como HTML
+      await expect(page.locator('body > div', { hasText: 'Se houver uma conta com este e-mail' })).toBeVisible();
+      await expect(page.locator('body > div', { hasText: 'Se houver uma conta com este e-mail' })).not.toContainText(emailForjado);
       expect(await page.locator('#x').count(), 'elemento injetado não deveria existir').toBe(0);
+      // o campo mantém o valor como texto, e nenhum nó novo contém o e-mail nem a tag forjada
+      await expect(page.locator('#fForgotEmail')).toHaveValue(emailForjado);
+      const nos = await page.evaluate(() => /** @type {any} */ (window).__nosNovos);
+      expect(nos.length, 'houve nós novos (o toast)').toBeGreaterThan(0);
+      expect(JSON.stringify(nos), 'nó novo com o e-mail forjado').not.toContain('id=x');
+      expect(JSON.stringify(nos), 'nó novo com o e-mail forjado').not.toContain('a@b.co');
       descartarPainel(erros);
     });
 
@@ -544,9 +563,9 @@ test.describe('CSP — login e painel', { tag: ['@CIT-158', '@CIT-70'] }, () => 
 // CIT-152: style-src sem 'unsafe-inline' — CSS de cada página em assets/<página>.css, e nenhum estilo inline em HTML nem em markup montado por script.
 // Ver .omc/plans/CIT-152.md ("Critérios de aceite" e "Testes por critério").
 
-const PAGINAS_152 = ['index.html', 'checkout.html', 'login.html', 'painel.html', 'pedido.html'];
-const CSP_POR_PAGINA_152 = { 'index.html': CSP_INDEX, 'checkout.html': CSP_CHECKOUT, 'login.html': CSP_LOGIN_PAINEL, 'painel.html': CSP_LOGIN_PAINEL, 'pedido.html': CSP_PEDIDO };
-const FOLHA_DA_PAGINA = { 'index.html': 'landing', 'checkout.html': 'checkout', 'login.html': 'login', 'painel.html': 'painel', 'pedido.html': 'pedido' };
+const PAGINAS_152 = ['index.html', 'checkout.html', 'login.html', 'painel.html', 'pedido.html', 'definir-senha.html'];
+const CSP_POR_PAGINA_152 = { 'index.html': CSP_INDEX, 'checkout.html': CSP_CHECKOUT, 'login.html': CSP_LOGIN_PAINEL, 'painel.html': CSP_LOGIN_PAINEL, 'pedido.html': CSP_PEDIDO, 'definir-senha.html': CSP_LOGIN_PAINEL };
+const FOLHA_DA_PAGINA = { 'index.html': 'landing', 'checkout.html': 'checkout', 'login.html': 'login', 'painel.html': 'painel', 'pedido.html': 'pedido', 'definir-senha.html': 'definir-senha' };
 const SCRIPTS_152 = readdirSync(new URL('assets/', RAIZ)).filter(n => n.endsWith('.js')).map(n => `assets/${n}`);
 
 /** Estilo inline proibido (CA1): <style>, atributo style= dentro de uma tag (HTML ou string/template JS;
@@ -617,7 +636,7 @@ test.describe('CSP sem estilo inline', { tag: '@CIT-152' }, () => {
     });
 
     test('CA7 toda referência a assets/(landing|checkout|login|painel).css tem ?v=<número>', () => {
-      const RE_FOLHA = /assets\/(landing|checkout|login|painel|pedido)\.css[^"'`\s)>]*/g;
+      const RE_FOLHA = /assets\/(landing|checkout|login|painel|pedido|definir-senha)\.css[^"'`\s)>]*/g;
       const referencias = [...PAGINAS_152, 'assets/checkout.js']
         .flatMap(arquivo => [...lerFonte(arquivo).matchAll(RE_FOLHA)].map(m => ({ arquivo, ref: m[0], folha: m[1] })));
       // cada página referencia a própria folha (o pop-up do boleto saiu na CIT-63)
@@ -660,16 +679,16 @@ test.describe('CSP sem estilo inline', { tag: '@CIT-152' }, () => {
   test.describe('login e painel (modo API)', () => {
     test.use({ baseURL: BASE_API });
 
-    test('CA3 login: toast "Link enviado" e Escape sem violação de CSP', async ({ page, erros }) => {
+    test('CA3 login: toast "Se houver uma conta..." com svg.icon e Escape sem violação de CSP', async ({ page, erros }) => {
       await registrarViolacoesCsp(page);
       await mockarPainel(page);
       await page.goto('login.html', { waitUntil: 'networkidle' });
       await page.locator('[data-login-acao="esqueci"]').click();
       await page.locator('#fForgotEmail').fill('teste@fixture.com.br');
       await page.locator('[data-login-acao="enviar"]').click();
-      const toast = page.locator('body > div', { hasText: 'Link enviado' });
+      const toast = page.locator('body > div', { hasText: 'Se houver uma conta com este e-mail, enviaremos um link em instantes.' });
       await expect(toast).toBeVisible();
-      await expect(toast.locator('.icon')).toBeVisible();
+      await expect(toast.locator('svg.icon')).toBeVisible();
       await page.locator('[data-login-acao="esqueci"]').click();
       await page.keyboard.press('Escape');
       await expect(page.locator('#forgotOverlay')).toBeHidden();

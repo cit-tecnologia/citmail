@@ -7,7 +7,7 @@
 // ficam 1 dia ou até 1000 por fila); marcação perdida por mais tempo que isso gera um
 // alerta repetido, aceito (é só aviso à equipe).
 // Os alertas levam só códigos e ids, nunca o nome do domínio nem dado do titular.
-import { LIMITE_PUBLICACAO_MS } from '../eventos/publicador.js'
+import { comPrazo } from '../fila/prazo.js'
 import { dataLocal, diasUteisEntre, ehDiaUtil } from './dias-uteis.js'
 import {
   abrirRenovacoes, buscarCandidatosLembrete, buscarRegistrosNaoAlertados, buscarRenovacoesNaoAlertadas,
@@ -20,23 +20,6 @@ export const LOTE_PADRAO = 50
 export const DIAS_UTEIS_LEMBRETE = 2
 
 const ALERTA = 'dominio'
-
-// Prazo do `add`/`addBulk`: com o Redis fora, o BullMQ espera a conexão indefinidamente.
-async function comPrazo(promessa) {
-  let timer
-  try {
-    return await Promise.race([
-      promessa,
-      new Promise((_, rejeitar) => {
-        timer = setTimeout(() => {
-          rejeitar(Object.assign(new Error('limite da fila'), { name: 'TimeoutError' }))
-        }, LIMITE_PUBLICACAO_MS)
-      })
-    ])
-  } finally {
-    clearTimeout(timer)
-  }
-}
 
 function alerta(codigo, { tarefaId = null, pedidoId }, jobId) {
   return { name: ALERTA, data: { tipo: ALERTA, codigo, tarefaId, pedidoId }, opts: { jobId } }

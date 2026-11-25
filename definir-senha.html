@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'" />
+  <meta name="referrer" content="no-referrer" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Definir senha — CITMail</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/brand/favicon-32.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/brand/apple-touch-icon.png" />
+  <link rel="stylesheet" href="assets/fonts.css" />
+  <link rel="stylesheet" href="assets/tokens.css" />
+  <link rel="stylesheet" href="assets/login.css?v=3" />
+  <link rel="stylesheet" href="assets/definir-senha.css?v=1" />
+</head>
+<body>
+
+  <!-- LEFT: branding panel -->
+  <div class="left-panel cit-mesh">
+    <div class="left-logo">
+      <img src="assets/brand/citmail-horizontal-escuro.png" alt="CITMail" width="160" height="36" />
+    </div>
+
+    <div class="left-content">
+      <div class="left-tag"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#shield-check"></use></svg> Acesso seguro ao painel</div>
+      <h2>Proteja seu acesso com uma <span>senha só sua</span></h2>
+      <p>Use uma senha longa e exclusiva. O link que você recebeu funciona uma única vez e tem prazo para expirar.</p>
+
+      <div class="feature-list">
+        <div class="feature-item">
+          <div class="feature-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg></div>
+          Link de uso único, com validade
+        </div>
+        <div class="feature-item">
+          <div class="feature-icon"><svg class="icon" aria-hidden="true"><use href="assets/icons.svg#shield-check"></use></svg></div>
+          Sessões anteriores são encerradas
+        </div>
+      </div>
+    </div>
+
+    <div class="left-footer"><p class="left-slogan">Infraestrutura de TI que faz sua empresa crescer com segurança.</p>© 2026 CITMail · Todos os direitos reservados</div>
+  </div>
+
+  <!-- RIGHT: estados da definição de senha -->
+  <main class="right-panel">
+    <div class="login-card" id="definirCard">
+
+      <div class="login-card-logo">
+        <img src="assets/brand/citmail-horizontal-claro.png" alt="CITMail" width="178" height="40" />
+      </div>
+
+      <noscript>
+        <div class="estado-aviso" role="alert">
+          <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-x"></use></svg>
+          <p>Ative o JavaScript para definir sua senha.</p>
+        </div>
+      </noscript>
+
+      <!-- Verificando o link -->
+      <div class="estado-aviso is-hidden" id="definirCarregando" role="status">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#clock"></use></svg>
+        <p>Verificando seu link…</p>
+      </div>
+
+      <!-- Modo local: sem API -->
+      <div class="login-indisponivel is-hidden" id="definirIndisponivel">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#clock"></use></svg>
+        <strong>Definição de senha disponível em breve</strong>
+        <p>Enquanto isso, fale com a nossa equipe pelo e-mail <a href="mailto:comercial@citmail.com.br">comercial@citmail.com.br</a>.</p>
+      </div>
+
+      <!-- Link inválido, expirado ou já usado -->
+      <div class="login-indisponivel estado-invalido is-hidden" id="linkInvalido">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-x"></use></svg>
+        <strong>Link indisponível</strong>
+        <p>Este link expirou ou já foi usado.</p>
+        <a class="btn-login" id="btnPedirNovo" href="login.html?esqueci=1">Pedir novo link</a>
+      </div>
+
+      <!-- Falha de rede ou do servidor -->
+      <div class="login-indisponivel estado-invalido is-hidden" id="definirErro" role="alert">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-x"></use></svg>
+        <strong>Não foi possível continuar</strong>
+        <p>Não conseguimos falar com o servidor agora. Tente novamente em instantes.</p>
+        <button type="button" class="btn-login" id="btnTentarNovamente" data-definir-acao="tentar">Tentar novamente</button>
+      </div>
+
+      <!-- POST definir sem resposta (rede ou prazo): a senha pode já ter sido gravada -->
+      <div class="login-indisponivel estado-invalido is-hidden" id="definirNaoConfirmado" role="alert">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#circle-x"></use></svg>
+        <strong>Não confirmamos a definição</strong>
+        <p>Talvez sua senha já tenha sido definida: tente entrar.</p>
+        <a class="btn-login" id="btnIrLogin" href="login.html">Ir para o login</a>
+      </div>
+
+      <!-- Sucesso (breve, antes do redirecionamento ao login) -->
+      <div class="login-indisponivel estado-sucesso is-hidden" id="definirSucesso" role="status">
+        <svg class="icon icon--success" aria-hidden="true"><use href="assets/icons.svg#circle-check"></use></svg>
+        <strong>Senha definida</strong>
+        <p>Levando você ao login…</p>
+      </div>
+
+      <!-- Formulário -->
+      <div id="definirForm" class="is-hidden">
+        <h1 id="definirTitulo">Defina sua senha</h1>
+        <p class="subtitle">Escolha a senha que você usará para entrar no painel.</p>
+
+        <form novalidate id="formDefinir">
+
+          <div class="field">
+            <label for="fNovaSenha">Nova senha <span class="req">*</span></label>
+            <div class="input-wrap">
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg>
+              <input type="password" id="fNovaSenha" autocomplete="new-password"
+                aria-describedby="senhaRegra errNovaSenha" />
+              <button type="button" class="toggle-pass" data-definir-acao="mostrar-senha"
+                data-alvo="fNovaSenha" aria-label="Mostrar senha" title="Mostrar senha">
+                <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#eye"></use></svg>
+              </button>
+            </div>
+            <span class="field-help" id="senhaRegra">Use de 12 a 128 caracteres, diferente do seu e-mail.</span>
+            <span class="field-error" id="errNovaSenha" role="alert"></span>
+          </div>
+
+          <div class="field">
+            <label for="fConfirmaSenha">Confirme a senha <span class="req">*</span></label>
+            <div class="input-wrap">
+              <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg>
+              <input type="password" id="fConfirmaSenha" autocomplete="new-password"
+                aria-describedby="errConfirma" />
+              <button type="button" class="toggle-pass" data-definir-acao="mostrar-senha"
+                data-alvo="fConfirmaSenha" aria-label="Mostrar senha" title="Mostrar senha">
+                <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#eye"></use></svg>
+              </button>
+            </div>
+            <span class="field-error" id="errConfirma" role="alert">As senhas não conferem.</span>
+          </div>
+
+          <button type="submit" class="btn-login" id="btnDefinir">
+            <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg>
+            <span id="btnDefinirLabel">Salvar senha</span>
+          </button>
+
+        </form>
+      </div>
+
+      <div class="secure-note">
+        <svg class="icon" aria-hidden="true"><use href="assets/icons.svg#lock"></use></svg> Conexão criptografada SSL/TLS
+      </div>
+
+    </div>
+  </main>
+
+  <script src="assets/definir-senha.js?v=2"></script>
+
+</body>
+</html>
