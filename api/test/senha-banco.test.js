@@ -99,10 +99,12 @@ test('CA1: flag ligada registra o consumidor e o job; desligada, nenhum dos dois
   const filas = { alertas: { add: async () => {} } }
   const ligada = criarHandlersDeConsumidores({ pool: banco.app, consumidores: consumidoresDoAmbiente({ painelHabilitado: true }) })
   assert.equal(typeof ligada.senha_primeiro_acesso, 'function')
+  assert.equal(typeof ligada.email_definicao_senha, 'function', 'CIT-72: consumidor do e-mail do link')
   assert.equal(typeof criarHandlersSenha({ pool: banco.app, filas, painelHabilitado: true }).senha_esqueci, 'function')
 
   const desligada = criarHandlersDeConsumidores({ pool: banco.app, consumidores: consumidoresDoAmbiente({ painelHabilitado: false }) })
   assert.ok(!Object.hasOwn(desligada, 'senha_primeiro_acesso'))
+  assert.ok(!Object.hasOwn(desligada, 'email_definicao_senha'))
   assert.ok(Object.hasOwn(desligada, 'email_compra_confirmada'))
   assert.deepStrictEqual(criarHandlersSenha({ pool: banco.app, filas, painelHabilitado: false }), {})
 })

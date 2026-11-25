@@ -5,6 +5,7 @@
 import { UnrecoverableError } from 'bullmq'
 import { tarefaRegistroDominio } from '../dominios/consumidor-tarefa-registro.js'
 import { emailCompraConfirmada } from '../email/consumidor-compra-confirmada.js'
+import { emailDefinicaoSenha } from '../email/consumidor-definicao-senha.js'
 import { handlersPadrao } from '../fila/worker.js'
 import { senhaPrimeiroAcesso } from '../senhas/consumidor-primeiro-acesso.js'
 import { buscarEvento, marcarProcessado } from './repositorio.js'
@@ -27,13 +28,18 @@ export const consumidoresPadrao = Object.freeze({
 })
 
 /**
- * Consumidores do processo: os padrão e, com `PAINEL_HABILITADO` (CIT-71),
- * `senha_primeiro_acesso`, que cria a solicitação de primeiro acesso a cada
- * `conta_titular_criada` (desligada, não nascem solicitações que venceriam sem envio).
+ * Consumidores do processo: os padrão e, com `PAINEL_HABILITADO`, `senha_primeiro_acesso`
+ * (CIT-71), que cria a solicitação de primeiro acesso a cada `conta_titular_criada`, e
+ * `email_definicao_senha` (CIT-72), que pede o e-mail do link a cada
+ * `definicao_senha_solicitada`. Desligada, nenhum dos dois.
  */
 export function consumidoresDoAmbiente({ painelHabilitado }) {
   return painelHabilitado
-    ? Object.freeze({ ...consumidoresPadrao, senha_primeiro_acesso: senhaPrimeiroAcesso })
+    ? Object.freeze({
+      ...consumidoresPadrao,
+      senha_primeiro_acesso: senhaPrimeiroAcesso,
+      email_definicao_senha: emailDefinicaoSenha
+    })
     : consumidoresPadrao
 }
 

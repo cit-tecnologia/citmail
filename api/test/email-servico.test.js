@@ -438,3 +438,93 @@ describe('handler do job email_enviar', () => {
     assert.ok(captura.linhas().some((l) => l.msg === 'e-mail enviado, mas a linha mudou antes do registro'));
   });
 });
+
+// CIT-72: protocolo `{ semEnvio }`, contexto com `painelUrlBase` e hook `aposEnviar`, com
+// modelos espiões sobre o `teste_exemplo` (o caminho da #66 segue coberto acima).
+describe('CIT-72: semEnvio, painelUrlBase e aposEnviar no handler', () => {
+  const comCarregar = (carregar, extra = {}) => ({
+    teste_exemplo: { ...modelosForaDeProducao.teste_exemplo, carregar, ...extra }
+  });
+
+  test('CIT-72 CA4: semEnvio com código válido grava nao_enviado com ele, sem enviar nem relançar', { tag: '@CIT-72' }, async () => {
+    const { id } = await pedirEnvio();
+    const transporte = transporteFalso();
+    await criarHandler(transporte, { modelos: comCarregar(async () => ({ semEnvio: 'LINK_FECHADO' })) })({ log }, { envioId: id, geracao: 1 });
+    const gravada = await linha(id);
+    assert.equal(gravada.estado, 'nao_enviado');
+    assert.equal(gravada.erro_codigo, 'LINK_FECHADO');
+    assert.equal(gravada.tentativas, 0);
+    assert.equal(transporte.enviadas.length, 0);
+    const registro = captura.linhas().find((l) => l.erro_codigo === 'LINK_FECHADO');
+    assert.equal(registro.envioId, id);
+    assert.equal(registro.modelo, 'teste_exemplo');
+  });
+
+  test('CIT-72 CA5: semEnvio fora do formato lança UnrecoverableError e a linha continua pendente', { tag: '@CIT-72' }, async () => {
+    for (const semEnvio of ['x-y', '', 'A'.repeat(33), 12, null]) {
+      const { id } = await pedirEnvio();
+      const transporte = transporteFalso();
+      const erro = await erroDe(criarHandler(transporte, { modelos: comCarregar(async () => ({ semEnvio })) })({ log }, { envioId: id, geracao: 1 }));
+      assert.ok(erro instanceof UnrecoverableError, String(semEnvio));
+      assert.equal(erro.message, 'semEnvio inválido');
+      assert.equal((await linha(id)).estado, 'pendente');
+      assert.equal(transporte.enviadas.length, 0);
+    }
+  });
+
+  test('CIT-72: o carregar recebe painelUrlBase e log no contexto', { tag: '@CIT-72' }, async () => {
+    const { id } = await pedirEnvio();
+    let contexto;
+    const carregar = async (pool, refs, ctx) => {
+      contexto = ctx;
+      return modelosForaDeProducao.teste_exemplo.carregar(pool, refs, ctx);
+    };
+    await criarHandler(transporteFalso(), { modelos: comCarregar(carregar), painelUrlBase: 'http://127.0.0.1:4200/citmail/' })({ log }, { envioId: id, geracao: 1 });
+    assert.equal(contexto.painelUrlBase, 'http://127.0.0.1:4200/citmail/');
+    assert.equal(typeof contexto.log.info, 'function');
+  });
+
+  test('CIT-72 CA4: aposEnviar roda só depois do envio registrado, com o tokenHash do carregar fora das variáveis', { tag: '@CIT-72' }, async () => {
+    const { id, pedidoId } = await pedirEnvio();
+    const chamadas = [];
+    const carregar = async (pool, refs, ctx) => ({ ...(await modelosForaDeProducao.teste_exemplo.carregar(pool, refs, ctx)), tokenHash: 'a'.repeat(64) });
+    const aposEnviar = async (pool, refs, ctx) => {
+      chamadas.push({ refs, tokenHash: ctx.tokenHash, estado: (await linha(id)).estado });
+    };
+    const transporte = transporteFalso();
+    await criarHandler(transporte, { modelos: comCarregar(carregar, { aposEnviar }) })({ log }, { envioId: id, geracao: 1 });
+    assert.deepEqual(chamadas, [{ refs: { pedidoId }, tokenHash: 'a'.repeat(64), estado: 'enviado' }]);
+    assert.doesNotMatch(JSON.stringify(transporte.enviadas), /a{64}/);
+    assert.doesNotMatch(captura.texto(), /a{64}/);
+  });
+
+  test('CIT-72 CA4: aposEnviar não roda sem envio (semEnvio, transporte desligado) nem quando a linha mudou antes do registro', { tag: '@CIT-72' }, async () => {
+    let chamadas = 0;
+    const aposEnviar = async () => { chamadas += 1; };
+    const semEnvio = await pedirEnvio();
+    await criarHandler(transporteFalso(), { modelos: comCarregar(async () => ({ semEnvio: 'LINK_FECHADO' }), { aposEnviar }) })({ log }, { envioId: semEnvio.id, geracao: 1 });
+    const desligado = await pedirEnvio();
+    await criarHandler(transporteFalso({ ligado: false }), { modelos: comCarregar(modelosForaDeProducao.teste_exemplo.carregar, { aposEnviar }) })({ log }, { envioId: desligado.id, geracao: 1 });
+    const mudou = await pedirEnvio();
+    const transporte = transporteFalso();
+    transporte.enviar = async () => {
+      await banco.admin.query("UPDATE email_envio SET estado = 'falhou' WHERE id = $1", [mudou.id]);
+      return { messageId: '<x@exemplo.test>' };
+    };
+    await criarHandler(transporte, { modelos: comCarregar(modelosForaDeProducao.teste_exemplo.carregar, { aposEnviar }) })({ log }, { envioId: mudou.id, geracao: 1 });
+    assert.equal(chamadas, 0);
+  });
+
+  test('CIT-72 CA4: aposEnviar que lança deixa enviado, conclui o job sem relançar e registra warn', { tag: '@CIT-72' }, async () => {
+    const { id } = await pedirEnvio();
+    const transporte = transporteFalso();
+    const aposEnviar = async () => { throw Object.assign(new Error(`falhou para ${ENDERECO}`), { code: '57P01' }); };
+    await criarHandler(transporte, { modelos: comCarregar(modelosForaDeProducao.teste_exemplo.carregar, { aposEnviar }) })({ log }, { envioId: id, geracao: 1 });
+    assert.equal((await linha(id)).estado, 'enviado');
+    assert.equal(transporte.enviadas.length, 1);
+    const aviso = captura.linhas().find((l) => l.msg === 'pós-envio do e-mail falhou');
+    assert.equal(aviso.level, 40);
+    assert.equal(aviso.envioId, id);
+    assert.doesNotMatch(captura.texto(), new RegExp(ENDERECO));
+  });
+});

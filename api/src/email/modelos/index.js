@@ -1,20 +1,27 @@
 // Registro dos modelos de e-mail (ADR 0010; CIT-65), versionados no repositório.
-// Cada modelo: `{ versao, carregar(cliente, refs, { log }) → { destinatario, variaveis } | null,
-// assunto(v), html(v), texto(v) }`. `carregar` lê do banco, no momento do envio, o
-// destinatário e as variáveis a partir de `refs` (só ids); `log` (do job) serve para o
-// motivo, em código, de devolver `null`. `html` devolve o resultado do
+// Cada modelo: `{ versao, carregar(cliente, refs, { log, painelUrlBase }) → { destinatario,
+// variaveis, tokenHash? } | { semEnvio: '<CODIGO>' } | null, assunto(v), html(v), texto(v),
+// aposEnviar? }`. `carregar` lê do banco, no momento do envio, o destinatário e as variáveis
+// a partir de `refs` (só ids); `log` (do job) serve para o motivo, em código, de devolver
+// `null` ou `semEnvio`. `aposEnviar(cliente, refs, { tokenHash, log })` (opcional, CIT-72)
+// roda depois do registro do envio. `html` devolve o resultado do
 // tagged template `html` (escape automático); `assunto` e `texto` passam por `limparLinha`.
 // O nome do modelo é a chave do registro (sem hífen; mesmo formato do CHECK da tabela).
 import { compraConfirmada } from './compra-confirmada.js'
+import { senhaPrimeiroAcesso, senhaRedefinicao } from './senha.js'
 import { testeExemplo } from './teste-exemplo.js'
 
 const NOME_MODELO = /^[a-z][a-z0-9_]{0,47}$/
 
 /**
- * Modelos de produção: `compra_confirmada` (CIT-66). Credenciais e avisos chegam com as
- * histórias #102 e #72.
+ * Modelos de produção: `compra_confirmada` (CIT-66) e os links de senha
+ * `senha_primeiro_acesso` e `senha_redefinicao` (CIT-72). Credenciais chegam com a #102.
  */
-export const modelosPadrao = Object.freeze({ compra_confirmada: compraConfirmada })
+export const modelosPadrao = Object.freeze({
+  compra_confirmada: compraConfirmada,
+  senha_primeiro_acesso: senhaPrimeiroAcesso,
+  senha_redefinicao: senhaRedefinicao
+})
 
 /** Modelos fora de produção: os de produção e o `teste_exemplo` (como o `jobExemplo`). */
 export const modelosForaDeProducao = Object.freeze({ ...modelosPadrao, teste_exemplo: testeExemplo })
@@ -30,7 +37,8 @@ function invalido(motivo) {
 
 /**
  * Confere o registro e lança TypeError no primeiro problema: nome fora do formato,
- * `versao` que não é inteiro ≥ 1, `carregar`, `assunto`, `html` ou `texto` ausente.
+ * `versao` que não é inteiro ≥ 1, `carregar`, `assunto`, `html` ou `texto` ausente,
+ * `aposEnviar` presente que não é função.
  */
 export function validarModelos(modelos) {
   if (typeof modelos !== 'object' || modelos === null || Array.isArray(modelos)) {
@@ -41,6 +49,9 @@ export function validarModelos(modelos) {
     if (!Number.isInteger(modelo?.versao) || modelo.versao < 1) throw invalido(`${nome}: versao inválida`)
     for (const funcao of ['carregar', 'assunto', 'html', 'texto']) {
       if (typeof modelo[funcao] !== 'function') throw invalido(`${nome}: ${funcao} ausente`)
+    }
+    if (modelo.aposEnviar !== undefined && typeof modelo.aposEnviar !== 'function') {
+      throw invalido(`${nome}: aposEnviar inválido`)
     }
   }
 }

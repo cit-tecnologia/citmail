@@ -112,9 +112,9 @@ describe('registro de modelos', () => {
     versao: 1, carregar: () => null, assunto: () => 'a', html: () => 'b', texto: () => 'c'
   };
 
-  test('o registro de produção tem só o compra_confirmada e o de fora de produção acrescenta o teste_exemplo', () => {
-    assert.deepEqual(Object.keys(modelosPadrao), ['compra_confirmada']);
-    assert.deepEqual(Object.keys(modelosForaDeProducao), ['compra_confirmada', 'teste_exemplo']);
+  test('o registro de produção tem o compra_confirmada e os de senha (CIT-72); o de fora de produção acrescenta o teste_exemplo', () => {
+    assert.deepEqual(Object.keys(modelosPadrao), ['compra_confirmada', 'senha_primeiro_acesso', 'senha_redefinicao']);
+    assert.deepEqual(Object.keys(modelosForaDeProducao), ['compra_confirmada', 'senha_primeiro_acesso', 'senha_redefinicao', 'teste_exemplo']);
   });
 
   test('NODE_ENV ausente ou production usa o registro de produção; test e development, o completo', () => {
@@ -156,6 +156,13 @@ describe('registro de modelos', () => {
 
   test('registro válido passa', () => {
     assert.doesNotThrow(() => validarModelos({ modelo_x: valido }));
+  });
+
+  test('CIT-72 CA5: aposEnviar ausente ou função passa; de outro tipo é recusado', { tag: '@CIT-72' }, () => {
+    assert.doesNotThrow(() => validarModelos({ modelo_x: { ...valido, aposEnviar: async () => {} } }));
+    for (const aposEnviar of [null, 'x', 1, {}]) {
+      assert.throws(() => validarModelos({ modelo_x: { ...valido, aposEnviar } }), { name: 'TypeError', message: /modelo_x: aposEnviar inválido/ });
+    }
   });
 });
 
