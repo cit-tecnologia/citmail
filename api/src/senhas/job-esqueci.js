@@ -6,7 +6,7 @@
 // falho é apagado antes do aviso de esgotamento do worker, o próprio handler enfileira o
 // alerta na última tentativa, só com o `jobId` e o nome. Registrado só com `PAINEL_HABILITADO`.
 import { UnrecoverableError } from 'bullmq'
-import { comPrazo } from '../email/enfileirador.js'
+import { comPrazo } from '../fila/prazo.js'
 import { buscarContaIdPorEmail } from './repositorio.js'
 import { criarSolicitacao } from './servico.js'
 

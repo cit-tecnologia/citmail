@@ -3,9 +3,10 @@
 // alertas por minuto não pode frear jobs de negócio.
 // `job.data` leva só ids (`requestId`, `pedidoId`...), nunca dado pessoal: falhos
 // ficam até 30 dias no Redis. Exceção única: `senha_esqueci` (CIT-71, ADR 0008) leva o
-// e-mail digitado e é removido ao terminar e ao falhar (`senhas/job-esqueci.js`). Pelo mesmo motivo, `stackTraceLimit: 0` (nenhuma pilha
-// guardada no job) e o erro que chega à fila já vem saneado (`executarJob`); o stream
-// de eventos fica limitado a ~1000 entradas.
+// e-mail digitado e é removido ao terminar e ao falhar (`senhas/job-esqueci.js`).
+// Pelo mesmo motivo, `stackTraceLimit: 0` (nenhuma pilha guardada no job) e o erro que
+// chega à fila já vem saneado (`executarJob`); o stream de eventos fica limitado a ~1000
+// entradas.
 import { Queue } from 'bullmq'
 
 const UM_DIA_S = 86400

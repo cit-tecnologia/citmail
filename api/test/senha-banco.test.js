@@ -131,6 +131,14 @@ test('CA1: emitirToken (Pool) devolve 43 base64url e grava o sha256; a 2ª troca
   assert.equal(await emitirToken(banco.app, '22222222-2222-4222-8222-222222222222'), null)
 })
 
+test('CA1: emitirToken não emite para conta cancelada (null, hash continua nulo)', { tag: '@CIT-71' }, async () => {
+  const { contaId } = await semearContaPainel(banco.admin, { email: EMAIL, senha: 'Senha-de-teste-123' })
+  const id = await semearSolicitacao(banco.admin, { contaId })
+  await banco.admin.query("UPDATE conta_titular SET estado = 'cancelada' WHERE id = $1", [contaId])
+  assert.equal(await emitirToken(banco.app, id), null)
+  assert.equal((await banco.admin.query('SELECT token_hash FROM solicitacao_senha WHERE id = $1', [id])).rows[0].token_hash, null)
+})
+
 test('CA9: grants do papel da aplicação em conta_titular e solicitacao_senha; únicos e CHECK', { tag: '@CIT-71' }, async () => {
   const { contaId } = await semearContaPainel(banco.admin, { email: EMAIL, estado: 'sem_senha' })
   const app = banco.app

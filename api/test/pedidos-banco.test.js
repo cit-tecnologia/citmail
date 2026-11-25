@@ -422,8 +422,9 @@ test('CA7: o down com registros é recusado com P0001 e as tabelas continuam', a
         `INSERT INTO cliente (tipo_pessoa, documento, nome, email, telefone)
          VALUES ('fisica', '52998224725', 'Fulana de Teste', 'fulana@exemplo.test', '11999990000')`
       );
-      // `1795458432080_pedidos` é a antepenúltima migração (depois dela vêm o aceite, CIT-62, e o webhook, CIT-64, que
-      // desfaz sem erro com `pedido` vazio): o down de 3 passos chega a ela.
+      // `1795458432080_pedidos` é a 7ª migração a partir da última (depois dela vêm o aceite, CIT-62, o webhook,
+      // CIT-64, o token, CIT-69, o e-mail, CIT-65, a tarefa de domínio, CIT-77, e a solicitação de senha, CIT-71,
+      // que desfazem sem erro com `pedido` vazio): o down de 7 passos chega a ela.
       await assert.rejects(aplicarMigracoes(url, 'down', 7), /pedidos com registros: down recusado/);
       const { rows } = await pool.query("SELECT to_regclass('cliente') AS cliente, to_regclass('assinatura') AS assinatura");
       assert.notEqual(rows[0].cliente, null);

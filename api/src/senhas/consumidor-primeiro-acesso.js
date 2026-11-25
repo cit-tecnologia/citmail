@@ -3,9 +3,7 @@
 // #72). Só conta `sem_senha` gera; o reprocessamento não duplica (`evento_processado`).
 // Registrado só com `PAINEL_HABILITADO` (`consumidoresDoAmbiente`).
 import { UnrecoverableError } from 'bullmq'
-import { criarSolicitacao } from './servico.js'
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+import { criarSolicitacao, UUID } from './servico.js'
 
 export const senhaPrimeiroAcesso = {
   eventos: ['conta_titular_criada'],

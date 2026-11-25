@@ -255,6 +255,16 @@ test('CA3: encerrarTodas falhando → 204 e o cookie antigo dá 401 por senhaEm,
   assert.equal((await consultarSessao(novo)).statusCode, 200, 'sessão nova com senhaEm igual')
 })
 
+test('CA3: encerrarTodas apaga, num script só, todas as sessões da conta e o conjunto', { tag: '@CIT-71' }, async () => {
+  const { contaId } = await semearContaPainel(banco.admin, { email: EMAIL, senha: SENHA_ANTIGA })
+  const primeira = await cookieDe(EMAIL, SENHA_ANTIGA)
+  const segunda = await cookieDe(EMAIL, SENHA_ANTIGA)
+  assert.equal(await sessoesTeste.sessoes.encerrarTodas(contaId), 2)
+  for (const id of [primeira, segunda]) assert.equal(await sessoesTeste.redis.exists(chave(id)), 0)
+  assert.equal(await sessoesTeste.redis.exists(conjunto(contaId)), 0)
+  assert.equal(await sessoesTeste.sessoes.encerrarTodas(contaId), 0, 'conta sem sessão')
+})
+
 test('CA3: sessão sem senhaEm (anterior à CIT-71) → 401 e chave apagada', { tag: '@CIT-71' }, async () => {
   await semearContaPainel(banco.admin, { email: EMAIL, senha: SENHA_ANTIGA })
   const id = await cookieDe(EMAIL, SENHA_ANTIGA)

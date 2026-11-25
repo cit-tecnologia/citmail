@@ -75,6 +75,17 @@ export function criarWorkers({
     if (typeof handler !== 'function') {
       // Vai a `failed` na hora (sem as tentativas) e gera alerta.
       log.error({ jobId: job.id }, 'job desconhecido')
+      // Job removido ao falhar (`removeOnFail: true`, ex.: `senha_esqueci` com a API e o
+      // worker em flags diferentes, CIT-71) some antes do aviso de esgotamento: alerta aqui,
+      // só com o id e o nome (nunca `job.data`).
+      if (job.opts?.removeOnFail === true) {
+        try {
+          await filas.alertas.add('job_esgotado', { jobId: job.id, job: job.name },
+            { jobId: `alerta-${job.id}-desconhecido` })
+        } catch (err) {
+          log.error({ erro: err?.name, jobId: job.id }, 'alerta não enfileirado')
+        }
+      }
       throw new UnrecoverableError('job desconhecido')
     }
     // `tentativa` (CIT-65): a atual (`feita`, contadas as anteriores) e o máximo, sem o

@@ -35,6 +35,47 @@ function epochDaSenha(conta) {
 // ADR 0003: o logout declara corpo, vazio e fechado.
 const corpoVazio = { type: 'object', additionalProperties: false, properties: {} }
 
+/**
+ * Fábrica do preHandler das rotas autenticadas do painel (CIT-71): lê a sessão do cookie,
+ * confere a conta e renova. Recusa com 401 (apagando a sessão) quando a conta não está
+ * `ativa`, quando a sessão não tem `senhaEm` (anterior à CIT-71) ou quando `senhaEm`
+ * diverge do valor atual da conta (senha trocada: segunda defesa, além de `encerrarTodas`).
+ * Redis ou banco fora: 503. Válida: `request.sessaoPainel = { sessao, conta }` (a rota
+ * decora o request com `sessaoPainel`).
+ */
+export function criarExigirSessao({ sessoes, banco }) {
+  return async function exigirSessao(request, reply) {
+    const indisponivel = () => reply.code(503).send({ erro: 'sessao_indisponivel' })
+    if (!sessoes?.pronto()) return indisponivel()
+    const semSessao = () => reply.code(401).send({ erro: 'sem_sessao' })
+
+    let sessao
+    try {
+      sessao = await sessoes.ler(request.cookies[COOKIE_SESSAO])
+    } catch (erro) {
+      request.log.error({ codigo: erro.code ?? erro.name }, 'falha ao ler a sessão do painel')
+      return indisponivel()
+    }
+    if (!sessao) return semSessao()
+
+    let conta
+    try {
+      conta = await buscarContaPorId(banco, sessao.dados.contaId)
+      const senhaConfere = conta !== null && Object.hasOwn(sessao.dados, 'senhaEm') &&
+        sessao.dados.senhaEm === epochDaSenha(conta)
+      if (conta?.estado !== 'ativa' || !senhaConfere) {
+        await sessoes.apagar(sessao.idHash, sessao.dados.contaId)
+        return semSessao()
+      }
+      if (!(await sessoes.renovar(sessao))) return semSessao()
+    } catch (erro) {
+      request.log.error({ codigo: erro.code ?? erro.name }, 'falha ao conferir a sessão do painel')
+      return indisponivel()
+    }
+    request.sessaoPainel = { sessao, conta }
+  }
+}
+
 export default async function rotasPainel(app, { origens, sessoes, hash = hashPadrao, auditoria }) {
   const registrar = auditoria ?? ((dados) => registrarAuditoria(app.banco, dados))
 
@@ -134,42 +175,7 @@ export default async function rotasPainel(app, { origens, sessoes, hash = hashPa
     return reply.code(204).send()
   })
 
-  /**
-   * Sessão válida para as rotas autenticadas do painel (preHandler): lê a sessão do
-   * cookie, confere a conta e renova. Recusa com 401 (apagando a sessão) quando a conta
-   * não está `ativa`, quando a sessão não tem `senhaEm` (anterior à CIT-71) ou quando
-   * `senhaEm` diverge do valor atual da conta (senha trocada: segunda defesa, além de
-   * `encerrarTodas`). Redis ou banco fora: 503. Válida: `request.sessaoPainel = { sessao, conta }`.
-   */
-  async function exigirSessao(request, reply) {
-    if (!sessoes?.pronto()) return indisponivel(reply)
-    const semSessao = () => reply.code(401).send({ erro: 'sem_sessao' })
-
-    let sessao
-    try {
-      sessao = await sessoes.ler(request.cookies[COOKIE_SESSAO])
-    } catch (erro) {
-      request.log.error({ codigo: erro.code ?? erro.name }, 'falha ao ler a sessão do painel')
-      return indisponivel(reply)
-    }
-    if (!sessao) return semSessao()
-
-    let conta
-    try {
-      conta = await buscarContaPorId(app.banco, sessao.dados.contaId)
-      const senhaConfere = conta !== null && Object.hasOwn(sessao.dados, 'senhaEm') &&
-        sessao.dados.senhaEm === epochDaSenha(conta)
-      if (conta?.estado !== 'ativa' || !senhaConfere) {
-        await sessoes.apagar(sessao.idHash, sessao.dados.contaId)
-        return semSessao()
-      }
-      if (!(await sessoes.renovar(sessao))) return semSessao()
-    } catch (erro) {
-      request.log.error({ codigo: erro.code ?? erro.name }, 'falha ao conferir a sessão do painel')
-      return indisponivel(reply)
-    }
-    request.sessaoPainel = { sessao, conta }
-  }
+  const exigirSessao = criarExigirSessao({ sessoes, banco: app.banco })
 
   app.decorateRequest('sessaoPainel', null)
 

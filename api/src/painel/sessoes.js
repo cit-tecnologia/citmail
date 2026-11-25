@@ -10,6 +10,16 @@ export const ABSOLUTO_MS = 8 * 60 * 60 * 1000
 const ID_SESSAO = /^[A-Za-z0-9_-]{43}$/
 const AGENTE_MAX = 256
 
+// KEYS[1]: conjunto da conta; ARGV[1]: prefixo das chaves de sessão.
+const SCRIPT_ENCERRAR_TODAS = `
+local membros = redis.call('SMEMBERS', KEYS[1])
+for _, membro in ipairs(membros) do
+  redis.call('DEL', ARGV[1] .. membro)
+end
+redis.call('DEL', KEYS[1])
+return #membros
+`
+
 export function hashDoId(id) {
   return createHash('sha256').update(id, 'utf8').digest('hex')
 }
@@ -106,14 +116,11 @@ export function criarSessoes({ redis, prefixo, agora = Date.now, antesDeRenovar 
       if (vencidos.length > 0) await redis.srem(conjunto(contaId), ...vencidos)
     },
 
-    // Senha definida ou redefinida (CIT-71): apaga todas as sessões da conta e o conjunto,
-    // num MULTI, conferindo o erro de cada comando.
-    async encerrarTodas(contaId) {
-      const membros = await redis.smembers(conjunto(contaId))
-      const transacao = redis.multi()
-      for (const membro of membros) transacao.del(chave(membro))
-      transacao.del(conjunto(contaId))
-      await executar(transacao)
+    // Senha definida ou redefinida (CIT-71): apaga todas as sessões da conta e o conjunto
+    // num script só (atômico: um login concorrente não fica entre a leitura e a remoção).
+    // Erro do script lança. Devolve quantas sessões havia no conjunto.
+    encerrarTodas(contaId) {
+      return redis.eval(SCRIPT_ENCERRAR_TODAS, 1, conjunto(contaId), `${prefixo}:sessao:`)
     },
 
     // Logout e troca de sessão no login: apaga a sessão do id, se existir.

@@ -178,3 +178,17 @@ async function aguardar(condicao, prazoMs = 20000) {
     await new Promise((resolve) => setTimeout(resolve, 50))
   }
 }
+
+test('CA2: worker sem o handler (flags diferentes na API e no worker) → job removido e 1 alerta só com id e nome', { tag: '@CIT-71', timeout: 30000 }, async (t) => {
+  const aux = criarFilasTeste({ tentativas: 3, backoffMs: 20 })
+  t.after(aux.fechar)
+  const enviados = []
+  aux.criarWorkers({ handlers: {}, enviarAlerta: async (dados) => { enviados.push(dados) } })
+
+  const job = await aux.filas.jobs.add(JOB_SENHA_ESQUECI, { email: EMAIL, requestId: 'req-ficticio-cit71' }, OPCOES_JOB_ESQUECI)
+  await aguardar(async () => enviados.length === 1)
+  await aguardar(async () => (await aux.filas.jobs.getJob(job.id)) === undefined)
+  assert.deepStrictEqual(enviados[0], { jobId: job.id, job: JOB_SENHA_ESQUECI })
+  assert.doesNotMatch(JSON.stringify(enviados), /exemplo\.com\.br/i)
+  assert.ok(aux.captura.linhas().some((l) => l.msg === 'job desconhecido'))
+})

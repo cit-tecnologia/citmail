@@ -18,7 +18,7 @@ export const MAXIMO_ABERTAS = 5
 export const SENHA_MINIMO = 12
 export const SENHA_MAXIMO = 128
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export function hashDoToken(token) {
   return createHash('sha256').update(token, 'utf8').digest('hex')
@@ -69,11 +69,11 @@ export async function criarSolicitacao(executor, contaId, { requestId, apenasSem
 /**
  * Gera o token do link (32 bytes, base64url, 43 caracteres), grava o SHA-256 hex dele em
  * `token_hash` e devolve o token cru; `null` se a solicitação não estiver aberta (usada,
- * vencida, inexistente ou id fora do formato). Cada chamada troca o hash: o link anterior
+ * vencida, inexistente, de conta `cancelada` ou id fora do formato). Cada chamada troca o hash: o link anterior
  * deixa de valer. Contrato com o envio (#72; ADR 0008):
  * - `executor` em autocommit (Pool, ou Client fora de transação): o hash fica confirmado
  *   antes do SMTP;
- * - `null` → envio `nao_enviado`, sem nova tentativa;
+ * - `null` (inclusive conta `cancelada`) → envio `nao_enviado`, sem nova tentativa;
  * - o token fica só em memória até montar o link: nunca em `refs`, log, `job.data`,
  *   evento ou auditoria;
  * - quem envia grava `enviada_em` (o papel da aplicação já tem o UPDATE).

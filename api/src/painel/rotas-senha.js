@@ -3,7 +3,7 @@
 // exato de `PAINEL_ORIGENS` (403, antes do corpo) → schema (400) → Redis pronto (503
 // `sessao_indisponivel`, antes do banco e do hash) → regra da rota. Toda resposta leva
 // `Cache-Control: no-store`. O token chega só no corpo e nunca vai a log.
-import { comPrazo } from '../email/enfileirador.js'
+import { comPrazo } from '../fila/prazo.js'
 import { JOB_SENHA_ESQUECI, OPCOES_JOB_ESQUECI } from '../senhas/job-esqueci.js'
 import { definirSenha, ErroAuditoriaSenha, validarToken } from '../senhas/servico.js'
 import { gerarHashSenha } from './senha.js'

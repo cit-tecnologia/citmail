@@ -32,12 +32,14 @@ export async function inserirSolicitacao(executor, { contaId, tipo, prazoHoras }
   return resultado.rows[0]
 }
 
-// Troca o hash só de solicitação aberta; devolve true se gravou.
+// Troca o hash só de solicitação aberta de conta não cancelada; devolve true se gravou.
 export async function gravarTokenHash(executor, solicitacaoId, tokenHash) {
   const resultado = await executor.query(
-    `UPDATE solicitacao_senha SET token_hash = $2
-      WHERE id = $1 AND usada_em IS NULL AND expira_em > now()
-      RETURNING id`,
+    `UPDATE solicitacao_senha s SET token_hash = $2
+       FROM conta_titular c
+      WHERE s.id = $1 AND s.usada_em IS NULL AND s.expira_em > now()
+        AND c.id = s.conta_titular_id AND c.estado <> 'cancelada'
+      RETURNING s.id`,
     [solicitacaoId, tokenHash]
   )
   return resultado.rowCount === 1
