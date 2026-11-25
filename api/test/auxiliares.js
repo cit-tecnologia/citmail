@@ -11,6 +11,7 @@
 // ele mesmo criou — por isso `fechar()` abaixo só chama `pool.end()` quando
 // foi este arquivo que criou o pool (`comBanco: true` sem override).
 
+import { createHash, randomUUID } from 'node:crypto';
 import { Client, Pool } from 'pg';
 import { Writable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
@@ -369,4 +370,39 @@ export function criarSessoesTeste({ agora, antesDeRenovar, url = urlRedisTeste()
       }
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Senha por link (CIT-71): solicitações e eventos semeados direto (superusuário).
+// ---------------------------------------------------------------------------
+
+/**
+ * Semeia uma solicitação de senha com `criada_em` recuado `recuoMs` e `expira_em =
+ * criada_em + prazoMs` (recuados juntos, pelo CHECK `expira_em > criada_em`). `token`
+ * (cru) grava o SHA-256 dele; `usada` grava `usada_em`. Devolve o id.
+ */
+export async function semearSolicitacao(admin, {
+  contaId, tipo = 'redefinicao', recuoMs = 0, prazoMs = 3600000, token = null, usada = false,
+}) {
+  const tokenHash = token === null ? null : createHash('sha256').update(token, 'utf8').digest('hex');
+  const resultado = await admin.query(
+    `INSERT INTO solicitacao_senha (conta_titular_id, tipo, token_hash, criada_em, expira_em, usada_em)
+     VALUES ($1, $2, $3, now() - make_interval(secs => $4::double precision / 1000),
+             now() - make_interval(secs => $4::double precision / 1000) + make_interval(secs => $5::double precision / 1000),
+             CASE WHEN $6::boolean THEN now() END)
+     RETURNING id`,
+    [contaId, tipo, tokenHash, recuoMs, prazoMs, usada],
+  );
+  return resultado.rows[0].id;
+}
+
+/** Evento `conta_titular_criada` como o webhook o grava. Devolve o id. */
+export async function gravarContaTitularCriada(admin, contaId, { payload = { contaId, clienteId: null } } = {}) {
+  const id = randomUUID();
+  await admin.query(
+    `INSERT INTO evento (id, nome, versao, agregado_tipo, agregado_id, chave_idempotencia, payload, request_id)
+     VALUES ($1, 'conta_titular_criada', 1, 'conta_titular', $2, $3, $4::jsonb, 'req-ficticio-cit71')`,
+    [id, contaId, `conta_titular_criada-${contaId}-${id}`, JSON.stringify(payload)],
+  );
+  return id;
 }

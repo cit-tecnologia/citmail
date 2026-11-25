@@ -38,13 +38,16 @@ export function criarSessoes({ redis, prefixo, agora = Date.now, antesDeRenovar 
       return redis.status === 'ready'
     },
 
-    async criar({ contaId, clienteId, ip, agenteUsuario }) {
+    // `senhaEm` (CIT-71): epoch ms de `senha_definida_em` no login (null sem data); a
+    // sessão vale só enquanto a conta tiver o mesmo valor (`exigirSessao`).
+    async criar({ contaId, clienteId, senhaEm = null, ip, agenteUsuario }) {
       const id = randomBytes(32).toString('base64url')
       const idHash = hashDoId(id)
       const instante = agora()
       const dados = {
         contaId,
         clienteId,
+        senhaEm,
         criadoEm: instante,
         ultimoAcesso: instante,
         ip,
@@ -101,6 +104,16 @@ export function criarSessoes({ redis, prefixo, agora = Date.now, antesDeRenovar 
       const existentes = await executar(lote)
       const vencidos = membros.filter((_, indice) => existentes[indice] === 0)
       if (vencidos.length > 0) await redis.srem(conjunto(contaId), ...vencidos)
+    },
+
+    // Senha definida ou redefinida (CIT-71): apaga todas as sessões da conta e o conjunto,
+    // num MULTI, conferindo o erro de cada comando.
+    async encerrarTodas(contaId) {
+      const membros = await redis.smembers(conjunto(contaId))
+      const transacao = redis.multi()
+      for (const membro of membros) transacao.del(chave(membro))
+      transacao.del(conjunto(contaId))
+      await executar(transacao)
     },
 
     // Logout e troca de sessão no login: apaga a sessão do id, se existir.

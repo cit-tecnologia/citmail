@@ -14,7 +14,8 @@ export const LOTE_PADRAO = 50
 export const PARADO_HORAS_PADRAO = 6
 
 // Prazo do `add`/`addBulk`: com o Redis fora, o BullMQ espera a conexão indefinidamente.
-async function comPrazo(promessa) {
+// Também no "esqueci a senha" (CIT-71).
+export async function comPrazo(promessa) {
   let timer
   try {
     return await Promise.race([

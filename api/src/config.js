@@ -313,7 +313,9 @@ export function carregarConfigBanco(env = process.env) {
 // Com `WEBHOOK_ASAAS_HABILITADO` (mesmo padrão da API), lê também chave, URL e timeout do
 // Asaas (conferência do pagamento, CIT-64), obrigatórios em produção; nunca o token do webhook.
 // Lê também o transporte e o remetente do e-mail transacional (CIT-65, `lerEmail`) e o
-// intervalo do laço das tarefas de domínio (CIT-77, `DOMINIO_TAREFAS_INTERVALO_MS`).
+// intervalo do laço das tarefas de domínio (CIT-77, `DOMINIO_TAREFAS_INTERVALO_MS`) e
+// `PAINEL_HABILITADO` (CIT-71: consumidor do primeiro acesso e job do "esqueci a senha"),
+// com o mesmo padrão da API (desligada em produção).
 export function carregarConfigWorker(env = process.env) {
   const config = carregarConfigFila(env)
   const databaseUrl = (env.DATABASE_URL ?? '').trim()
@@ -333,6 +335,7 @@ export function carregarConfigWorker(env = process.env) {
   return {
     ...config, databaseUrl, outboxIntervaloMs, dominioTarefasIntervaloMs, telegramBotToken, telegramChatId,
     webhookAsaasHabilitado, ...asaas,
+    painelHabilitado: lerBooleano(env, 'PAINEL_HABILITADO', config.nodeEnv !== 'production'),
     ...lerEmail(env, config.nodeEnv)
   }
 }

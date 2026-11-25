@@ -141,6 +141,8 @@ async function comBancoMigrado(corpo) {
   const { nomeBanco, url } = await criarBancoTemporario()
   try {
     await aplicarMigracoes(url)
+    // A solicitação de senha (CIT-71) vem depois: sai antes, e a da tarefa de domínio fica por último.
+    await aplicarMigracoes(url, 'down', 1)
     const pool = new Pool({ connectionString: url, max: 2 })
     try {
       await corpo(url, pool)

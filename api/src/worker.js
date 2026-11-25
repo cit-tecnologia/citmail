@@ -2,7 +2,8 @@
 // consumidores de eventos e o publicador do outbox (CIT-166), que lê o banco, e, com
 // `WEBHOOK_ASAAS_HABILITADO`, o enfileirador e o handler do webhook do Asaas (CIT-64), e
 // o enfileirador e o handler do e-mail transacional (CIT-65) e o laço das tarefas de
-// domínio (CIT-77), em todos os ambientes.
+// domínio (CIT-77), em todos os ambientes; com `PAINEL_HABILITADO`, o consumidor do primeiro
+// acesso e o job do "esqueci a senha" (CIT-71).
 // Sem CORS; o token do Telegram só existe aqui (menor privilégio).
 import { carregarConfigWorker } from './config.js'
 import { criarLogger } from './log.js'
@@ -11,7 +12,7 @@ import { criarConexaoProdutor, criarConexaoWorker } from './fila/conexao.js'
 import { criarFilas } from './fila/filas.js'
 import { criarWorkers, handlersPadrao } from './fila/worker.js'
 import { criarEnvioTelegram } from './alertas/telegram.js'
-import { consumidoresPadrao, criarHandlersDeConsumidores } from './eventos/consumidores.js'
+import { consumidoresDoAmbiente, criarHandlersDeConsumidores } from './eventos/consumidores.js'
 import { iniciarPublicador } from './eventos/publicador.js'
 import { criarClienteAsaas } from './asaas/cliente.js'
 import { criarHandlerWebhook, iniciarEnfileiradorWebhook, JOB_WEBHOOK } from './asaas/webhook-processamento.js'
@@ -20,6 +21,7 @@ import { iniciarEnfileiradorEmail } from './email/enfileirador.js'
 import { modelosDoAmbiente } from './email/modelos/index.js'
 import { criarTransporte } from './email/transporte.js'
 import { iniciarTarefasDominio } from './dominios/laco.js'
+import { criarHandlersSenha } from './senhas/job-esqueci.js'
 
 let config
 try {
@@ -45,7 +47,11 @@ const filas = criarFilas({ conexao, ...opcoesFilas })
 const conexaoProdutor = criarConexaoProdutor(config.redisUrl)
 const filasPublicador = criarFilas({ conexao: conexaoProdutor, ...opcoesFilas })
 
-const handlersConsumidores = criarHandlersDeConsumidores({ pool, consumidores: consumidoresPadrao })
+// O publicador e os handlers usam o mesmo registro: consumidor sem handler iria a `failed`.
+const consumidores = consumidoresDoAmbiente({ painelHabilitado: config.painelHabilitado })
+const handlersConsumidores = criarHandlersDeConsumidores({ pool, consumidores })
+// "Esqueci a senha" (CIT-71): alerta da última tentativa pelas filas do publicador (falha rápida).
+const handlersSenha = criarHandlersSenha({ pool, filas: filasPublicador, painelHabilitado: config.painelHabilitado })
 // Webhook do Asaas (ADR 0015): registrado também em produção; os alertas do handler vão
 // pelas filas do publicador (falha rápida, prazo de 2 s). Sem chave (só fora de produção),
 // o handler lança e o bruto fica para reenvio.
@@ -78,8 +84,8 @@ const workers = criarWorkers({
   log,
   nodeEnv: config.nodeEnv,
   handlers: config.nodeEnv === 'production'
-    ? { ...handlersConsumidores, ...handlersWebhook, ...handlersEmail }
-    : { ...handlersPadrao, ...handlersConsumidores, ...handlersWebhook, ...handlersEmail },
+    ? { ...handlersConsumidores, ...handlersWebhook, ...handlersEmail, ...handlersSenha }
+    : { ...handlersPadrao, ...handlersConsumidores, ...handlersWebhook, ...handlersEmail, ...handlersSenha },
   enviarAlerta: criarEnvioTelegram({ token: config.telegramBotToken, chatId: config.telegramChatId, log })
 })
 log.info({ prefixo: config.filaPrefixo }, 'worker iniciado')
@@ -87,7 +93,7 @@ log.info({ prefixo: config.filaPrefixo }, 'worker iniciado')
 const publicador = iniciarPublicador({
   pool,
   filas: filasPublicador,
-  consumidores: consumidoresPadrao,
+  consumidores,
   log,
   intervaloMs: config.outboxIntervaloMs
 })
