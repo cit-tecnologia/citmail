@@ -379,21 +379,92 @@ export function criarSessoesTeste({ agora, antesDeRenovar, url = urlRedisTeste()
 /**
  * Semeia uma solicitação de senha com `criada_em` recuado `recuoMs` e `expira_em =
  * criada_em + prazoMs` (recuados juntos, pelo CHECK `expira_em > criada_em`). `token`
- * (cru) grava o SHA-256 dele; `usada` grava `usada_em`. Devolve o id.
+ * (cru) grava o SHA-256 dele; `usada` grava `usada_em`; `enviadaRecuoMs` (CIT-72) grava
+ * `enviada_em = now() - enviadaRecuoMs`. Devolve o id.
  */
 export async function semearSolicitacao(admin, {
-  contaId, tipo = 'redefinicao', recuoMs = 0, prazoMs = 3600000, token = null, usada = false,
+  contaId, tipo = 'redefinicao', recuoMs = 0, prazoMs = 3600000, token = null, usada = false, enviadaRecuoMs = null,
 }) {
   const tokenHash = token === null ? null : createHash('sha256').update(token, 'utf8').digest('hex');
   const resultado = await admin.query(
-    `INSERT INTO solicitacao_senha (conta_titular_id, tipo, token_hash, criada_em, expira_em, usada_em)
+    `INSERT INTO solicitacao_senha (conta_titular_id, tipo, token_hash, criada_em, expira_em, usada_em, enviada_em)
      VALUES ($1, $2, $3, now() - make_interval(secs => $4::double precision / 1000),
              now() - make_interval(secs => $4::double precision / 1000) + make_interval(secs => $5::double precision / 1000),
-             CASE WHEN $6::boolean THEN now() END)
+             CASE WHEN $6::boolean THEN now() END,
+             now() - make_interval(secs => $7::double precision / 1000))
      RETURNING id`,
-    [contaId, tipo, tokenHash, recuoMs, prazoMs, usada],
+    [contaId, tipo, tokenHash, recuoMs, prazoMs, usada, enviadaRecuoMs],
   );
   return resultado.rows[0].id;
+}
+
+/**
+ * Semeia uma linha de `email_envio` de link de senha (CIT-72) para a solicitação, com
+ * `criado_em` (e `enviado_em`, se `enviado`) recuados `recuoMs`; `alertado` grava
+ * `alertado_parado_em`. Devolve o id.
+ */
+export async function semearEnvio(admin, {
+  solicitacaoId, modelo = 'senha_redefinicao', estado = 'enviado', recuoMs = 0, alertado = false,
+}) {
+  const resultado = await admin.query(
+    `INSERT INTO email_envio (chave_idempotencia, modelo, versao_modelo, refs, estado, criado_em, enviado_em,
+                              alertado_parado_em)
+     VALUES ($1, $2, 1, $3::jsonb, $4, now() - make_interval(secs => $5::double precision / 1000),
+             CASE WHEN $4 = 'enviado' THEN now() - make_interval(secs => $5::double precision / 1000) END,
+             CASE WHEN $6::boolean THEN now() END)
+     RETURNING id`,
+    [`semeado-${randomUUID()}`, modelo, JSON.stringify({ solicitacaoId }), estado, recuoMs, alertado],
+  );
+  return resultado.rows[0].id;
+}
+
+// RFC 2047 (`=?UTF-8?Q?...?=` e `=?UTF-8?B?...?=`), com as palavras vizinhas unidas.
+function decodificarCabecalho(valor) {
+  return valor
+    .replace(/(\?=)\s+(=\?)/g, '$1$2')
+    .replace(/=\?([^?]+)\?([QqBb])\?([^?]*)\?=/g, (_, _charset, codificacao, texto) => (
+      codificacao.toUpperCase() === 'B'
+        ? Buffer.from(texto, 'base64').toString('utf8')
+        : Buffer.from(texto.replace(/_/g, ' ').replace(/=([0-9A-Fa-f]{2})/g, (__, hex) => String.fromCharCode(parseInt(hex, 16))), 'latin1').toString('utf8')
+    ));
+}
+
+function decodificarCorpo(corpo, codificacao) {
+  if (/base64/i.test(codificacao)) return Buffer.from(corpo.replace(/\s+/g, ''), 'base64').toString('utf8');
+  if (!/quoted-printable/i.test(codificacao)) return corpo;
+  const semQuebraMole = corpo.replace(/=\r?\n/g, '');
+  return Buffer.from(
+    semQuebraMole.replace(/=([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16))), 'latin1',
+  ).toString('utf8');
+}
+
+/**
+ * DATA bruto do stub SMTP (CIT-72) decodificado: cabeçalhos desdobrados, `assunto` com RFC
+ * 2047 decodificado e as partes `texto` e `html` (quoted-printable ou base64) em UTF-8.
+ */
+export function decodificarQp(data) {
+  const [cabecalhoBruto, ...resto] = data.split(/\r?\n\r?\n/);
+  const cabecalhos = cabecalhoBruto.replace(/\r?\n[ \t]+/g, ' ');
+  const corpo = resto.join('\r\n\r\n');
+  const assunto = decodificarCabecalho(/^Subject: (.*)$/mi.exec(cabecalhos)?.[1] ?? '');
+  const fronteira = /boundary="?([^";\r\n]+)"?/i.exec(cabecalhos)?.[1];
+  const partes = fronteira
+    ? corpo.split(`--${fronteira}`).slice(1, -1).map((parte) => parte.replace(/^\r?\n/, ''))
+    : [`${cabecalhoBruto}\r\n\r\n${corpo}`];
+  const lidas = partes.map((parte) => {
+    const [cabecalho, ...corpoDaParte] = parte.split(/\r?\n\r?\n/);
+    const desdobrado = cabecalho.replace(/\r?\n[ \t]+/g, ' ');
+    return {
+      tipo: /^Content-Type: ([^;\r\n]+)/mi.exec(desdobrado)?.[1]?.trim().toLowerCase(),
+      conteudo: decodificarCorpo(corpoDaParte.join('\r\n\r\n'), /^Content-Transfer-Encoding: (.*)$/mi.exec(desdobrado)?.[1] ?? ''),
+    };
+  });
+  return {
+    cabecalhos,
+    assunto,
+    texto: lidas.find((p) => p.tipo === 'text/plain')?.conteudo ?? '',
+    html: lidas.find((p) => p.tipo === 'text/html')?.conteudo ?? '',
+  };
 }
 
 /** Evento `conta_titular_criada` como o webhook o grava. Devolve o id. */

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { carregarConfig, carregarConfigBanco, carregarConfigFila, carregarConfigWorker } from '../src/config.js';
+import { carregarConfig, carregarConfigBanco, carregarConfigFila, carregarConfigWorker, lerPainelUrlBase } from '../src/config.js';
 import { construirApp } from '../src/app.js';
 import { PRIVACIDADE_PROVISORIA, TERMOS_MINUTA } from '../src/pedidos/aceite.js';
 import { criarCapturaDeLog, criarConfigTeste } from './auxiliares.js';
@@ -837,4 +837,50 @@ test('CIT-71: carregarConfigWorker lê PAINEL_HABILITADO com a trava da API: lig
     },
   );
   assert.throws(() => carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development', PAINEL_HABILITADO: 'sim' }), /PAINEL_HABILITADO inválida/);
+});
+
+test('CIT-72 CA5: lerPainelUrlBase usa o padrão do Vite em development e test e exige a variável fora deles', { tag: '@CIT-72' }, () => {
+  for (const nodeEnv of ['development', 'test']) {
+    assert.equal(lerPainelUrlBase({}, nodeEnv), 'http://127.0.0.1:4200/citmail/');
+    assert.equal(lerPainelUrlBase({ PAINEL_URL_BASE: '  ' }, nodeEnv), 'http://127.0.0.1:4200/citmail/');
+    assert.equal(lerPainelUrlBase({ PAINEL_URL_BASE: 'http://localhost:4200/citmail/' }, nodeEnv), 'http://localhost:4200/citmail/');
+  }
+  assert.throws(() => lerPainelUrlBase({}, 'production'), { message: 'PAINEL_URL_BASE não definida' });
+  assert.equal(lerPainelUrlBase({ PAINEL_URL_BASE: 'https://novo.citmail.com.br/' }, 'production'), 'https://novo.citmail.com.br/');
+});
+
+test('CIT-72 CA5: lerPainelUrlBase recusa http fora de dev/test, caminho sem / final, query, fragmento e credenciais', { tag: '@CIT-72' }, () => {
+  const invalidas = [
+    ['production', 'http://novo.citmail.com.br/'],
+    ['production', 'https://novo.citmail.com.br/citmail'],
+    ['production', 'https://novo.citmail.com.br/?a=1'],
+    ['production', 'https://novo.citmail.com.br/?'],
+    ['production', 'https://novo.citmail.com.br/#x'],
+    ['production', 'https://user:pw@novo.citmail.com.br/'],
+    ['production', 'novo.citmail.com.br/'],
+    ['production', 'ftp://novo.citmail.com.br/'],
+    ['test', 'http://127.0.0.1:4200/citmail'],
+    ['test', 'javascript:alert(1)/'],
+  ];
+  for (const [nodeEnv, PAINEL_URL_BASE] of invalidas) {
+    assert.throws(() => lerPainelUrlBase({ PAINEL_URL_BASE }, nodeEnv), /^Error: PAINEL_URL_BASE inválida/, PAINEL_URL_BASE);
+  }
+});
+
+test('CIT-72 CA5: carregarConfigWorker lê PAINEL_URL_BASE só com a flag; produção com a flag continua recusada', { tag: '@CIT-72' }, () => {
+  const ligada = carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development' });
+  assert.equal(ligada.painelUrlBase, 'http://127.0.0.1:4200/citmail/');
+  const desligada = carregarConfigWorker({
+    ...AMBIENTE_WORKER, NODE_ENV: 'development', PAINEL_HABILITADO: 'false', PAINEL_URL_BASE: 'invalida',
+  });
+  assert.ok(!Object.hasOwn(desligada, 'painelUrlBase'));
+  assert.ok(!Object.hasOwn(carregarConfigWorker(AMBIENTE_WORKER_PRODUCAO), 'painelUrlBase'));
+  assert.throws(
+    () => carregarConfigWorker({ ...AMBIENTE_WORKER, NODE_ENV: 'development', PAINEL_URL_BASE: 'http://x/sem-barra' }),
+    /PAINEL_URL_BASE inválida/,
+  );
+  assert.throws(
+    () => carregarConfigWorker({ ...AMBIENTE_WORKER_PRODUCAO, PAINEL_HABILITADO: 'true', PAINEL_URL_BASE: 'https://novo.citmail.com.br/' }),
+    { message: 'PAINEL_HABILITADO recusada em produção: sem limitador de tentativas no login (CIT-78, ADR 0013)' },
+  );
 });
