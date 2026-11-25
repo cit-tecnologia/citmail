@@ -37,6 +37,18 @@ export function limparLinha(valor) {
   return String(valor).replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/g, '')
 }
 
+// Um único addr-spec: sem lista (`,` `;`), nome de exibição (`<` `>` `"`), comentário,
+// espaço nem segundo `@`. O envelope SMTP leva só ele.
+const ENDERECO = /^[^\s,;<>"()[\]\\@]{1,64}@[^\s,;<>"()[\]\\@]{1,253}$/
+
+/**
+ * true se o valor, depois de `limparLinha`, é um único endereço (o que o handler aceita).
+ * Aqui, e não em `servico.js`, para os modelos usarem sem import circular (CIT-72).
+ */
+export function destinatarioValido(valor) {
+  return ENDERECO.test(limparLinha(valor))
+}
+
 function interpolarHtml(valor) {
   if (valor === null || valor === undefined) return ''
   if (valor instanceof HtmlSeguro) return valor.toString()

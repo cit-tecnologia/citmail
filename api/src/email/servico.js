@@ -7,12 +7,14 @@
 import pg from 'pg'
 import { UnrecoverableError } from 'bullmq'
 import { camposSensiveis } from '../log.js'
-import { ehHtmlSeguro, limparLinha } from './html.js'
+import { destinatarioValido, ehHtmlSeguro, limparLinha } from './html.js'
 import { mascararEmail } from './mascara.js'
 import { modelosDoAmbiente, validarModelos } from './modelos/index.js'
 import { buscarEnvio, inserirEnvioSeNovo, marcarEnviado, marcarFalha, marcarNaoEnviado } from './repositorio.js'
 
 export const JOB_EMAIL = 'email_enviar'
+// Mesma regra do handler para os modelos que conferem o endereço antes de um efeito (CIT-72).
+export { destinatarioValido }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const CHAVE_IDEMPOTENCIA = /^[A-Za-z0-9_-]{1,200}$/
@@ -21,9 +23,6 @@ const VALOR_REF = /^[A-Za-z0-9_-]{1,64}$/
 const REFS_MAX_BYTES = 1024
 const CODIGO_ERRO = /^[A-Z0-9_]{1,32}$/
 const MESSAGE_ID_MAX = 255
-// Um único addr-spec: sem lista (`,` `;`), nome de exibição (`<` `>` `"`), comentário,
-// espaço nem segundo `@`. O envelope SMTP leva só ele.
-const ENDERECO = /^[^\s,;<>"()[\]\\@]{1,64}@[^\s,;<>"()[\]\\@]{1,253}$/
 const CAMPOS_SENSIVEIS = new Set(camposSensiveis.map((campo) => campo.toLowerCase()))
 
 // Classificação do erro do `nodemailer` (decisão 8 do plano; revisar no smoke da #57).
@@ -139,8 +138,15 @@ export async function solicitarEmail(cliente, dados, modelos = modelosDoAmbiente
  * Erro do SMTP: grava o código e relança `ErroEmail` (nova tentativa) ou, com 5xx em
  * RCPT/DATA, grava `falhou` e lança `ErroEmailDefinitivo`; na última tentativa
  * (`contexto.tentativa`), grava `falhou` antes de relançar.
+ *
+ * `carregar(pool, refs, { log, painelUrlBase })` pode devolver `{ semEnvio: '<CODIGO>' }`
+ * (CIT-72): código no formato de `erro_codigo` → `nao_enviado` com ele, sem retry nem
+ * alerta; fora do formato → `UnrecoverableError` (a linha fica `pendente`). Depois do
+ * `marcarEnviado`, o hook opcional `aposEnviar(pool, refs, { tokenHash, log })` recebe o
+ * `tokenHash` devolvido pelo `carregar`; falha do hook vai ao log e não relança (relançar
+ * reenviaria).
  */
-export function criarHandlerEmail({ pool, modelos, transporte, remetente, responderPara, log: logRaiz }) {
+export function criarHandlerEmail({ pool, modelos, transporte, remetente, responderPara, painelUrlBase, log: logRaiz }) {
   validarModelos(modelos)
   const envelopeFrom = enderecoDoRemetente(remetente)
   return async function enviarEmail({ log = logRaiz, tentativa } = {}, { envioId, geracao } = {}) {
@@ -166,13 +172,22 @@ export function criarHandlerEmail({ pool, modelos, transporte, remetente, respon
       return
     }
 
-    const dados = await modelo.carregar(pool, envio.refs, { log: log.child?.({ envioId }) ?? log })
-    const destinatario = limparLinha(dados?.destinatario)
-    if (!ENDERECO.test(destinatario)) {
+    const logDoEnvio = log.child?.({ envioId }) ?? log
+    const dados = await modelo.carregar(pool, envio.refs, { log: logDoEnvio, painelUrlBase })
+    if (dados?.semEnvio !== undefined) {
+      if (typeof dados.semEnvio !== 'string' || !CODIGO_ERRO.test(dados.semEnvio)) {
+        throw new UnrecoverableError('semEnvio inválido')
+      }
+      await marcarNaoEnviado(pool, envioId, geracao, dados.semEnvio)
+      log.info({ ...campos, estado: 'nao_enviado', erro_codigo: dados.semEnvio }, 'e-mail não enviado')
+      return
+    }
+    if (!destinatarioValido(dados?.destinatario)) {
       await marcarNaoEnviado(pool, envioId, geracao, 'SEM_DESTINATARIO')
       log.info({ ...campos, estado: 'nao_enviado', erro_codigo: 'SEM_DESTINATARIO' }, 'e-mail sem destinatário')
       return
     }
+    const destinatario = limparLinha(dados.destinatario)
     const variaveis = dados.variaveis ?? {}
     // HTML montado fora do tagged template `html` não tem escape garantido: erro do modelo.
     const corpoHtml = modelo.html(variaveis)
@@ -208,5 +223,12 @@ export function criarHandlerEmail({ pool, modelos, transporte, remetente, respon
       return
     }
     log.info({ ...campos, estado: 'enviado' }, 'e-mail enviado')
+    if (modelo.aposEnviar) {
+      try {
+        await modelo.aposEnviar(pool, envio.refs, { tokenHash: dados.tokenHash, log: logDoEnvio })
+      } catch (err) {
+        log.warn({ ...campos, erro: err?.name, code: err?.code }, 'pós-envio do e-mail falhou')
+      }
+    }
   }
 }
