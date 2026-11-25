@@ -3,7 +3,7 @@
 // `WEBHOOK_ASAAS_HABILITADO`, o enfileirador e o handler do webhook do Asaas (CIT-64), e
 // o enfileirador e o handler do e-mail transacional (CIT-65) e o laço das tarefas de
 // domínio (CIT-77), em todos os ambientes; com `PAINEL_HABILITADO`, o consumidor do primeiro
-// acesso e o job do "esqueci a senha" (CIT-71).
+// acesso e o job do "esqueci a senha" (CIT-71) e o consumidor do e-mail do link (CIT-72).
 // Sem CORS; o token do Telegram só existe aqui (menor privilégio).
 import { carregarConfigWorker } from './config.js'
 import { criarLogger } from './log.js'
@@ -74,6 +74,8 @@ const handlersEmail = {
     transporte: transporteEmail,
     remetente: config.emailRemetente,
     responderPara: config.emailResponderPara,
+    // Base do link de senha (CIT-72): só com `PAINEL_HABILITADO`; sem ela, `SEM_URL_PAINEL`.
+    painelUrlBase: config.painelUrlBase,
     log
   })
 }

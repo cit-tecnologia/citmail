@@ -231,8 +231,9 @@ function lerOrigens(env, nome) {
 // cada tentativa custa 19 MiB no Argon2id. Fora de produção, sem `REDIS_URL`, as rotas
 // respondem 503. `PAINEL_ORIGENS` (origens com cookie e as únicas aceitas no `Origin` do
 // login e do logout) é subconjunto de `CORS_ORIGENS`.
-// A mesma trava vale para o worker (CIT-71): ligado em produção, o consumidor do primeiro
-// acesso criaria solicitações que venceriam sem envio (#72).
+// A mesma trava vale para o worker (CIT-71): o envio do link já existe (CIT-72), e a trava
+// continua até o limitador de tentativas do login e das rotas de senha (CIT-78) e o
+// transporte de e-mail de produção (CIT-57).
 function lerPainelHabilitado(env, nodeEnv) {
   const producao = nodeEnv === 'production'
   const painelHabilitado = lerBooleano(env, 'PAINEL_HABILITADO', !producao)
@@ -242,6 +243,40 @@ function lerPainelHabilitado(env, nodeEnv) {
     )
   }
   return painelHabilitado
+}
+
+const PAINEL_URL_BASE_DEV = 'http://127.0.0.1:4200/citmail/'
+
+/**
+ * URL da pasta das páginas do painel, base do link de senha (CIT-72; só o worker lê).
+ * Absoluta, com o caminho terminado em `/`, sem query, fragmento nem credenciais; `https:`
+ * fora de `development` e `test` (lá também `http:`). Ausente: o padrão do Vite em
+ * `development` e `test`; fora deles, obrigatória. Com `PAINEL_HABILITADO` recusada em
+ * produção, o ramo de produção fica dormente até a CIT-78.
+ */
+export function lerPainelUrlBase(env, nodeEnv) {
+  const desenvolvimento = nodeEnv === 'development' || nodeEnv === 'test'
+  const valor = (env.PAINEL_URL_BASE ?? '').trim()
+  if (!valor) {
+    if (desenvolvimento) return PAINEL_URL_BASE_DEV
+    throw new Error('PAINEL_URL_BASE não definida')
+  }
+  const invalida = new Error(
+    'PAINEL_URL_BASE inválida: use URL absoluta com / no fim, sem query, fragmento nem credenciais ' +
+    '(https fora de development e test)'
+  )
+  let url
+  try {
+    url = new URL(valor)
+  } catch {
+    throw invalida
+  }
+  const protocolos = desenvolvimento ? ['https:', 'http:'] : ['https:']
+  if (!protocolos.includes(url.protocol) || url.username || url.password || !url.pathname.endsWith('/') ||
+      valor.includes('?') || valor.includes('#')) {
+    throw invalida
+  }
+  return url.href
 }
 
 function lerPainel(env, nodeEnv, corsOrigens) {
@@ -322,7 +357,8 @@ export function carregarConfigBanco(env = process.env) {
 // Lê também o transporte e o remetente do e-mail transacional (CIT-65, `lerEmail`) e o
 // intervalo do laço das tarefas de domínio (CIT-77, `DOMINIO_TAREFAS_INTERVALO_MS`) e
 // `PAINEL_HABILITADO` (CIT-71: consumidor do primeiro acesso e job do "esqueci a senha"),
-// com a mesma trava da API (`lerPainelHabilitado`: desligada por padrão e recusada em produção).
+// com a mesma trava da API (`lerPainelHabilitado`: desligada por padrão e recusada em produção),
+// e, só com ela, `PAINEL_URL_BASE` (CIT-72, `lerPainelUrlBase`: base do link de senha).
 export function carregarConfigWorker(env = process.env) {
   const config = carregarConfigFila(env)
   const databaseUrl = (env.DATABASE_URL ?? '').trim()
@@ -339,10 +375,12 @@ export function carregarConfigWorker(env = process.env) {
   }
   const webhookAsaasHabilitado = lerBooleano(env, 'WEBHOOK_ASAAS_HABILITADO', config.nodeEnv !== 'production')
   const asaas = webhookAsaasHabilitado ? lerCredenciaisAsaas(env, config.nodeEnv === 'production', true) : {}
+  const painelHabilitado = lerPainelHabilitado(env, config.nodeEnv)
   return {
     ...config, databaseUrl, outboxIntervaloMs, dominioTarefasIntervaloMs, telegramBotToken, telegramChatId,
     webhookAsaasHabilitado, ...asaas,
-    painelHabilitado: lerPainelHabilitado(env, config.nodeEnv),
+    painelHabilitado,
+    ...(painelHabilitado ? { painelUrlBase: lerPainelUrlBase(env, config.nodeEnv) } : {}),
     ...lerEmail(env, config.nodeEnv)
   }
 }
